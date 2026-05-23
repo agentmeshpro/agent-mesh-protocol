@@ -21,6 +21,12 @@ class DedupStore(Protocol):
 
 class InMemoryDedupStore:
     def __init__(self, window_seconds: int = 300, max_size: int = 100_000):
+        if window_seconds <= 0:
+            raise ValueError(
+                "window_seconds must be > 0 — non-positive window disables dedup."
+            )
+        if max_size <= 0:
+            raise ValueError("max_size must be > 0")
         self._window = window_seconds
         self._max_size = max_size
         self._seen: dict[str, float] = {}
@@ -32,38 +38,31 @@ class InMemoryDedupStore:
         for k in expired:
             del self._seen[k]
 
-    def _evict_oldest(self) -> None:
-        """Evict entries to prevent unbounded growth.
-
-        Phase 1: Remove expired entries (outside TTL window — useless anyway).
-        Phase 2: If still over limit, remove oldest by timestamp using heapq
-                 for O(n) instead of O(n log n).
-        """
-        if len(self._seen) <= self._max_size:
-            return
-        # Phase 1: Remove expired entries
+    def _make_room(self) -> bool:
+        """Drop only expired entries; return True if space exists for one more."""
+        if len(self._seen) < self._max_size:
+            return True
         now = time.monotonic()
         expired = [k for k, v in self._seen.items() if now - v > self._window]
         for k in expired:
             del self._seen[k]
-        # Phase 2: If still over limit, remove oldest by timestamp
-        if len(self._seen) > self._max_size:
-            import heapq
-
-            target = int(self._max_size * 0.9)
-            oldest = heapq.nsmallest(
-                len(self._seen) - target, self._seen.items(), key=lambda x: x[1]
-            )
-            for k, _ in oldest:
-                del self._seen[k]
+        return len(self._seen) < self._max_size
 
     async def is_duplicate(self, message_id: str) -> bool:
+        """Return True if message_id was already seen.
+
+        Fail-closed when the cache is full of still-in-window IDs: returns
+        True (treats as duplicate) rather than evicting a valid entry that
+        would reopen the dedup window. An attacker that floods unique IDs
+        cannot use that flood to clear someone else's dedup record.
+        """
         async with self._lock:
             self._cleanup()
             if message_id in self._seen:
                 return True
+            if not self._make_room():
+                return True
             self._seen[message_id] = time.monotonic()
-            self._evict_oldest()
             return False
 
     async def mark_seen(self, message_id: str) -> None:

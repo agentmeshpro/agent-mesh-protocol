@@ -19,6 +19,7 @@ Public API
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import deque
 from collections.abc import AsyncIterator
 
@@ -33,6 +34,11 @@ _RING_BUFFER_CAPACITY = 100
 # Prevents unbounded memory growth from leaked or abandoned streams.
 MAX_ACTIVE_STREAMS = 10_000
 
+# How long a stream may sit idle (no events emitted, no consumers) before
+# the global registry is permitted to evict it under memory pressure. An
+# idle stream past this cutoff is dropped to make room for a new one.
+IDLE_STREAM_TTL_SECONDS = 300.0
+
 # Sentinel used to signal the consumer that the stream is finished.
 _SENTINEL = object()
 
@@ -40,7 +46,7 @@ _SENTINEL = object()
 class StreamBus:
     """Per-task event bus with async queue + ring-buffer replay."""
 
-    def __init__(self, task_id: str) -> None:
+    def __init__(self, task_id: str, *, creator_id: str | None = None) -> None:
         self.task_id = task_id
         self._queue: asyncio.Queue[StreamingEvent | object] = asyncio.Queue(maxsize=1000)
         self._ring: deque[StreamingEvent] = deque(maxlen=_RING_BUFFER_CAPACITY)
@@ -48,6 +54,12 @@ class StreamBus:
         self._closed: bool = False
         self._dropped_count: int = 0
         self._authorized_subscribers: set[str] = set()
+        # First caller to ``get_or_create_stream`` owns the task_id. Future
+        # callers with a different creator_id get a different stream (the
+        # registry rejects the lookup) so an attacker who pre-creates with
+        # a guessable task_id cannot intercept events meant for someone else.
+        self._creator_id: str | None = creator_id
+        self._last_activity: float = time.monotonic()
 
     # ----- subscription -----
 
@@ -79,10 +91,19 @@ class StreamBus:
         # Stamp the event with an integer id (as string for SSE spec)
         event = event.model_copy(update={"id": str(self._seq), "seq": self._seq})
         self._ring.append(event)
+        self._last_activity = time.monotonic()
         try:
             self._queue.put_nowait(event)
         except asyncio.QueueFull:
             self._dropped_count += 1  # Track drops so consumers can detect gaps
+
+    @property
+    def creator_id(self) -> str | None:
+        return self._creator_id
+
+    @property
+    def last_activity(self) -> float:
+        return self._last_activity
 
     def close(self) -> None:
         """Emit a DONE event (if not already closed) and signal end of stream."""
@@ -156,19 +177,84 @@ class StreamBus:
 _active_streams: dict[str, StreamBus] = {}
 
 
-def get_or_create_stream(task_id: str) -> StreamBus:
+def _evict_idle_streams() -> int:
+    """Drop streams that have been idle past ``IDLE_STREAM_TTL_SECONDS``.
+
+    Returns the number of streams evicted. Closed streams are always
+    evicted; live-but-idle streams only when they exceed the TTL.
+    """
+    now = time.monotonic()
+    drop: list[str] = []
+    for tid, bus in _active_streams.items():
+        if bus.closed:
+            drop.append(tid)
+        elif now - bus.last_activity > IDLE_STREAM_TTL_SECONDS:
+            drop.append(tid)
+    for tid in drop:
+        bus = _active_streams.pop(tid, None)
+        if bus and not bus.closed:
+            bus.close()
+    return len(drop)
+
+
+_REQUIRE_CREATOR_ID = False  # opt-in strict mode for production deployments
+
+
+def set_require_creator_id(required: bool) -> None:
+    """Toggle strict creator binding for the global stream registry.
+
+    When True, every ``get_or_create_stream`` call MUST pass a non-empty
+    ``creator_id``. Anonymous streams are rejected. Production deployments
+    SHOULD enable this on startup; the default is False for backwards
+    compatibility with fixtures and local-only callers.
+    """
+    global _REQUIRE_CREATOR_ID
+    _REQUIRE_CREATOR_ID = required
+
+
+def get_or_create_stream(task_id: str, *, creator_id: str | None = None) -> StreamBus:
     """Return the existing StreamBus for *task_id*, or create a new one.
 
-    Raises RuntimeError if the global stream registry has reached
-    MAX_ACTIVE_STREAMS to prevent unbounded memory growth.
+    Security:
+      * The first caller's ``creator_id`` is recorded on the bus. Subsequent
+        ``get_or_create_stream`` calls for the same task_id from a DIFFERENT
+        ``creator_id`` raise :class:`PermissionError`. This blocks the
+        "task-id squat" attack where an attacker pre-creates a bus for a
+        guessable task_id and then receives events from a legitimate creator.
+      * If ``creator_id`` is None on either side the binding check is
+        skipped (legacy path; emit a deprecation warning in callers).
+
+    Memory:
+      * When the registry is at ``MAX_ACTIVE_STREAMS`` an eviction sweep
+        drops idle/closed streams first. If no room can be made, raises
+        :class:`RuntimeError`.
     """
-    if task_id not in _active_streams:
+    if _REQUIRE_CREATOR_ID and not creator_id:
+        raise PermissionError(
+            "creator_id is required (strict mode enabled via set_require_creator_id)"
+        )
+
+    if task_id in _active_streams:
+        bus = _active_streams[task_id]
+        # Strict creator binding: any mismatch — including the case where
+        # the original creator was anonymous (None) but a later caller
+        # presents an identity, or vice-versa — is rejected. The squat
+        # attack relied on the asymmetry where the attacker pre-created
+        # anonymously and the legitimate caller later joined.
+        if creator_id != bus.creator_id:
+            raise PermissionError(
+                f"task_id '{task_id}' is bound to a different creator"
+            )
+        return bus
+
+    if len(_active_streams) >= MAX_ACTIVE_STREAMS:
+        _evict_idle_streams()
         if len(_active_streams) >= MAX_ACTIVE_STREAMS:
             raise RuntimeError(
-                f"Maximum active streams ({MAX_ACTIVE_STREAMS}) reached. "
-                "Clean up completed streams before creating new ones."
+                f"Maximum active streams ({MAX_ACTIVE_STREAMS}) reached "
+                f"and no idle streams to evict."
             )
-        _active_streams[task_id] = StreamBus(task_id)
+    _active_streams[task_id] = StreamBus(task_id, creator_id=creator_id)
     return _active_streams[task_id]
 
 

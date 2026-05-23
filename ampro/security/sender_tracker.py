@@ -98,9 +98,20 @@ class SenderTracker:
             self._state.pop(sender, None)
 
     def record_success(self, sender: str) -> None:
-        """Record successful processing — resets failure count."""
+        """Record successful processing — decays failures, never resets.
+
+        Each success drops the OLDEST recorded failure. An attacker that
+        alternates 2 failures + 1 success previously stayed NORMAL forever
+        because any success wiped the failure list. Now successes only chip
+        away at the count, so a sustained poison pattern still escalates.
+        """
         with self._lock:
-            self._failures.pop(sender, None)
+            failures = self._failures.get(sender)
+            if not failures:
+                return
+            failures.pop(0)
+            if not failures:
+                self._failures.pop(sender, None)
 
     def is_allowed(self, sender: str) -> bool:
         """Check if sender is allowed to send messages."""

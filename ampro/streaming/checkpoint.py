@@ -34,10 +34,17 @@ class StreamCheckpointEvent(BaseModel):
     @field_validator("state_snapshot")
     @classmethod
     def _validate_state_snapshot_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        # Reject non-JSON-serializable values outright. The previous validator
+        # used ``default=str`` which let an object's ``__str__`` return a tiny
+        # placeholder while the runtime dict still held arbitrarily large
+        # blobs, bypassing the byte cap.
         try:
-            serialized = json.dumps(value, default=str)
-        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
-            raise ValueError(f"state_snapshot must be JSON-serializable: {exc}") from exc
+            serialized = json.dumps(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"state_snapshot must be plain JSON-serializable types "
+                f"(no custom objects, bytes, sets, etc.): {exc}"
+            ) from exc
         if len(serialized.encode("utf-8")) > MAX_STATE_SNAPSHOT_BYTES:
             raise ValueError("state_snapshot exceeds 1 MiB size limit")
         return value

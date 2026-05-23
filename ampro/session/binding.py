@@ -106,14 +106,12 @@ def create_message_binding(
     Computes ``HMAC-SHA256(binding_token, session_id + "\\x00" + message_id)``
     and returns the hex digest.
 
-    Args:
-        session_id: Session identifier.
-        message_id: Unique identifier for this message.
-        binding_token: The binding token derived during handshake.
-
-    Returns:
-        Hex-encoded HMAC-SHA256 digest to attach as the binding proof.
+    Raises:
+        ValueError: if ``binding_token`` is empty. An empty token would let
+            any sender compute a valid proof — must come from a real handshake.
     """
+    if not binding_token:
+        raise ValueError("binding_token must not be empty")
     message = (session_id + "\x00" + message_id).encode("utf-8")
     return hmac.new(
         key=binding_token.encode("utf-8"),
@@ -131,17 +129,23 @@ def verify_message_binding(
     """
     Verify a per-message binding proof using constant-time comparison.
 
-    Recomputes the expected HMAC and compares it against *provided_hmac*
-    via ``hmac.compare_digest`` to prevent timing side-channels.
+    Returns False (never raises) on any input problem so callers can treat
+    the result as a simple pass/fail. Specifically:
 
-    Args:
-        session_id: Session identifier.
-        message_id: Unique identifier for the message being verified.
-        binding_token: The binding token derived during handshake.
-        provided_hmac: The HMAC value supplied by the sender.
+      * Empty ``binding_token`` → False (a session without a derived token
+        cannot have a valid binding proof; refusing here closes the
+        misconfiguration footgun where binding_token defaults to "").
+      * Empty ``provided_hmac`` → False.
 
-    Returns:
-        True if the proof is valid, False if it was forged or tampered with.
+    Otherwise recomputes the expected HMAC and uses ``hmac.compare_digest``
+    for constant-time comparison.
     """
-    expected = create_message_binding(session_id, message_id, binding_token)
+    if not binding_token or not provided_hmac:
+        return False
+    expected_msg = (session_id + "\x00" + message_id).encode("utf-8")
+    expected = hmac.new(
+        key=binding_token.encode("utf-8"),
+        msg=expected_msg,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
     return hmac.compare_digest(expected, provided_hmac)

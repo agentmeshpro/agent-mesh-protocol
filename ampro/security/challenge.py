@@ -13,11 +13,20 @@ guidance, not protocol.
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+# Minimum PoW difficulty accepted by the default validator. Lower difficulty
+# is a no-op challenge — anything below this is rejected outright so that a
+# buggy or attacker-influenced issuer cannot ship a 0-bit "challenge".
+MIN_POW_DIFFICULTY = 8
 
 
 class ChallengeReason(str, Enum):
@@ -90,7 +99,10 @@ def _validate_proof_of_work(
         difficulty = int(challenge.parameters.get("difficulty", 0))
     except (TypeError, ValueError):
         return False
-    if difficulty < 0:
+    if difficulty < MIN_POW_DIFFICULTY:
+        # Reject trivially-easy or zero-difficulty challenges. A challenge
+        # with difficulty < MIN_POW_DIFFICULTY is functionally a no-op and
+        # MUST NOT be accepted by the default validator.
         return False
     try:
         _ = bytes.fromhex(response.solution)
@@ -140,12 +152,18 @@ def _validate_captcha(
 ) -> bool:
     """CAPTCHA validation requires a platform-provided solver.
 
-    By default we accept ``parameters['expected_solution']`` (string equality)
-    as a test hook; platforms register a real validator via
-    :func:`register_challenge_validator`.
+    The default validator FAILS CLOSED — it always returns False. Platforms
+    that need real CAPTCHA verification MUST register a validator via
+    :func:`register_challenge_validator` that consults their CAPTCHA backend
+    (hCaptcha, Turnstile, reCAPTCHA, etc.). The previous default accepted
+    ``parameters['expected_solution']`` via string-equality, which meant the
+    answer travelled inside the challenge — trivially bypassable.
     """
-    expected = challenge.parameters.get("expected_solution")
-    return isinstance(expected, str) and expected == response.solution
+    logger.warning(
+        "captcha challenge failed: no platform validator registered. "
+        "Call register_challenge_validator('captcha', <real_validator>)."
+    )
+    return False
 
 
 _VALIDATORS: dict[str, ChallengeValidator] = {
@@ -163,15 +181,38 @@ def register_challenge_validator(
     _VALIDATORS[challenge_type] = validator
 
 
+def _is_expired(expires_at: str) -> bool:
+    """Return True when *expires_at* is a parseable timestamp strictly in the past."""
+    try:
+        raw = expires_at.replace("Z", "+00:00") if expires_at.endswith("Z") else expires_at
+        ts = datetime.fromisoformat(raw)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    except (ValueError, AttributeError):
+        # Unparseable expiry is treated as expired (fail-closed).
+        return True
+    return ts < datetime.now(timezone.utc)
+
+
 def validate_challenge_solution(
     challenge: TaskChallengeBody, response: TaskChallengeResponseBody
 ) -> bool:
     """Dispatch to the per-type validator and return pass/fail.
 
-    Also enforces that the response's ``challenge_id`` matches the
-    challenge it claims to answer. Unknown challenge types return False.
+    Enforces, in order:
+      1. ``response.challenge_id == challenge.challenge_id``
+      2. ``challenge.expires_at`` is in the future (fail-closed on unparseable)
+      3. A validator is registered for ``challenge.challenge_type``
+      4. The validator returns True
+
+    Unknown challenge types and expired challenges return False. The
+    expiry check used to be the caller's responsibility — silently
+    fail-open if the caller forgot. It now runs unconditionally inside
+    the dispatcher.
     """
     if challenge.challenge_id != response.challenge_id:
+        return False
+    if _is_expired(challenge.expires_at):
         return False
     validator = _VALIDATORS.get(challenge.challenge_type)
     if validator is None:

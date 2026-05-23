@@ -281,6 +281,14 @@ class SessionCloseBody(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+_TOKEN_VERSION_SIGNED = "v1s"
+_TOKEN_VERSION_UNSIGNED = "v1u"
+
+# Cap on resume token length. Tokens encode session_id + binding_token plus
+# small session context; a token over 64KiB is a DoS attempt or a misuse.
+_MAX_RESUME_TOKEN_BYTES = 65_536
+
+
 def create_resume_token(
     session_id: str,
     binding_token: str,
@@ -304,7 +312,12 @@ def create_resume_token(
     Returns:
         A resume token string.
     """
+    # Embed a version tag inside the payload so the parser can detect whether
+    # the token was created as signed or unsigned. Without this an attacker
+    # who strips the ``.signature`` suffix from a signed token can present
+    # the payload to a verifier as if it were always unsigned.
     payload = {
+        "v": _TOKEN_VERSION_SIGNED if key is not None else _TOKEN_VERSION_UNSIGNED,
         "session_id": session_id,
         "binding_token": binding_token,
         "context": session_context,
@@ -321,22 +334,75 @@ def create_resume_token(
     return payload_b64
 
 
+_ALLOW_UNSIGNED_RESUME_TOKENS = False
+
+
+def allow_unsigned_resume_tokens(allow: bool) -> None:
+    """Opt-in to accepting unsigned resume tokens.
+
+    Production callers SHOULD always sign resume tokens — an unsigned token
+    is fundamentally just an encoded session_id+binding_token blob. The
+    parser rejects unsigned tokens by default; tests and local-dev callers
+    can enable acceptance explicitly via this toggle.
+    """
+    global _ALLOW_UNSIGNED_RESUME_TOKENS
+    _ALLOW_UNSIGNED_RESUME_TOKENS = allow
+
+
 def parse_resume_token(token: str, key: bytes | None = None) -> dict:
-    """Parse and optionally verify a resume token.
+    """Parse and verify a resume token.
+
+    Security contract:
+
+      * If the token contains a ``.`` separator it is treated as a SIGNED
+        token and MUST be verified with *key*. Calling with ``key=None`` on
+        a signed-shaped token raises :class:`ValueError` so an attacker
+        cannot strip the signature and present the payload to a caller
+        that forgot to pass the key.
+      * If the token has no ``.`` separator it is an UNSIGNED token and is
+        accepted only when *key* is also ``None``. Mixing signed/unsigned
+        forms is rejected.
 
     Args:
         token: The resume token string produced by :func:`create_resume_token`.
-        key: Optional HMAC-SHA256 key. When provided the signature is
-            verified; a mismatch raises :class:`ValueError`.
+        key: HMAC-SHA256 key, required for signed tokens.
 
     Returns:
         Parsed dict with ``session_id``, ``binding_token``, ``context``,
         and ``created_at`` keys.
 
     Raises:
-        ValueError: If the token is malformed, the signature is missing
-            when a key is provided, or the signature does not match.
+        ValueError: If the token is malformed, signed format without a key,
+            unsigned format with a key, or the signature does not match.
     """
+    if len(token) > _MAX_RESUME_TOKEN_BYTES:
+        raise ValueError(
+            f"resume token exceeds {_MAX_RESUME_TOKEN_BYTES} byte cap"
+        )
+    looks_signed = "." in token
+
+    if looks_signed and key is None:
+        raise ValueError(
+            "Refusing to parse signed-shaped token without a key — "
+            "supply the HMAC key. Stripping the signature is not allowed."
+        )
+    if not looks_signed and key is not None:
+        raise ValueError(
+            "Token has no signature but a key was provided — "
+            "unsigned tokens are not accepted under key validation."
+        )
+    if not looks_signed and key is None and not _ALLOW_UNSIGNED_RESUME_TOKENS:
+        # Block the "rewrite v=unsigned, strip the .sig, present as unsigned"
+        # attack. Once a token is created as signed, an attacker can rewrite
+        # any in-payload version field; the ONLY trustworthy indicator of
+        # signedness is HMAC verification. So unsigned tokens are rejected
+        # by default, opt-in only via allow_unsigned_resume_tokens(True).
+        raise ValueError(
+            "Unsigned resume tokens are rejected by default. Either supply "
+            "an HMAC key when creating + parsing, or call "
+            "allow_unsigned_resume_tokens(True) at startup."
+        )
+
     if key is not None:
         parts = token.rsplit(".", 1)
         if len(parts) != 2:
@@ -351,10 +417,8 @@ def parse_resume_token(token: str, key: bytes | None = None) -> dict:
         if not hmac.compare_digest(sig_bytes, expected_sig):
             raise ValueError("HMAC signature verification failed")
     else:
-        # Unsigned token — may or may not contain a dot (accept either)
-        payload_b64 = token.split(".")[0] if "." in token else token
         try:
-            payload_bytes = base64.urlsafe_b64decode(payload_b64)
+            payload_bytes = base64.urlsafe_b64decode(token)
         except Exception as exc:
             raise ValueError(f"Invalid base64 in token: {exc}") from exc
 
@@ -366,6 +430,21 @@ def parse_resume_token(token: str, key: bytes | None = None) -> dict:
     for required in ("session_id", "binding_token"):
         if required not in data:
             raise ValueError(f"Token payload missing required field: {required}")
+
+    # Cross-check the embedded version against the parse path. If the
+    # payload declares itself signed but we got here via the unsigned
+    # branch, the signature was stripped by an attacker.
+    version = data.get("v")
+    if version == _TOKEN_VERSION_SIGNED and key is None:
+        raise ValueError(
+            "Token payload declares v=signed but was parsed without a key "
+            "— signature appears to have been stripped"
+        )
+    if version == _TOKEN_VERSION_UNSIGNED and key is not None:
+        raise ValueError(
+            "Token payload declares v=unsigned but a verification key was "
+            "supplied — refusing inconsistent token"
+        )
 
     return data
 
@@ -416,11 +495,17 @@ class HandshakeStateMachine:
     """
 
     DEFAULT_TIMEOUT_SECONDS: float = 30.0
+    # Maximum issued nonces tracked per state machine. A handshake legitimately
+    # issues exactly one, so this is purely a defence against buggy or
+    # malicious callers spamming ``issue_confirm_nonce`` without ever
+    # consuming. Bounded to prevent unbounded memory growth.
+    MAX_ISSUED_NONCES: int = 16
 
     def __init__(self, timeout_seconds: float | None = None) -> None:
         self._state = HandshakeState.IDLE
         self._lock = threading.Lock()
-        self._issued_confirm_nonces: set[str] = set()
+        # Track (nonce, issued_at_monotonic) so we can age out stale issuances.
+        self._issued_confirm_nonces: dict[str, float] = {}
         self._consumed_confirm_nonces: set[str] = set()
         self._timeout_seconds: float = (
             float(timeout_seconds)
@@ -440,16 +525,26 @@ class HandshakeStateMachine:
     def issue_confirm_nonce(self) -> str:
         """Generate a single-use confirm nonce and track it as issued.
 
-        Called by the server when building a ``SessionEstablishedBody``.
-        The returned nonce is a cryptographically random 32-character hex
-        string (128 bits of entropy).
-
-        Returns:
-            The newly generated nonce string.
+        Bounded by ``MAX_ISSUED_NONCES`` and aged out by the handshake
+        timeout window: stale nonces older than ``timeout_seconds`` are
+        evicted on each call. A handshake state machine that has hit the
+        cap raises :class:`RuntimeError` rather than silently growing.
         """
         nonce = secrets.token_hex(16)
+        now = time.monotonic()
         with self._lock:
-            self._issued_confirm_nonces.add(nonce)
+            # Age out anything past the handshake timeout — those nonces
+            # can never legitimately be consumed.
+            cutoff = now - self._timeout_seconds
+            self._issued_confirm_nonces = {
+                n: t for n, t in self._issued_confirm_nonces.items() if t >= cutoff
+            }
+            if len(self._issued_confirm_nonces) >= self.MAX_ISSUED_NONCES:
+                raise RuntimeError(
+                    f"HandshakeStateMachine: {self.MAX_ISSUED_NONCES} unconsumed "
+                    f"confirm nonces — caller is leaking. Refusing to issue more."
+                )
+            self._issued_confirm_nonces[nonce] = now
         return nonce
 
     def consume_confirm_nonce(self, nonce: str) -> bool:
@@ -478,7 +573,7 @@ class HandshakeStateMachine:
                 raise SessionReplayError(
                     f"Unknown confirm_nonce '{nonce}' — was never issued by this state machine"
                 )
-            self._issued_confirm_nonces.discard(nonce)
+            self._issued_confirm_nonces.pop(nonce, None)
             self._consumed_confirm_nonces.add(nonce)
             return True
 

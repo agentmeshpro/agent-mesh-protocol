@@ -49,6 +49,29 @@ if TYPE_CHECKING:
 # disables the check (fixture-only usage).
 DEFAULT_MAX_SIGNATURE_AGE_SECONDS = 300
 
+# Algorithms this RFC 9421 implementation can verify. The signed signature
+# base embeds ``alg``; verifiers MUST reject anything outside this set so
+# that future multi-algorithm verifiers cannot be tricked into
+# algorithm-confusion (e.g. accepting an Ed25519 signature while the
+# Signature-Input claims RSA).
+_SUPPORTED_ALGORITHMS: frozenset[str] = frozenset({"ed25519"})
+
+# Process-wide default replay cache. Used by ``verify_request`` when the
+# caller does not pass an explicit ``nonce_tracker``. The previous default
+# (``None``) silently disabled replay protection — fail-open in the API
+# surface. With this module-level default, any signature carrying a nonce
+# is automatically replay-checked even when the caller forgets.
+_DEFAULT_NONCE_TRACKER: NonceTracker | None = None
+
+
+def _get_default_nonce_tracker() -> NonceTracker:
+    """Lazily instantiate the module-level default NonceTracker."""
+    global _DEFAULT_NONCE_TRACKER
+    if _DEFAULT_NONCE_TRACKER is None:
+        from ampro.security.nonce_tracker import NonceTracker as _NT
+        _DEFAULT_NONCE_TRACKER = _NT()
+    return _DEFAULT_NONCE_TRACKER
+
 # ---------------------------------------------------------------------------
 # Content-Digest helper
 # ---------------------------------------------------------------------------
@@ -306,6 +329,14 @@ def verify_request(
     components_str = match.group("components")
     created = int(match.group("created"))
     keyid = match.group("keyid")
+    alg = match.group("alg")
+
+    # Algorithm allow-list. Reject any signature whose declared alg is not
+    # one this implementation can actually verify. Without this check, a
+    # multi-algorithm verifier (future) could be tricked into accepting an
+    # Ed25519 signature while the input claims RSA — classic alg confusion.
+    if alg not in _SUPPORTED_ALGORITHMS:
+        return False
 
     nonce_match = _SIG_INPUT_NONCE_RE.search(sig_input_raw)
     nonce = nonce_match.group("nonce") if nonce_match else None
@@ -317,13 +348,19 @@ def verify_request(
         if skew > max_age_seconds:
             return False
 
-    # Replay cache — if a tracker is supplied, require a nonce and reject
-    # on reuse. The tracker's own ``is_replay`` consumes-and-records.
-    if nonce_tracker is not None:
-        if nonce is None:
+    # Replay cache — verifiers replay-check every signature that carries a
+    # nonce, using either the caller-supplied tracker or a module-level
+    # default. The previous behaviour (``nonce_tracker=None`` ⇒ no replay
+    # check) made replay protection opt-in, which is fail-open by API.
+    effective_tracker = nonce_tracker if nonce_tracker is not None else _get_default_nonce_tracker()
+    if nonce is None:
+        # A signature with no nonce parameter cannot be replay-protected.
+        # Reject unless caller has explicitly disabled replay checks by
+        # passing ``max_age_seconds=None`` (fixture-only usage).
+        if max_age_seconds is not None:
             return False
-        if nonce_tracker.is_replay(nonce):
-            return False
+    elif effective_tracker.is_replay(nonce):
+        return False
 
     # Parse covered components: "comp1" "comp2" ...
     covered = re.findall(r'"([^"]+)"', components_str)

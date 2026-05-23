@@ -99,14 +99,13 @@ def validate_revocation_signature(body: KeyRevocationBody, public_key_bytes: byt
         )
         return False
 
-    # Build canonical message: all fields except 'signature', sorted by key
+    # Build the canonical message from the full set of model fields except
+    # ``signature``. Using ``model_dump`` means new fields added to
+    # KeyRevocationBody are automatically covered; the previous hardcoded
+    # dict silently omitted any extension fields, which broke wire-format
+    # extensibility.
     canonical = {
-        "agent_id": body.agent_id,
-        "jwks_url": body.jwks_url,
-        "reason": body.reason,
-        "replacement_key_id": body.replacement_key_id,
-        "revoked_at": body.revoked_at,
-        "revoked_key_id": body.revoked_key_id,
+        k: v for k, v in body.model_dump(mode="json").items() if k != "signature"
     }
     message = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -177,14 +176,64 @@ class RevocationStore(Protocol):
         ...
 
 
-class _NoOpRevocationStore:
-    """Default store — nothing is ever considered revoked."""
+class _UnconfiguredRevocationStore:
+    """Default store — distinguishable from both fail-open and fail-closed.
 
-    def is_revoked(self, key_id: str) -> bool:  # noqa: D401 — simple predicate
+    Reports keys as not-revoked (so verification can proceed) but logs a
+    persistent warning so operators know revocation is not actually
+    enforced. The previous default silently returned False with no
+    indication; the new fail-closed-on-strict variant was too disruptive
+    to existing deployments. This is the middle ground.
+
+    Production deployments MUST register either:
+      * A real :class:`RevocationStore` backed by the host's KV store, OR
+      * :class:`AllowAllRevocationStore` to explicitly opt into fail-open
+        (an audit-trail decision rather than silent default).
+
+    Callers that want strict fail-closed behaviour can register
+    :class:`StrictUnconfiguredRevocationStore` instead.
+    """
+
+    _warned: bool = False
+
+    def is_revoked(self, key_id: str) -> bool:
+        if not type(self)._warned:
+            logger.warning(
+                "key_revocation: no RevocationStore registered — running with "
+                "PERMISSIVE default. Call register_revocation_store() at startup "
+                "with either a real store, AllowAllRevocationStore(), or "
+                "StrictUnconfiguredRevocationStore() to make the choice explicit."
+            )
+            type(self)._warned = True
         return False
 
 
-_revocation_store: RevocationStore = _NoOpRevocationStore()
+class StrictUnconfiguredRevocationStore:
+    """Opt-in fail-CLOSED store: every key treated as revoked.
+
+    Production deployments that want hard fail-closed semantics until a
+    real revocation store is wired register this explicitly:
+
+        register_revocation_store(StrictUnconfiguredRevocationStore())
+    """
+
+    def is_revoked(self, key_id: str) -> bool:
+        return True
+
+
+class AllowAllRevocationStore:
+    """Opt-in fail-open store: nothing is ever considered revoked.
+
+    Use ONLY in test fixtures, local dev, or deployments that have made an
+    explicit, audited decision not to track revocations. Register at startup
+    via :func:`register_revocation_store(AllowAllRevocationStore())`.
+    """
+
+    def is_revoked(self, key_id: str) -> bool:
+        return False
+
+
+_revocation_store: RevocationStore = _UnconfiguredRevocationStore()
 
 
 def register_revocation_store(store: RevocationStore) -> None:

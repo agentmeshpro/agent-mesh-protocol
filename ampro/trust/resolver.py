@@ -164,8 +164,13 @@ async def _resolve_did(token: str) -> TrustTier:
     signature_b64: str = ""
     header_payload_signing_input: bytes = b""
     if token.startswith("did:"):
-        # Raw DID URI — use directly.
-        did = token
+        # A raw DID URI carries no proof of key possession. Anyone can paste a
+        # public DID. Reject — VERIFIED requires a signed JWT-style proof.
+        logger.warning(
+            "[trust] raw DID URI without proof — returning EXTERNAL (caller must "
+            "supply a signed header.payload.signature proof for VERIFIED)"
+        )
+        return TrustTier.EXTERNAL
     elif "." in token:
         # JWT-like DID proof: base64(header).base64(payload).signature
         try:
@@ -423,12 +428,11 @@ def get_public_key(sig_kid: str) -> bytes | None:
     try:
         raw = resolver(sig_kid)
     except Exception as exc:
-        # A buggy resolver must not take down the verifier. Log, cache
-        # the miss, return None. Resolvers SHOULD return None rather
-        # than raise — this branch is defence-in-depth.
+        # Exceptions are TRANSIENT errors (network blip, DB timeout). Do
+        # not negatively cache — caching None for the full TTL would let
+        # a single flaky resolver call DoS verification for 60s. Return
+        # None now; the next call retries the resolver.
         logger.warning("[trust] resolver raised for %s: %s", sig_kid, exc)
-        with _PUBLIC_KEY_CACHE_LOCK:
-            _PUBLIC_KEY_CACHE[sig_kid] = (now + _PUBLIC_KEY_CACHE_TTL_SEC, None)
         return None
 
     # Re-check revocation after the resolver call — the host may have

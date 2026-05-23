@@ -8,57 +8,97 @@ more than 50% of max_concurrent_tasks per spec Section 3.13.1.
 from __future__ import annotations
 
 import threading
+import time
 
 
 class ConcurrencyLimiter:
-    """Per-sender concurrent task limiter."""
+    """Per-sender concurrent task limiter with leased slots.
 
-    def __init__(self, max_total: int = 50, per_sender_pct: float = 0.5):
+    Each :meth:`acquire` returns a lease that auto-expires after
+    ``slot_ttl_seconds`` so a caller that forgets to ``release`` (or
+    crashes) does not permanently hold a slot. Every :meth:`acquire`
+    sweeps expired leases first, so the limiter is self-healing under
+    normal traffic without a separate reaper thread.
+    """
+
+    def __init__(
+        self,
+        max_total: int = 50,
+        per_sender_pct: float = 0.5,
+        slot_ttl_seconds: float = 600.0,
+    ):
+        if max_total <= 0:
+            raise ValueError("max_total must be > 0")
+        if not (0.0 < per_sender_pct <= 1.0):
+            raise ValueError("per_sender_pct must be in (0, 1]")
         self._max_total = max_total
-        self._per_sender_max = int(max_total * per_sender_pct)
-        self._active: dict[str, int] = {}
+        self._per_sender_max = max(1, int(max_total * per_sender_pct))
+        self._slot_ttl = float(slot_ttl_seconds)
+        # Active leases: {sender: [acquired_monotonic_ts, ...]}.
+        # The list length is the active count; values are used for TTL.
+        self._active: dict[str, list[float]] = {}
         self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _sweep_unlocked(self) -> None:
+        """Drop expired leases. Called under the lock."""
+        if self._slot_ttl <= 0:
+            return
+        now = time.monotonic()
+        cutoff = now - self._slot_ttl
+        empty: list[str] = []
+        for sender, leases in self._active.items():
+            leases[:] = [t for t in leases if t >= cutoff]
+            if not leases:
+                empty.append(sender)
+        for sender in empty:
+            del self._active[sender]
+
+    def _total_unlocked(self) -> int:
+        return sum(len(v) for v in self._active.values())
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     @property
     def total_active(self) -> int:
         with self._lock:
-            return sum(self._active.values())
+            self._sweep_unlocked()
+            return self._total_unlocked()
 
     def can_accept(self, sender: str) -> bool:
-        """Check if sender can start a new task."""
         with self._lock:
-            if sum(self._active.values()) >= self._max_total:
+            self._sweep_unlocked()
+            if self._total_unlocked() >= self._max_total:
                 return False
-            sender_count = self._active.get(sender, 0)
-            if sender_count >= self._per_sender_max:
-                return False
-            return True
+            sender_count = len(self._active.get(sender, []))
+            return sender_count < self._per_sender_max
 
     def acquire(self, sender: str) -> bool:
-        """Try to acquire a task slot. Returns False if at limit."""
         with self._lock:
-            if sum(self._active.values()) >= self._max_total:
+            self._sweep_unlocked()
+            if self._total_unlocked() >= self._max_total:
                 return False
-            sender_count = self._active.get(sender, 0)
-            if sender_count >= self._per_sender_max:
+            leases = self._active.setdefault(sender, [])
+            if len(leases) >= self._per_sender_max:
                 return False
-            self._active[sender] = sender_count + 1
+            leases.append(time.monotonic())
             return True
 
     def release(self, sender: str) -> None:
-        """Release a task slot when task completes.
-
-        WARNING: release() must be called after task completion. Consider using
-        a context manager or timeout mechanism to prevent leaked slots.
-        """
         with self._lock:
-            count = self._active.get(sender, 0)
-            if count <= 1:
+            leases = self._active.get(sender)
+            if not leases:
+                return
+            leases.pop()
+            if not leases:
                 self._active.pop(sender, None)
-            else:
-                self._active[sender] = count - 1
 
     def sender_active(self, sender: str) -> int:
-        """Number of active tasks for a sender."""
         with self._lock:
-            return self._active.get(sender, 0)
+            self._sweep_unlocked()
+            return len(self._active.get(sender, []))

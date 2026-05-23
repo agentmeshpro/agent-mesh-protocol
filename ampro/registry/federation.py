@@ -28,7 +28,7 @@ import base64
 import logging
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -50,6 +50,36 @@ class RegistryFederationRequest(BaseModel):
     )
 
     model_config = {"extra": "ignore"}
+
+    @field_validator("capabilities")
+    @classmethod
+    def validate_capabilities(cls, v: list[str]) -> list[str]:
+        """Bound and sanitize capability names.
+
+        * Length: each capability must be 1..128 chars. The canonical bytes
+          used for federation trust proofs concatenate every capability;
+          unbounded capability strings would let an attacker amplify a
+          tiny request into multi-MB canonical work for the verifier.
+        * Charset: no control characters. The canonical encoding uses
+          0x00 between registry_id and capabilities and 0x1F to join
+          capabilities, so a capability containing those bytes could be
+          confused with a structural delimiter.
+        * Count: at most 64 capabilities (well above any real spec set).
+        """
+        if len(v) > 64:
+            raise ValueError("too many capabilities (max 64)")
+        for cap in v:
+            if not cap:
+                raise ValueError("capability names must be non-empty")
+            if len(cap) > 128:
+                raise ValueError(
+                    f"capability name too long ({len(cap)} > 128 chars)"
+                )
+            if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in cap):
+                raise ValueError(
+                    f"capability {cap!r} contains control characters — forbidden"
+                )
+        return v
 
     @field_validator("trust_proof")
     @classmethod
@@ -183,24 +213,55 @@ def _parse_ts(value: Any) -> datetime | None:
     return None
 
 
-def resolve_federation_conflict(local_record: Any, remote_record: Any) -> Literal["local", "remote"]:
+def resolve_federation_conflict(
+    local_record: Any,
+    remote_record: Any,
+    *,
+    max_future_skew_seconds: int = 60,
+) -> Literal["local", "remote"]:
     """Determine precedence when the same agent_uri exists in two federated registries.
 
     Returns ``'local'`` if the local record wins; ``'remote'`` otherwise.
 
-    Precedence order:
+    Security properties (changed from earlier revisions):
 
-    1. Higher trust tier wins.
-    2. More recent ``last_seen`` wins.
-    3. Lexicographic ``agent_uri`` fallback (deterministic tiebreaker).
+    1. **Remote tier is NEVER load-bearing.** A peer registry can claim
+       ``trust_tier='internal'`` for any agent; that claim is a self-assertion
+       and must not promote the agent on this side. Tier comparison applies
+       only when the **local** record asserts the tier — i.e. tier acts as
+       a tiebreaker that favours locally-trusted records, never one that
+       lets a remote escalate.
+    2. **Clock skew is bounded.** ``last_seen`` values from the remote
+       that lie more than ``max_future_skew_seconds`` in the future of the
+       local clock are clamped to "now", preventing forward-skew hijacks.
+    3. **Deterministic lex fallback** on agent_uri when all signals are
+       equal.
     """
+    # 1. Local tier dominates only if the local record sits higher than
+    #    the remote claim. We never let a higher remote claim win.
     local_tier = _tier_rank(_get_field(local_record, "trust_tier"))
     remote_tier = _tier_rank(_get_field(remote_record, "trust_tier"))
-    if local_tier != remote_tier:
-        return "local" if local_tier > remote_tier else "remote"
+    if local_tier > remote_tier:
+        return "local"
+    # If remote_tier > local_tier, ignore the claim entirely (do NOT
+    # return "remote") and fall through to the timestamp comparison.
 
     local_seen = _parse_ts(_get_field(local_record, "last_seen"))
     remote_seen = _parse_ts(_get_field(remote_record, "last_seen"))
+
+    # Detect and penalise forward-skewed remote timestamps. A claim that
+    # lies more than ``max_future_skew_seconds`` ahead of the local clock
+    # is treated as adversarial: we discard the remote timestamp entirely
+    # so that the comparison falls back to local-wins logic.
+    if remote_seen is not None:
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        if remote_seen.tzinfo is None:
+            remote_seen = remote_seen.replace(tzinfo=timezone.utc)
+        skew_cap = now + timedelta(seconds=max_future_skew_seconds)
+        if remote_seen > skew_cap:
+            remote_seen = None  # discard — adversarial future timestamp
+
     if local_seen is not None and remote_seen is not None and local_seen != remote_seen:
         return "local" if local_seen > remote_seen else "remote"
     if local_seen is not None and remote_seen is None:
@@ -208,10 +269,11 @@ def resolve_federation_conflict(local_record: Any, remote_record: Any) -> Litera
     if local_seen is None and remote_seen is not None:
         return "remote"
 
-    local_uri = str(_get_field(local_record, "agent_uri") or "")
-    remote_uri = str(_get_field(remote_record, "agent_uri") or "")
-    # Deterministic lex fallback — local wins iff its URI sorts first.
-    return "local" if local_uri <= remote_uri else "remote"
+    # Final tiebreak: prefer LOCAL over remote. The previous lex fallback
+    # let an attacker pick a registry_id that sorts earlier than the legit
+    # local one and win pure ties. "Local wins ties" is the safer default:
+    # the local registry has authoritative knowledge of its own state.
+    return "local"
 
 
 # ---------------------------------------------------------------------------
@@ -219,44 +281,97 @@ def resolve_federation_conflict(local_record: Any, remote_record: Any) -> Litera
 # ---------------------------------------------------------------------------
 
 
-def verify_federation_trust_proof(request: RegistryFederationRequest) -> bool:
-    """Verify a federation trust proof.
+class FederationTrustProofResolver(Protocol):
+    """Resolve a federation registry_id to its registered public key.
 
-    v1 implementation: validates format only (non-empty, valid base64).
-    Full cryptographic verification requires the federation registry
-    resolver, which is deferred to a future release.
-
-    Returns True if the trust_proof passes format validation,
-    False for garbage / invalid input.
+    Returns 32-byte Ed25519 public key bytes, or None when the registry
+    is unknown / unregistered. Implementations MUST consult an out-of-band
+    trust source (signed federation directory, DNS-anchored key list, etc.).
     """
-    proof = request.trust_proof
 
-    # Basic sanity: must be non-empty and meet minimum length
-    if not proof or len(proof) < _TRUST_PROOF_MIN_LENGTH:
-        return False
+    def __call__(self, registry_id: str) -> bytes | None: ...
 
-    # Strip whitespace that some encoders add
-    proof = proof.strip()
 
-    # Validate base64 encoding (standard or URL-safe)
-    try:
-        # Accept both standard and URL-safe base64
-        # Pad if necessary
-        padded = proof + "=" * (-len(proof) % 4)
-        decoded = base64.b64decode(padded, altchars=b"-_", validate=True)
-        if len(decoded) == 0:
-            return False
-    except Exception:
+_TRUST_PROOF_RESOLVER: FederationTrustProofResolver | None = None
+
+
+def register_federation_trust_proof_resolver(
+    resolver: FederationTrustProofResolver,
+) -> None:
+    """Register the host's federation trust resolver.
+
+    Without a resolver, ``verify_federation_trust_proof`` fails CLOSED —
+    a deployment that forgets to wire trust roots cannot accept any
+    federation request. Default fail-closed is the only safe behaviour
+    for inter-registry trust establishment.
+    """
+    global _TRUST_PROOF_RESOLVER
+    _TRUST_PROOF_RESOLVER = resolver
+
+
+def verify_federation_trust_proof(request: RegistryFederationRequest) -> bool:
+    """Cryptographically verify a federation trust proof.
+
+    The proof MUST be a base64-encoded Ed25519 signature over the canonical
+    bytes ``registry_id || NUL || sorted(capabilities)``. The signing key is
+    resolved via the host-registered :class:`FederationTrustProofResolver`.
+
+    Returns True only when:
+      1. A trust-proof resolver is registered, AND
+      2. The resolver returns a public key for ``request.registry_id``, AND
+      3. The signature verifies against the canonical bytes.
+
+    Default (no resolver registered): returns False — fail closed.
+
+    Format-only validation (the previous behaviour) is intentionally removed
+    because it accepted any 64+ char base64 string as a "trust proof",
+    letting any attacker establish federation.
+    """
+    if _TRUST_PROOF_RESOLVER is None:
         logger.warning(
-            "Federation trust_proof from registry %s failed base64 validation. "
-            "Full cryptographic verification deferred to federation registry resolver.",
+            "Federation trust_proof from %s rejected — no resolver registered. "
+            "Call register_federation_trust_proof_resolver() at startup.",
             request.registry_id,
         )
         return False
 
-    logger.info(
-        "Federation trust_proof from registry %s passed format validation (v1). "
-        "Full cryptographic verification deferred to federation registry resolver.",
-        request.registry_id,
+    proof = request.trust_proof
+    if not proof or len(proof) < _TRUST_PROOF_MIN_LENGTH:
+        return False
+    proof = proof.strip()
+
+    try:
+        padded = proof + "=" * (-len(proof) % 4)
+        sig_bytes = base64.b64decode(padded, altchars=b"-_", validate=True)
+    except Exception:
+        logger.warning("Federation trust_proof base64 decode failed for %s", request.registry_id)
+        return False
+
+    public_key_bytes = _TRUST_PROOF_RESOLVER(request.registry_id)
+    if public_key_bytes is None or len(public_key_bytes) != 32:
+        logger.warning(
+            "Federation trust_proof from %s: resolver returned no key",
+            request.registry_id,
+        )
+        return False
+
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError:
+        logger.error("cryptography missing — cannot verify federation trust proof")
+        return False
+
+    canonical = (
+        request.registry_id.encode("utf-8")
+        + b"\x00"
+        + b"\x1f".join(sorted(c.encode("utf-8") for c in request.capabilities))
     )
-    return True
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(sig_bytes, canonical)
+        return True
+    except Exception as exc:
+        logger.warning(
+            "Federation trust_proof signature invalid for %s: %s",
+            request.registry_id, exc,
+        )
+        return False
