@@ -65,10 +65,13 @@ W3C_METHOD_SPECIFIC = "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_w3c_vector_returns_verified():
-    """W2.B.1 — W3C test vector DID resolves to VERIFIED."""
+async def test_w3c_vector_raw_uri_returns_external():
+    """W2.B.1 (v0.3.4 hardening) — A raw did:key URI carries no proof of
+    key possession. The resolver returns EXTERNAL until a signed JWT-style
+    proof is supplied. Previously this returned VERIFIED, which let any
+    attacker present any public DID and be trusted."""
     result = await _resolve_did(W3C_DID_KEY)
-    assert result == TrustTier.VERIFIED
+    assert result == TrustTier.EXTERNAL
 
 
 @pytest.mark.asyncio
@@ -176,6 +179,7 @@ async def test_round_trip_key_extraction():
     recovered = _multibase_decode_ed25519(method_specific)
     assert recovered == raw_pub
 
-    # Resolve trust
+    # Resolve trust — raw DID URI returns EXTERNAL (no proof). To get
+    # VERIFIED the caller must supply a signed JWT-style DID proof.
     result = await _resolve_did(did)
-    assert result == TrustTier.VERIFIED
+    assert result == TrustTier.EXTERNAL

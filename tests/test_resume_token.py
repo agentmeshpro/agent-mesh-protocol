@@ -11,7 +11,20 @@ import json
 
 import pytest
 
-from ampro.session.handshake import create_resume_token, parse_resume_token
+from ampro.session.handshake import (
+    allow_unsigned_resume_tokens,
+    create_resume_token,
+    parse_resume_token,
+)
+
+
+@pytest.fixture(autouse=True)
+def _enable_unsigned_for_legacy_tests():
+    """These tests exercise the unsigned-token path that v0.3.4 rejected
+    by default. Tests opt-in explicitly via this fixture."""
+    allow_unsigned_resume_tokens(True)
+    yield
+    allow_unsigned_resume_tokens(False)
 
 # ---------------------------------------------------------------------------
 # Round-trip

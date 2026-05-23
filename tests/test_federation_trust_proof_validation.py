@@ -83,8 +83,12 @@ class TestVerifyFederationTrustProof:
         result = verify_federation_trust_proof(req)
         assert result is False
 
-    def test_valid_base64_proof_returns_true(self):
-        """A properly base64-encoded proof of sufficient length returns True."""
+    def test_valid_base64_proof_without_resolver_returns_false(self):
+        """A properly-formed base64 proof MUST NOT pass without a registered
+        resolver. The previous behaviour accepted any 64+ char base64 string
+        as a "trust proof", which let any attacker establish federation.
+        Real verification requires the host to register a
+        FederationTrustProofResolver."""
         from ampro import RegistryFederationRequest, verify_federation_trust_proof
 
         req = RegistryFederationRequest(
@@ -94,4 +98,38 @@ class TestVerifyFederationTrustProof:
         )
 
         result = verify_federation_trust_proof(req)
-        assert result is True
+        assert result is False  # fail-closed without resolver
+
+    def test_valid_signature_with_resolver_returns_true(self):
+        """A real Ed25519 signature, verified through a registered resolver,
+        is the only path that returns True."""
+        import base64
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from ampro import RegistryFederationRequest, verify_federation_trust_proof
+        from ampro.registry.federation import register_federation_trust_proof_resolver
+
+        sk = Ed25519PrivateKey.generate()
+        pk_bytes = sk.public_key().public_bytes_raw()
+
+        registry_id = "agent://registry.example.com"
+        capabilities = ["resolve", "search"]
+        canonical = (
+            registry_id.encode("utf-8")
+            + b"\x00"
+            + b"\x1f".join(sorted(c.encode("utf-8") for c in capabilities))
+        )
+        sig = sk.sign(canonical)
+        sig_b64 = base64.b64encode(sig).decode()
+
+        register_federation_trust_proof_resolver(lambda rid: pk_bytes if rid == registry_id else None)
+
+        req = RegistryFederationRequest(
+            registry_id=registry_id,
+            capabilities=capabilities,
+            trust_proof=sig_b64,
+        )
+
+        assert verify_federation_trust_proof(req) is True
+
+        # Reset to no-resolver state for following tests
+        register_federation_trust_proof_resolver(lambda rid: None)

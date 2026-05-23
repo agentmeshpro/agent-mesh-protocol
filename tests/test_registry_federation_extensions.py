@@ -127,21 +127,27 @@ class TestFederationConflictResolution:
         return kw  # dict-shaped record is enough; resolver accepts either.
 
     def test_federation_conflict_resolves_by_trust_then_recency(self):
-        # (1) higher trust tier wins regardless of recency
-        older_but_higher = self._record(
+        # (1) local tier higher than remote → local wins regardless of recency.
+        # The reversed direction (remote claims higher tier) does NOT promote
+        # the remote: remote tier claims are never load-bearing. This is the
+        # post-v0.3.4 security fix that closed the tier-self-claim hijack.
+        local_high = self._record(
             trust_tier="verified",
             last_seen="2026-04-01T00:00:00+00:00",
             agent_uri="agent://a.example.com",
         )
-        newer_but_lower = self._record(
+        remote_low = self._record(
             trust_tier="external",
             last_seen="2026-04-10T00:00:00+00:00",
             agent_uri="agent://a.example.com",
         )
-        assert resolve_federation_conflict(older_but_higher, newer_but_lower) == "local"
-        assert resolve_federation_conflict(newer_but_lower, older_but_higher) == "remote"
+        assert resolve_federation_conflict(local_high, remote_low) == "local"
+        # Reversed — local is lower-tier; remote's higher tier is IGNORED and
+        # the resolver falls through to timestamps. Local's last_seen is
+        # newer (2026-04-10 vs 2026-04-01) so local still wins.
+        assert resolve_federation_conflict(remote_low, local_high) == "local"
 
-        # (2) tier equal → more recent last_seen wins
+        # (2) Same tier → more recent last_seen wins.
         same_tier_older = self._record(
             trust_tier="verified",
             last_seen="2026-04-01T00:00:00+00:00",
@@ -155,7 +161,9 @@ class TestFederationConflictResolution:
         assert resolve_federation_conflict(same_tier_older, same_tier_newer) == "remote"
         assert resolve_federation_conflict(same_tier_newer, same_tier_older) == "local"
 
-        # (3) tier equal, last_seen equal → lexicographic agent_uri fallback
+        # (3) Tier equal, last_seen equal → LOCAL wins. The previous lex
+        # tiebreaker let an attacker pick a registry_id that sorted earlier
+        # to win pure ties; "local wins ties" is the safer default.
         left = self._record(
             trust_tier="verified",
             last_seen="2026-04-10T00:00:00+00:00",
@@ -167,7 +175,7 @@ class TestFederationConflictResolution:
             agent_uri="agent://b.example.com",
         )
         assert resolve_federation_conflict(left, right) == "local"
-        assert resolve_federation_conflict(right, left) == "remote"
+        assert resolve_federation_conflict(right, left) == "local"
 
     def test_handles_attribute_records(self):
         class Rec:

@@ -32,13 +32,13 @@ class TestTaskChallengeBody:
             challenge_id="ch-001",
             challenge_type="proof_of_work",
             parameters={"difficulty": 20, "algorithm": "sha256"},
-            expires_at="2026-04-09T12:05:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="first_contact",
         )
         assert body.challenge_id == "ch-001"
         assert body.challenge_type == "proof_of_work"
         assert body.parameters == {"difficulty": 20, "algorithm": "sha256"}
-        assert body.expires_at == "2026-04-09T12:05:00Z"
+        assert body.expires_at == "2099-01-01T00:00:00Z"
         assert body.reason == "first_contact"
 
     def test_parameters_default_empty(self):
@@ -46,7 +46,7 @@ class TestTaskChallengeBody:
         body = TaskChallengeBody(
             challenge_id="ch-002",
             challenge_type="captcha",
-            expires_at="2026-04-09T13:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="suspicious_behavior",
         )
         assert body.parameters == {}

@@ -1,4 +1,12 @@
-"""Tests for C16 — RateLimiter._evict_stale_senders memory bounds."""
+"""Tests for RateLimiter memory bounds.
+
+NOTE — behaviour changed in the v0.3.4 security patches: when the sender
+table is full of still-in-window entries, the limiter now REFUSES new
+senders rather than evicting an active one. The previous "evict oldest
+active sender to make room" semantics let an attacker flood throwaway
+sender IDs to clear legitimate senders' quotas. The current contract is
+fail-closed under contention.
+"""
 
 from __future__ import annotations
 
@@ -7,84 +15,93 @@ import time
 from ampro.security.rate_limiter import RateLimiter
 
 
-class TestEvictStaleSenders:
-    """Verify that _evict_stale_senders enforces max_senders."""
+class TestSenderTableBounds:
+    """Verify the new fail-closed sender-table semantics."""
 
-    def test_oldest_sender_evicted_when_over_max(self):
-        """After max_senders unique senders, the oldest is evicted."""
+    def test_new_sender_rejected_when_table_full_of_active(self):
+        """When max_senders is reached and every slot is still in-window,
+        a new sender is denied (rather than displacing an existing one)."""
         max_s = 5
         limiter = RateLimiter(rpm=100, window_seconds=60, max_senders=max_s)
 
-        # Fill up to max_senders + 1 so eviction fires
-        for i in range(max_s + 1):
+        # Fill exactly max_senders, all freshly active.
+        for i in range(max_s):
             allowed, _ = limiter.check(f"sender-{i}")
             assert allowed
 
-        # The dict should be capped at max_senders
-        assert limiter.sender_count() <= max_s
+        # The (max_s+1)th sender must be denied — table is full of fresh entries.
+        allowed, info = limiter.check("newcomer")
+        assert allowed is False
+        assert info.remaining == 0
+        # Existing senders remain in the table.
+        for i in range(max_s):
+            assert f"sender-{i}" in limiter._requests
+        assert "newcomer" not in limiter._requests
 
-        # sender-0 was the oldest (first inserted, smallest most-recent
-        # timestamp) and should have been evicted.
-        assert "sender-0" not in limiter._requests
-
-    def test_stale_senders_cleaned_up(self):
-        """Senders whose entire request list is older than the window
-        are removed even if we are under max_senders."""
+    def test_stale_senders_cleaned_up_to_make_room(self):
+        """A sender whose entire request list has aged out of the window
+        is evicted to make room for a new sender — but only stale entries
+        are dropped, never in-window ones."""
         window = 2  # seconds
-        limiter = RateLimiter(rpm=100, window_seconds=window, max_senders=100)
+        max_s = 2
+        limiter = RateLimiter(rpm=100, window_seconds=window, max_senders=max_s)
 
-        # Inject a sender with timestamps far in the past
-        ancient_time = time.monotonic() - window - 10
-        limiter._requests["stale-sender"] = [ancient_time]
+        # Inject a stale sender directly (timestamps older than window)
+        ancient = time.monotonic() - window - 10
+        limiter._requests["stale-sender"] = [ancient]
+        # And one currently-active sender
+        limiter.check("active-sender")
 
-        # Add a fresh sender to trigger eviction
-        # We need to go over max_senders for phase-2, but phase-1 triggers
-        # regardless — let's trigger it by calling check which invokes
-        # _evict_stale_senders at the end.
-        limiter.check("fresh-sender")
-
-        # The stale sender should have been cleaned up (phase 1)
+        # Now a new sender shows up. max_senders is reached, but one slot
+        # holds a stale entry — that slot SHOULD be reclaimed.
+        allowed, _ = limiter.check("newcomer")
+        assert allowed
         assert "stale-sender" not in limiter._requests
-        # The fresh sender should remain
-        assert "fresh-sender" in limiter._requests
+        assert "active-sender" in limiter._requests
+        assert "newcomer" in limiter._requests
 
-    def test_active_senders_not_evicted(self):
-        """Senders with recent requests survive eviction."""
+    def test_active_senders_never_displaced(self):
+        """Active senders are never evicted to make room for a new sender.
+        Prevents the throwaway-flood attack on rate-limit quotas."""
         max_s = 3
         limiter = RateLimiter(rpm=100, window_seconds=60, max_senders=max_s)
 
-        # Create max_senders active senders
+        # Fill with active senders.
         for i in range(max_s):
             limiter.check(f"active-{i}")
-
-        # All should be present — we're at max, not over
         assert limiter.sender_count() == max_s
+
+        # Many newcomers all rejected.
+        for i in range(10):
+            allowed, _ = limiter.check(f"newcomer-{i}")
+            assert allowed is False
+
+        # Original active senders intact.
         for i in range(max_s):
             assert f"active-{i}" in limiter._requests
+        # No newcomer slipped in.
+        for i in range(10):
+            assert f"newcomer-{i}" not in limiter._requests
 
-        # Now add one more — only the oldest active gets evicted, not a
-        # random one.
-        limiter.check("newcomer")
-        assert limiter.sender_count() <= max_s
-        assert "newcomer" in limiter._requests
-
-    def test_memory_stays_bounded(self):
-        """len(_requests) never exceeds max_senders + 1 even under load.
-
-        The +1 accounts for the new sender that was just added by check()
-        before _evict_stale_senders runs.  After eviction the count must
-        be <= max_senders.
-        """
+    def test_memory_stays_bounded_under_flood(self):
+        """len(_requests) never exceeds max_senders under attacker flood."""
         max_s = 10
         limiter = RateLimiter(rpm=1000, window_seconds=60, max_senders=max_s)
 
-        # Hammer the limiter with many unique senders
+        # Hammer with unique sender IDs.
         for i in range(max_s * 5):
             limiter.check(f"flood-{i}")
-            # After every check, we should never be far over max_senders.
-            # check() adds one entry then calls _evict_stale_senders, so
-            # post-call we should be at most max_senders.
             assert limiter.sender_count() <= max_s, (
-                f"sender_count {limiter.sender_count()} exceeded max_senders "
-                f"{max_s} after sender flood-{i}"
+                f"sender_count {limiter.sender_count()} exceeded max_senders {max_s}"
             )
+
+    def test_per_sender_list_bounded_by_rpm(self):
+        """A single sender's timestamp list does not grow without bound —
+        we cap at rpm entries since anything beyond is already over-limit."""
+        rpm = 5
+        limiter = RateLimiter(rpm=rpm, window_seconds=60, max_senders=100)
+        # Make 100 attempts (all denied after the 5th).
+        for _ in range(100):
+            limiter.check("loud")
+        # The list of recorded timestamps is bounded.
+        assert len(limiter._requests["loud"]) <= rpm

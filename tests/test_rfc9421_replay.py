@@ -43,17 +43,28 @@ def _keypair() -> tuple[bytes, bytes]:
 
 
 def _sign_at(
-    priv_bytes: bytes, when: float, url: str = "https://a.example.com/x"
+    priv_bytes: bytes,
+    when: float,
+    url: str = "https://a.example.com/x",
+    *,
+    nonce: str | None = None,
 ) -> dict[str, str]:
-    """Produce signature headers with ``created`` frozen to *when*."""
+    """Produce signature headers with ``created`` frozen to *when*.
+
+    Always emits a fresh nonce by default so that the module-level default
+    replay tracker (added in the v0.3.4 hardening) does not falsely reject
+    signatures across consecutive test cases.
+    """
+    import secrets
     from unittest.mock import patch
 
     from ampro.security.rfc9421 import sign_request
 
+    nonce = nonce or secrets.token_hex(16)
     with patch("ampro.security.rfc9421.time.time", return_value=when):
         headers: dict[str, str] = {"content-type": "application/json"}
         sig_headers = sign_request(
-            priv_bytes, "test-key", "POST", url, headers, body=b"{}"
+            priv_bytes, "test-key", "POST", url, headers, body=b"{}", nonce=nonce,
         )
     headers.update(sig_headers)
     return headers
@@ -241,7 +252,7 @@ class TestRevocationWiredIntoResolver:
     @pytest.fixture(autouse=True)
     def _reset(self) -> Generator[None, None, None]:
         from ampro.security.key_revocation import (
-            _NoOpRevocationStore,
+            AllowAllRevocationStore as _NoOpRevocationStore,
             register_revocation_store,
         )
         from ampro.trust.resolver import (

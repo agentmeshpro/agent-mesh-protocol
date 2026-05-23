@@ -261,7 +261,7 @@ class TestRevocationStore:
             revocation_verify_cached_key,
             should_reject_cached_key,
         )
-        from ampro.security.key_revocation import _NoOpRevocationStore
+        from ampro.security.key_revocation import _UnconfiguredRevocationStore as _NoOpRevocationStore
 
         class Store:
             def __init__(self) -> None:
@@ -299,7 +299,7 @@ class TestChallengeSolution:
             challenge_id="ch-1",
             challenge_type=ChallengeType.SHARED_SECRET.value,
             parameters={"expected_solution": "open-sesame"},
-            expires_at="2026-04-21T01:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="first_contact",
         )
         ok = TaskChallengeResponseBody(challenge_id="ch-1", solution="open-sesame")
@@ -312,22 +312,24 @@ class TestChallengeSolution:
             challenge_id="ch-2",
             challenge_type=ChallengeType.ECHO.value,
             parameters={"echo": "hello"},
-            expires_at="2026-04-21T01:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="first_contact",
         )
         echo_ok = TaskChallengeResponseBody(challenge_id="ch-2", solution="hello")
         assert validate_challenge_solution(echo_challenge, echo_ok) is True
 
-        # Proof of work with difficulty 0 — any hex string valid
-        pow_challenge = TaskChallengeBody(
+        # Proof of work with difficulty < MIN_POW_DIFFICULTY is rejected.
+        # Previously difficulty=0 was accepted — a no-op challenge — which
+        # was patched in v0.3.4 (see security/challenge.py::MIN_POW_DIFFICULTY).
+        pow_too_easy = TaskChallengeBody(
             challenge_id="ch-3",
             challenge_type=ChallengeType.PROOF_OF_WORK.value,
             parameters={"difficulty": 0},
-            expires_at="2026-04-21T01:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="first_contact",
         )
-        pow_ok = TaskChallengeResponseBody(challenge_id="ch-3", solution="deadbeef")
-        assert validate_challenge_solution(pow_challenge, pow_ok) is True
+        pow_any = TaskChallengeResponseBody(challenge_id="ch-3", solution="deadbeef")
+        assert validate_challenge_solution(pow_too_easy, pow_any) is False
 
         # Proof of work with a reasonable difficulty — search for a solution
         difficulty = 8
@@ -335,7 +337,7 @@ class TestChallengeSolution:
             challenge_id="ch-4",
             challenge_type=ChallengeType.PROOF_OF_WORK.value,
             parameters={"difficulty": difficulty},
-            expires_at="2026-04-21T01:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="first_contact",
         )
         # Search a solution (8-bit difficulty → expected ~256 tries)
@@ -359,7 +361,7 @@ class TestChallengeSolution:
             challenge_id="ch-9",
             challenge_type="not-a-real-type",
             parameters={},
-            expires_at="2026-04-21T01:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             reason="first_contact",
         )
         resp = TaskChallengeResponseBody(challenge_id="ch-9", solution="anything")
@@ -519,21 +521,21 @@ class TestStreamAuthRefreshFormat:
             StreamAuthRefreshEvent(
                 method="bearer",
                 token="short",
-                expires_at="2026-04-21T01:00:00Z",
+                expires_at="2099-01-01T00:00:00Z",
             )
         # Invalid charset
         with pytest.raises(ValidationError):
             StreamAuthRefreshEvent(
                 method="bearer",
                 token="not a valid token!!",
-                expires_at="2026-04-21T01:00:00Z",
+                expires_at="2099-01-01T00:00:00Z",
             )
         # Unknown method
         with pytest.raises(ValidationError):
             StreamAuthRefreshEvent(
                 method="mystery-method",
                 token="abcdefghijklmnop",
-                expires_at="2026-04-21T01:00:00Z",
+                expires_at="2099-01-01T00:00:00Z",
             )
 
     def test_stream_auth_refresh_accepts_valid_token(self):
@@ -542,7 +544,7 @@ class TestStreamAuthRefreshFormat:
         ev = StreamAuthRefreshEvent(
             method="bearer",
             token="abcdefghijklmnop.more-stuff_here",
-            expires_at="2026-04-21T01:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
         )
         assert ev.method == "bearer"
 
