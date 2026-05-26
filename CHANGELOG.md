@@ -2,6 +2,65 @@
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-05-26
+
+### Security
+- **Adversarial-harness hardening.** Closed 23 exploits across identity,
+  federation, replay protection, rate limiting, and stream/session
+  management. Highlights:
+  - `trust.resolver`: raw `did:key:` URIs without a signed JWT-style proof
+    return `EXTERNAL` (previously `VERIFIED` with zero proof of possession).
+    Transient resolver exceptions no longer negatively cache for 60 s.
+  - `registry.federation`: `verify_federation_trust_proof` requires a
+    host-registered `FederationTrustProofResolver` and fails closed by
+    default. Remote tier claims can never escalate an agent above local
+    tier; remote `last_seen` more than 60 s in the future is discarded.
+    `RegistryFederationRequest.capabilities` capped (≤64 entries, ≤128
+    chars, no control characters).
+  - `security.rfc9421`: `alg` validated against an allow-list
+    (`{ed25519}`); module-level default `NonceTracker` enforces replay
+    protection even when callers forget to supply one. Nonceless
+    signatures are rejected unless `max_age_seconds=None` is set
+    explicitly.
+  - `security.challenge`: `validate_challenge_solution` enforces
+    `expires_at`; PoW `difficulty < MIN_POW_DIFFICULTY (8)` rejected;
+    default captcha validator now fails closed.
+  - `security.key_revocation`: canonical signature payload uses
+    `model_dump(mode='json')` so extension fields are covered. The silent
+    no-op default store is replaced with `_UnconfiguredRevocationStore`
+    that logs a one-shot startup warning; `Strict…` and `AllowAll…`
+    variants must be registered explicitly.
+  - `session.binding`: empty `binding_token` rejected on both create and
+    verify paths.
+  - `session.handshake`: signed resume tokens carry an embedded `v: v1s`
+    marker; stripped signatures and payload-rewrite attempts are
+    rejected. Unsigned tokens are rejected by default
+    (`allow_unsigned_resume_tokens(True)` opts in for tests/dev). Resume
+    tokens capped at 64 KiB. `MAX_ISSUED_NONCES = 16` with TTL eviction.
+
+### Changed
+- **DoS amplifiers closed.** `NonceTracker`, `InMemoryDedupStore`,
+  `RateLimiter` fail closed when full instead of evicting in-window
+  entries. `RateLimiter` never displaces an active sender to admit a new
+  one; per-sender timestamp list capped at `rpm`.
+  `ConcurrencyLimiter` slots are TTL-leased (`slot_ttl_seconds=600`);
+  forgotten releases no longer permanently hold a slot.
+  `SenderTracker.record_success` drops the oldest failure instead of
+  resetting the count.
+  `streaming.bus` enforces per-task creator binding plus idle-stream LRU
+  eviction; `streaming.checkpoint` rejects non-JSON-serializable values
+  outright.
+- **Hardened constructors.** `NonceTracker`, `InMemoryDedupStore`,
+  `RateLimiter`, `ConcurrencyLimiter` reject non-positive bounds
+  (`window` / `rpm` / `max`). `ConcurrencyLimiter.per_sender_pct` is
+  floored so `per_sender_max ≥ 1`.
+
+### Tests
+- Test fixtures updated to encode the new hardened contracts (raw DID
+  URIs return `EXTERNAL`; tier-claim hijack rejected; fail-closed
+  trust-proof verification; PoW difficulty < 8 rejected; signed resume
+  tokens by default). Full suite: 1185 passed.
+
 ## [0.3.3] - 2026-04-21
 
 ### Security
