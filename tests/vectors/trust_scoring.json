@@ -2,24 +2,104 @@
   "description": "Trust score calculation test vectors",
   "vectors": [
     {
-      "input": {"age_days": 0, "interactions": 0, "incidents": 0, "endorsements": 0, "identity_type": "did:key"},
-      "expected": {"score": 250, "tier": "external", "factors": {"age": 0, "track_record": 0, "clean_history": 200, "endorsements": 0, "identity_strength": 50}}
+      "input": {
+        "age_days": 0,
+        "interactions": 0,
+        "incidents": 0,
+        "endorsements": 0,
+        "identity_type": "did:key"
+      },
+      "expected": {
+        "score": 250,
+        "tier": "external",
+        "factors": {
+          "age": 0,
+          "track_record": 0,
+          "clean_history": 200,
+          "endorsements": 0,
+          "identity_strength": 50
+        }
+      }
     },
     {
-      "input": {"age_days": 365, "interactions": 1000, "incidents": 0, "endorsements": 5, "identity_type": "jwt"},
-      "expected": {"score": 950, "tier": "internal", "factors": {"age": 200, "track_record": 200, "clean_history": 200, "endorsements": 200, "identity_strength": 150}}
+      "input": {
+        "age_days": 365,
+        "interactions": 1000,
+        "incidents": 0,
+        "endorsements": 5,
+        "identity_type": "jwt"
+      },
+      "expected": {
+        "score": 950,
+        "tier": "internal",
+        "factors": {
+          "age": 200,
+          "track_record": 200,
+          "clean_history": 200,
+          "endorsements": 200,
+          "identity_strength": 150
+        }
+      }
     },
     {
-      "input": {"age_days": 365, "interactions": 1000, "incidents": 0, "endorsements": 5, "identity_type": "mtls"},
-      "expected": {"score": 1000, "tier": "internal", "factors": {"age": 200, "track_record": 200, "clean_history": 200, "endorsements": 200, "identity_strength": 200}}
+      "input": {
+        "age_days": 365,
+        "interactions": 1000,
+        "incidents": 0,
+        "endorsements": 5,
+        "identity_type": "mtls"
+      },
+      "expected": {
+        "score": 1000,
+        "tier": "internal",
+        "factors": {
+          "age": 200,
+          "track_record": 200,
+          "clean_history": 200,
+          "endorsements": 200,
+          "identity_strength": 200
+        }
+      }
     },
     {
-      "input": {"age_days": 30, "interactions": 100, "incidents": 2, "endorsements": 1, "identity_type": "did:web"},
-      "expected": {"score": 256, "tier": "external", "factors": {"age": 16, "track_record": 20, "clean_history": 100, "endorsements": 40, "identity_strength": 100}}
+      "input": {
+        "age_days": 30,
+        "interactions": 100,
+        "incidents": 2,
+        "endorsements": 1,
+        "identity_type": "did:web"
+      },
+      "expected": {
+        "score": 276,
+        "tier": "external",
+        "factors": {
+          "age": 16,
+          "track_record": 20,
+          "clean_history": 100,
+          "endorsements": 40,
+          "identity_strength": 100
+        }
+      }
     },
     {
-      "input": {"age_days": 0, "interactions": 0, "incidents": 10, "endorsements": 0, "identity_type": "unknown"},
-      "expected": {"score": 25, "tier": "external", "factors": {"age": 0, "track_record": 0, "clean_history": 0, "endorsements": 0, "identity_strength": 25}}
+      "input": {
+        "age_days": 0,
+        "interactions": 0,
+        "incidents": 10,
+        "endorsements": 0,
+        "identity_type": "unknown"
+      },
+      "expected": {
+        "score": 25,
+        "tier": "external",
+        "factors": {
+          "age": 0,
+          "track_record": 0,
+          "clean_history": 0,
+          "endorsements": 0,
+          "identity_strength": 25
+        }
+      }
     }
   ]
 }

@@ -1,5 +1,13 @@
 {
-  "description": "Test vectors for key.revocation body type (AMP v0.1.2). Covers all 3 revocation reasons, optional fields, and invalid payloads.",
+  "description": "Test vectors for key.revocation body type (AMP v0.1.2). Covers all 3 revocation reasons, optional fields, and invalid payloads. Valid cases carry a real Ed25519 signature (base64url, no padding) over canonical JSON of every field except 'signature' (sorted keys, ',' ':' separators, ASCII-escaped, null for absent optionals); expected_canonical is that byte string.",
+  "keys": {
+    "ed25519-a": {
+      "type": "Ed25519",
+      "private_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "source": "RFC 8032 section 7.1 TEST 1 secret key"
+    }
+  },
   "vectors": [
     {
       "description": "Valid revocation — key_compromise with replacement key and JWKS URL",
@@ -12,8 +20,13 @@
         "reason": "key_compromise",
         "replacement_key_id": "kid-ed25519-2026-04-09",
         "jwks_url": "https://registry.amp-protocol.dev/.well-known/jwks.json",
-        "signature": "base64url-ed25519-sig-over-revocation-payload-aabbccdd"
-      }
+        "signature": "W8kMAdUC98k2Tq44G_DjAIMvU_iWMjzQlo7FRCV-V5JuIHGYq5hvoaUI3UlUY8LQR5OfnYfyOATxlzM55hM1BQ"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "expected_canonical": "{\"agent_id\":\"agent://compromise-victim@registry.amp-protocol.dev\",\"jwks_url\":\"https://registry.amp-protocol.dev/.well-known/jwks.json\",\"reason\":\"key_compromise\",\"replacement_key_id\":\"kid-ed25519-2026-04-09\",\"revoked_at\":\"2026-04-09T14:30:00Z\",\"revoked_key_id\":\"kid-ed25519-2026-04-01\"}"
     },
     {
       "description": "Valid revocation — key_rotation without replacement key (optional field absent)",
@@ -24,8 +37,13 @@
         "revoked_key_id": "kid-rsa-2025-01-15",
         "revoked_at": "2026-04-09T10:00:00Z",
         "reason": "key_rotation",
-        "signature": "base64url-ed25519-sig-rotation-eeff0011"
-      }
+        "signature": "YN47P-VfDumAwexO0ahfv7tEt1Xg-LhMs8S-kkAjNoVmOYZH-_fy9TFhLzMdASOHnBZQtBZrlEvbJ0NpOWa6CQ"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "expected_canonical": "{\"agent_id\":\"agent://scheduler@ops.example.com\",\"jwks_url\":null,\"reason\":\"key_rotation\",\"replacement_key_id\":null,\"revoked_at\":\"2026-04-09T10:00:00Z\",\"revoked_key_id\":\"kid-rsa-2025-01-15\"}"
     },
     {
       "description": "Valid revocation — key_rotation with replacement key but no JWKS URL",
@@ -37,8 +55,13 @@
         "revoked_at": "2026-04-09T08:15:00Z",
         "reason": "key_rotation",
         "replacement_key_id": "kid-ed25519-2026-04-09-v2",
-        "signature": "base64url-ed25519-sig-rotation-22334455"
-      }
+        "signature": "nZkP8Qut4cXBRxFVW10GNLivwfIdiejXpSBZTGXjIT4eactXvlooOreEpsCZXx18AIUwumXyv8DMwi6djUEgAQ"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "expected_canonical": "{\"agent_id\":\"agent://did:web:example.com:agents:billing\",\"jwks_url\":null,\"reason\":\"key_rotation\",\"replacement_key_id\":\"kid-ed25519-2026-04-09-v2\",\"revoked_at\":\"2026-04-09T08:15:00Z\",\"revoked_key_id\":\"kid-ed25519-2025-12-01\"}"
     },
     {
       "description": "Valid revocation — agent_decommissioned, no replacement key, no JWKS URL",
@@ -49,8 +72,13 @@
         "revoked_key_id": "kid-ed25519-2024-06-01",
         "revoked_at": "2026-04-09T18:00:00Z",
         "reason": "agent_decommissioned",
-        "signature": "base64url-ed25519-sig-decommission-66778899"
-      }
+        "signature": "34iZIVC4sjHaAATnNDKxiurpAVSzc6hzkxpxezxllMlkJ4iykR9L2Dopgh3pHStwn3VUBJg3DB04ehHtTtwwBQ"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "expected_canonical": "{\"agent_id\":\"agent://legacy-processor@registry.amp-protocol.dev\",\"jwks_url\":null,\"reason\":\"agent_decommissioned\",\"replacement_key_id\":null,\"revoked_at\":\"2026-04-09T18:00:00Z\",\"revoked_key_id\":\"kid-ed25519-2024-06-01\"}"
     },
     {
       "description": "Valid revocation — agent_decommissioned with JWKS URL but no replacement key",
@@ -62,8 +90,13 @@
         "revoked_at": "2026-04-09T20:00:00Z",
         "reason": "agent_decommissioned",
         "jwks_url": "https://example.com/.well-known/agent-jwks.json",
-        "signature": "base64url-ed25519-sig-decommission-aabb0011"
-      }
+        "signature": "xWvY8EltALFsj9upKgczbJyXpat_ybcLpwEpZ09FyvVDGEmKDJsFUioEgxDe7g9YfZNnvlKa-8Co7hpFRS5-Dg"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "expected_canonical": "{\"agent_id\":\"agent://old-analytics@example.com\",\"jwks_url\":\"https://example.com/.well-known/agent-jwks.json\",\"reason\":\"agent_decommissioned\",\"replacement_key_id\":null,\"revoked_at\":\"2026-04-09T20:00:00Z\",\"revoked_key_id\":\"kid-ed25519-2025-03-01\"}"
     },
     {
       "description": "Invalid — missing signature field (required)",
@@ -112,8 +145,39 @@
         "reason": "key_compromise",
         "replacement_key_id": null,
         "jwks_url": null,
-        "signature": "base64url-ed25519-sig-minimal-00112233"
-      }
+        "signature": "XQT1T7UnAzJ8Dekw3t7zl-ic1bPvWG58Dt-q5eCRakeoLfqs0dJTNu4hqo7tg2szh8RNnNkIn2SKh0r7xEwMCw"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "expected_canonical": "{\"agent_id\":\"agent://minimal@example.com\",\"jwks_url\":null,\"reason\":\"key_compromise\",\"replacement_key_id\":null,\"revoked_at\":\"2026-04-09T16:00:00Z\",\"revoked_key_id\":\"kid-ed25519-2026-04-09\"}"
+    },
+    {
+      "description": "Signature check fails — reason altered after signing (schema-valid, signature-invalid)",
+      "body_type": "key.revocation",
+      "valid": true,
+      "body": {
+        "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+        "revoked_key_id": "kid-ed25519-2026-04-01",
+        "revoked_at": "2026-04-09T14:30:00Z",
+        "reason": "key_rotation",
+        "replacement_key_id": "kid-ed25519-2026-04-09",
+        "jwks_url": "https://registry.amp-protocol.dev/.well-known/jwks.json",
+        "signature": "W8kMAdUC98k2Tq44G_DjAIMvU_iWMjzQlo7FRCV-V5JuIHGYq5hvoaUI3UlUY8LQR5OfnYfyOATxlzM55hM1BQ"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "tamper": {
+        "reason": {
+          "signed": "key_compromise",
+          "sent": "key_rotation"
+        }
+      },
+      "signature_valid": false,
+      "expected_canonical": "{\"agent_id\":\"agent://compromise-victim@registry.amp-protocol.dev\",\"jwks_url\":\"https://registry.amp-protocol.dev/.well-known/jwks.json\",\"reason\":\"key_compromise\",\"replacement_key_id\":\"kid-ed25519-2026-04-09\",\"revoked_at\":\"2026-04-09T14:30:00Z\",\"revoked_key_id\":\"kid-ed25519-2026-04-01\"}"
     }
   ]
 }

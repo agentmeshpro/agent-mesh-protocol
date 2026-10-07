@@ -1,22 +1,172 @@
 {
   "description": "Body type validation test vectors",
   "vectors": [
-    {"body_type": "message", "input": {"text": "hello"}, "valid": true},
-    {"body_type": "task.create", "input": {"description": "Find hotels"}, "valid": true},
-    {"body_type": "task.create", "input": {}, "valid": false, "error": "description required"},
-    {"body_type": "task.acknowledge", "input": {"task_id": "t1"}, "valid": true},
-    {"body_type": "task.reject", "input": {"task_id": "t1", "reason": "not available"}, "valid": true},
-    {"body_type": "task.complete", "input": {"task_id": "t1", "result": "done"}, "valid": true},
-    {"body_type": "task.error", "input": {"reason": "timeout", "retry_eligible": true}, "valid": true},
-    {"body_type": "notification", "input": {"topic": "alert", "message": "Server down"}, "valid": true},
-    {"body_type": "session.init", "input": {"proposed_capabilities": ["messaging"], "proposed_version": "1.0.0", "client_nonce": "abc"}, "valid": true},
-    {"body_type": "session.established", "input": {"session_id": "s1", "negotiated_capabilities": ["messaging"], "negotiated_version": "1.0.0", "trust_tier": "verified", "trust_score": 450, "server_nonce": "xyz", "binding_token": "tok"}, "valid": true},
-    {"body_type": "session.confirm", "input": {"session_id": "s1", "binding_proof": "proof"}, "valid": true},
-    {"body_type": "session.ping", "input": {"session_id": "s1", "timestamp": "2026-01-01T00:00:00Z"}, "valid": true},
-    {"body_type": "session.pong", "input": {"session_id": "s1", "timestamp": "2026-01-01T00:00:00Z"}, "valid": true},
-    {"body_type": "session.pause", "input": {"session_id": "s1"}, "valid": true},
-    {"body_type": "session.resume", "input": {"session_id": "s1"}, "valid": true},
-    {"body_type": "session.close", "input": {"session_id": "s1"}, "valid": true},
-    {"body_type": "x-custom.type", "input": {"foo": "bar"}, "valid": true, "note": "unknown types pass through as raw dict"}
+    {
+      "body_type": "message",
+      "input": {
+        "text": "hello"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "task.create",
+      "input": {
+        "description": "Find hotels"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "task.create",
+      "input": {},
+      "valid": false,
+      "error": "description required"
+    },
+    {
+      "body_type": "task.acknowledge",
+      "input": {
+        "task_id": "t1"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "task.reject",
+      "input": {
+        "task_id": "t1",
+        "reason": "not available"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "task.complete",
+      "input": {
+        "task_id": "t1",
+        "result": "done"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "task.error",
+      "input": {
+        "reason": "timeout",
+        "retry_eligible": true
+      },
+      "valid": true
+    },
+    {
+      "body_type": "notification",
+      "input": {
+        "topic": "alert",
+        "message": "Server down"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.init",
+      "input": {
+        "proposed_capabilities": [
+          "messaging"
+        ],
+        "proposed_version": "1.0.0",
+        "client_nonce": "abc",
+        "client_ephemeral_key": "hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.established",
+      "input": {
+        "session_id": "s1",
+        "negotiated_capabilities": [
+          "messaging"
+        ],
+        "negotiated_version": "1.0.0",
+        "trust_tier": "verified",
+        "trust_score": 450,
+        "server_nonce": "xyz",
+        "server_ephemeral_key": "Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls",
+        "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181"
+      },
+      "valid": true,
+      "note": "binding_token is deprecated and MUST NOT be sent; see session_binding.json for real values"
+    },
+    {
+      "body_type": "session.established",
+      "input": {
+        "session_id": "s1",
+        "negotiated_capabilities": [
+          "messaging"
+        ],
+        "negotiated_version": "1.0.0",
+        "trust_tier": "verified",
+        "trust_score": 450,
+        "server_nonce": "xyz",
+        "server_ephemeral_key": "Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls"
+      },
+      "valid": false,
+      "error": "confirm_nonce required"
+    },
+    {
+      "body_type": "session.confirm",
+      "input": {
+        "session_id": "s1",
+        "binding_proof": "proof",
+        "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.confirm",
+      "input": {
+        "session_id": "s1",
+        "binding_proof": "proof"
+      },
+      "valid": false,
+      "error": "confirm_nonce required"
+    },
+    {
+      "body_type": "session.ping",
+      "input": {
+        "session_id": "s1",
+        "timestamp": "2026-01-01T00:00:00Z"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.pong",
+      "input": {
+        "session_id": "s1",
+        "timestamp": "2026-01-01T00:00:00Z"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.pause",
+      "input": {
+        "session_id": "s1"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.resume",
+      "input": {
+        "session_id": "s1"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "session.close",
+      "input": {
+        "session_id": "s1"
+      },
+      "valid": true
+    },
+    {
+      "body_type": "x-custom.type",
+      "input": {
+        "foo": "bar"
+      },
+      "valid": true,
+      "note": "unknown types pass through as raw dict"
+    }
   ]
 }

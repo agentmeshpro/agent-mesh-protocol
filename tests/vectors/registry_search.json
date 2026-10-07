@@ -8,7 +8,7 @@
       "body": {
         "capability": "data-processing"
       },
-      "note": "min_trust_score defaults to null, max_results defaults to 10, include_load_level defaults to true."
+      "note": "min_trust_score defaults to null, limit defaults to 10 (max_results is accepted as a deprecated alias), include_load_level defaults to true."
     },
     {
       "description": "Search with filters — all fields populated",
@@ -17,12 +17,12 @@
       "body": {
         "capability": "analytics",
         "min_trust_score": 400,
-        "max_results": 5,
         "filters": {
           "region": "us-east",
           "version_gte": "2.0.0"
         },
-        "include_load_level": true
+        "include_load_level": true,
+        "limit": 5
       }
     },
     {
@@ -32,9 +32,9 @@
       "body": {
         "capability": "code-execution",
         "min_trust_score": 800,
-        "max_results": 3,
         "filters": null,
-        "include_load_level": false
+        "include_load_level": false,
+        "limit": 3
       }
     },
     {
@@ -170,17 +170,17 @@
       "expected_error": "capability",
       "body": {
         "min_trust_score": 400,
-        "max_results": 10
+        "limit": 10
       }
     },
     {
-      "description": "Invalid search request — max_results exceeds limit",
+      "description": "Invalid search request — limit exceeds the maximum of 100",
       "schema": "registry_search_request",
       "valid": false,
-      "expected_error": "max_results",
+      "expected_error": "limit",
       "body": {
         "capability": "analytics",
-        "max_results": 200
+        "limit": 200
       }
     },
     {

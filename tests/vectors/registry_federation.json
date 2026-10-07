@@ -1,5 +1,13 @@
 {
-  "description": "Test vectors for RegistryFederationRequest and RegistryFederationResponse (AMP v0.1.8). Covers federation requests, accepted responses with terms, and rejected responses.",
+  "description": "Test vectors for RegistryFederationRequest and RegistryFederationResponse (AMP v0.1.8). Covers federation requests, accepted responses with terms, and rejected responses. Signed requests: trust_proof is a base64 Ed25519 signature over canonical JSON of {type: 'ampro.registry.federation_request.v1', registry_id, audience, issued_at (RFC 3339 UTC 'Z'), nonce, capabilities (sorted)}; receivers additionally require audience == own URI, issued_at within +/-300 s and a single-use nonce. Revokes: base64 Ed25519 signature over canonical JSON of {type: 'ampro.registry.federation_revoke.v1', revoking_registry, revoked_registry, reason, effective_at (UTC 'Z')}. The signing registry for every signed case is the 'ed25519-c' key; expected_canonical is the exact signed string.",
+  "keys": {
+    "ed25519-c": {
+      "type": "Ed25519",
+      "private_seed_hex": "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+      "public_hex": "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+      "source": "RFC 8032 section 7.1 TEST 3 secret key"
+    }
+  },
   "vectors": [
     {
       "description": "Valid federation request — resolve and search capabilities",
@@ -7,9 +15,20 @@
       "valid": true,
       "body": {
         "registry_id": "agent://registry.alpha.example.com",
-        "capabilities": ["resolve", "search"],
-        "trust_proof": "eyJhbGciOiJFZDI1NTE5In0.eyJyZWdpc3RyeSI6InJlZ2lzdHJ5LmFscGhhLmV4YW1wbGUuY29tIn0.SIGNATURE"
-      }
+        "capabilities": [
+          "resolve",
+          "search"
+        ],
+        "trust_proof": "hbjqUEdqaI0FzWLxsik8/JgzvyELRM5dPP9MssTebHCNvejbEH1Pkype2c7jyuxyRm33WPA07TgyZ07v/uOBDA==",
+        "audience": "agent://registry.home.example.com",
+        "issued_at": "2026-04-09T14:00:00Z",
+        "nonce": "fed-nonce-01-k3Jp9wQz"
+      },
+      "sign": {
+        "kind": "federation_trust_proof",
+        "key": "ed25519-c"
+      },
+      "expected_canonical": "{\"audience\":\"agent://registry.home.example.com\",\"capabilities\":[\"resolve\",\"search\"],\"issued_at\":\"2026-04-09T14:00:00Z\",\"nonce\":\"fed-nonce-01-k3Jp9wQz\",\"registry_id\":\"agent://registry.alpha.example.com\",\"type\":\"ampro.registry.federation_request.v1\"}"
     },
     {
       "description": "Valid federation request — resolve, search, and presence capabilities",
@@ -17,9 +36,21 @@
       "valid": true,
       "body": {
         "registry_id": "agent://registry.beta.example.com",
-        "capabilities": ["resolve", "search", "presence"],
-        "trust_proof": "eyJhbGciOiJFZDI1NTE5In0.eyJyZWdpc3RyeSI6InJlZ2lzdHJ5LmJldGEuZXhhbXBsZS5jb20ifQ.SIGNATURE"
-      }
+        "capabilities": [
+          "resolve",
+          "search",
+          "presence"
+        ],
+        "trust_proof": "RcZSYhg26mP08xExZc/pWcsp02vcPch5BhvrCB9RP9/jyijcgy6u9PCfRJG0ZygP66INOosL4X6p3AuPiUE3BA==",
+        "audience": "agent://registry.home.example.com",
+        "issued_at": "2026-04-09T14:00:00Z",
+        "nonce": "fed-nonce-02-k3Jp9wQz"
+      },
+      "sign": {
+        "kind": "federation_trust_proof",
+        "key": "ed25519-c"
+      },
+      "expected_canonical": "{\"audience\":\"agent://registry.home.example.com\",\"capabilities\":[\"presence\",\"resolve\",\"search\"],\"issued_at\":\"2026-04-09T14:00:00Z\",\"nonce\":\"fed-nonce-02-k3Jp9wQz\",\"registry_id\":\"agent://registry.beta.example.com\",\"type\":\"ampro.registry.federation_request.v1\"}"
     },
     {
       "description": "Valid federation request — resolve only",
@@ -27,9 +58,19 @@
       "valid": true,
       "body": {
         "registry_id": "agent://registry.gamma.example.com",
-        "capabilities": ["resolve"],
-        "trust_proof": "eyJhbGciOiJFZDI1NTE5In0.eyJyZWdpc3RyeSI6InJlZ2lzdHJ5LmdhbW1hLmV4YW1wbGUuY29tIn0.SIGNATURE"
-      }
+        "capabilities": [
+          "resolve"
+        ],
+        "trust_proof": "txoPNo5p+Y3GwLu+AZ1U/AkReFr8NfLZXKzZiAyCICu28ZTp1mqxUTIVHuHpJfpFeMpOoMY7ZEYfQ2zv/sVXCQ==",
+        "audience": "agent://registry.home.example.com",
+        "issued_at": "2026-04-09T14:00:00Z",
+        "nonce": "fed-nonce-03-k3Jp9wQz"
+      },
+      "sign": {
+        "kind": "federation_trust_proof",
+        "key": "ed25519-c"
+      },
+      "expected_canonical": "{\"audience\":\"agent://registry.home.example.com\",\"capabilities\":[\"resolve\"],\"issued_at\":\"2026-04-09T14:00:00Z\",\"nonce\":\"fed-nonce-03-k3Jp9wQz\",\"registry_id\":\"agent://registry.gamma.example.com\",\"type\":\"ampro.registry.federation_request.v1\"}"
     },
     {
       "description": "Accepted federation response — with rate limit and TTL terms",
@@ -42,7 +83,10 @@
           "rate_limit_rps": 100,
           "ttl_seconds": 3600,
           "retention_days": 90,
-          "allowed_capabilities": ["resolve", "search"]
+          "allowed_capabilities": [
+            "resolve",
+            "search"
+          ]
         }
       },
       "note": "Target registry accepts and specifies operational terms."
@@ -82,10 +126,21 @@
         },
         "body": {
           "registry_id": "agent://registry.alpha.example.com",
-          "capabilities": ["resolve", "search"],
-          "trust_proof": "eyJhbGciOiJFZDI1NTE5In0uZXlKMGVYQWlPaUpHUldSbGNtRjBhVzl1VkhKMWMzUlFjbTl2WmlKOS5TSUdOQVRVUkU"
+          "capabilities": [
+            "resolve",
+            "search"
+          ],
+          "trust_proof": "dSBvlOxxahkvEB8x25m4BVEvj+G4NTX/AOCh9ABFe4ZNqiSGu8FN0MW/xHjDGxhi44J0KDto2IW2dReksWd6Aw==",
+          "audience": "agent://registry.home.example.com",
+          "issued_at": "2026-04-09T14:00:00Z",
+          "nonce": "fed-nonce-04-k3Jp9wQz"
         }
-      }
+      },
+      "sign": {
+        "kind": "federation_trust_proof",
+        "key": "ed25519-c"
+      },
+      "expected_canonical": "{\"audience\":\"agent://registry.home.example.com\",\"capabilities\":[\"resolve\",\"search\"],\"issued_at\":\"2026-04-09T14:00:00Z\",\"nonce\":\"fed-nonce-04-k3Jp9wQz\",\"registry_id\":\"agent://registry.alpha.example.com\",\"type\":\"ampro.registry.federation_request.v1\"}"
     },
     {
       "description": "Federation response wrapped in AgentMessage envelope",
@@ -114,7 +169,9 @@
       "valid": false,
       "expected_error": "registry_id",
       "body": {
-        "capabilities": ["resolve"],
+        "capabilities": [
+          "resolve"
+        ],
         "trust_proof": "U09NRV9QUk9PRl9EQVRBXzEyMzQ1Njc4OTBhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODk"
       }
     },
@@ -135,7 +192,9 @@
       "expected_error": "trust_proof",
       "body": {
         "registry_id": "agent://registry.example.com",
-        "capabilities": ["resolve"]
+        "capabilities": [
+          "resolve"
+        ]
       }
     },
     {
@@ -147,6 +206,41 @@
         "federation_id": "fed-bad-001",
         "terms": {}
       }
+    },
+    {
+      "description": "Federation revoke — signed by the revoking registry",
+      "body_type": "registry.federation_revoke",
+      "valid": true,
+      "sign": {
+        "kind": "federation_revoke",
+        "key": "ed25519-c"
+      },
+      "body": {
+        "revoking_registry": "agent://registry.alpha.example.com",
+        "revoked_registry": "agent://registry.home.example.com",
+        "reason": "key compromise suspected",
+        "effective_at": "2026-04-09T15:00:00Z",
+        "signature": "kIgfeDWkm+JbtW4+ghkIm0qnZIlA7ZL/Paz2MzchfFx74OrQTeLf1lheHxiSGYBUovbQ2ow5rsRfumKnpzP4DQ=="
+      },
+      "expected_canonical": "{\"effective_at\":\"2026-04-09T15:00:00Z\",\"reason\":\"key compromise suspected\",\"revoked_registry\":\"agent://registry.home.example.com\",\"revoking_registry\":\"agent://registry.alpha.example.com\",\"type\":\"ampro.registry.federation_revoke.v1\"}"
+    },
+    {
+      "description": "Federation revoke — effective_at with a non-UTC offset is signed in canonical UTC 'Z' form",
+      "body_type": "registry.federation_revoke",
+      "valid": true,
+      "sign": {
+        "kind": "federation_revoke",
+        "key": "ed25519-c"
+      },
+      "body": {
+        "revoking_registry": "agent://registry.alpha.example.com",
+        "revoked_registry": "agent://registry.home.example.com",
+        "reason": "contract ended",
+        "effective_at": "2026-04-09T17:00:00+02:00",
+        "signature": "L2KqxKocScEAmLZdS/F4pYhm0wreJEoqL8wUWWcYaCCJcyol5CzH6oNAl5MhX6B8URdPL17JzPms9kEITVDbDQ=="
+      },
+      "expected_canonical": "{\"effective_at\":\"2026-04-09T15:00:00Z\",\"reason\":\"contract ended\",\"revoked_registry\":\"agent://registry.home.example.com\",\"revoking_registry\":\"agent://registry.alpha.example.com\",\"type\":\"ampro.registry.federation_revoke.v1\"}"
     }
-  ]
+  ],
+  "audience": "agent://registry.home.example.com"
 }

@@ -1,36 +1,618 @@
 {
-  "description": "Delegation chain validation test vectors",
+  "description": "Delegation chain validation (WIRE-BINDING section 11.11.1). Each link is signed by its delegator over canonical JSON (sorted keys, ',' ':' separators, UTF-8, no ASCII escaping) of every DelegationLink field except 'signature', with 'scopes' sorted, timestamps rendered as RFC 3339 UTC with 'Z' (fraction only when non-zero, 6 digits), plus 'parent_delegate' (the previous link's delegate, null for the root). signed_canonical[i] is the exact byte string signed for link i. fan_out_counts maps a link index to the number of sub-delegations already issued under that link (keyed by delegation_link_id in the reference implementation). Links expire in 2099; the 'expired' case expired in 2026.",
+  "keys": {
+    "ed25519-a": {
+      "type": "Ed25519",
+      "private_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "source": "RFC 8032 section 7.1 TEST 1 secret key"
+    },
+    "ed25519-b": {
+      "type": "Ed25519",
+      "private_seed_hex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "public_hex": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+      "source": "RFC 8032 section 7.1 TEST 2 secret key"
+    },
+    "ed25519-c": {
+      "type": "Ed25519",
+      "private_seed_hex": "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+      "public_hex": "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+      "source": "RFC 8032 section 7.1 TEST 3 secret key"
+    }
+  },
+  "keys_by_agent": {
+    "agent://owner.example.com": "ed25519-a",
+    "agent://manager.example.com": "ed25519-b",
+    "agent://worker.example.com": "ed25519-c"
+  },
   "vectors": [
     {
       "description": "Valid single-hop delegation",
-      "input": {
-        "chain": [
-          {"delegator": "agent://boss.com", "delegate": "agent://worker.com", "scope": ["task.create"], "timestamp": "2026-01-01T00:00:00Z"}
-        ]
-      },
-      "valid": true
-    },
-    {
-      "description": "Valid multi-hop delegation",
-      "input": {
-        "chain": [
-          {"delegator": "agent://owner.com", "delegate": "agent://manager.com", "scope": ["task.create", "task.assign"], "timestamp": "2026-01-01T00:00:00Z"},
-          {"delegator": "agent://manager.com", "delegate": "agent://worker.com", "scope": ["task.create"], "timestamp": "2026-01-01T00:01:00Z"}
-        ]
-      },
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 1,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "6GywuUr8WM6hxZUeXAbT0lgF/GY7fWi+k7XRPIqr8wKWr3EnE6O86DoR0xdxY41J881fDnn2uFVueGqmZnoYBA=="
+        }
+      ],
       "valid": true,
-      "note": "scope narrows at each hop"
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":1,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ]
     },
     {
-      "description": "Invalid scope widening",
-      "input": {
-        "chain": [
-          {"delegator": "agent://owner.com", "delegate": "agent://manager.com", "scope": ["task.create"], "timestamp": "2026-01-01T00:00:00Z"},
-          {"delegator": "agent://manager.com", "delegate": "agent://worker.com", "scope": ["task.create", "task.assign"], "timestamp": "2026-01-01T00:01:00Z"}
-        ]
-      },
+      "description": "Valid two-hop delegation; scopes narrow, max_depth decreases, budget non-increasing",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*",
+            "data:read"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "https://owner.example.com/.well-known/jwks.json",
+          "chain_budget": "remaining=5.00USD;max=5.00USD",
+          "signature": "1JGqdDKauHr2uaNhTzcC9irBaGzTFAA8jmO6ZifwHQoBErLhfcQBh+J6Jwv9LLdv3QyP58GNUAxAhj7N7ipkBQ=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:01:00Z",
+          "expires_at": "2098-12-31T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "remaining=3.50USD;max=5.00USD",
+          "signature": "+qCk2apzeufu1c1Y2Kvw2oA3dIFoRTwWUQD69SGlkjD2+EOcvhTuJhGN4L9Mk0sJ3DKhAiGQIkc8OQkHb+HjAg=="
+        }
+      ],
+      "valid": true,
+      "signed_canonical": [
+        "{\"chain_budget\":\"remaining=5.00USD;max=5.00USD\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"https://owner.example.com/.well-known/jwks.json\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"data:read\",\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"remaining=3.50USD;max=5.00USD\",\"created_at\":\"2026-01-01T00:01:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2098-12-31T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ]
+    },
+    {
+      "description": "Timestamps with a non-UTC offset are signed in canonical UTC 'Z' form",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T05:30:00+05:30",
+          "expires_at": "2099-01-01T00:00:00.250000+00:00",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "2uD+2Brj6BS0qIML39RCrDRkSTUpuRqfRit6IarSRixQ6CvlF94i8WMMJyk0Sgy+cgFLvydhmh1qnbCgaxAODg=="
+        }
+      ],
+      "valid": true,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00.250000Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ]
+    },
+    {
+      "description": "Invalid: scope widening at hop 2",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "qaFWFH1faP1yioE4120+6bcvJMj3qK3sH1tQyn9NTnwU8IfCQ3kE3bfAOGahMcYTD8X0/nvqJfyDw4LN0ifhAQ=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create",
+            "task:assign"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "/Ouaaw7LcUPZe/HSD4gSC8YNnu2WmX0K2bQ1wda7+GHnbdGknHdFjp+P368DtFgt1gLYACuw73rQ4gkY7IL3CA=="
+        }
+      ],
       "valid": false,
-      "error": "scope widening not allowed"
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:assign\",\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "not subset of parent"
+    },
+    {
+      "description": "Invalid: child max_depth not below parent's",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "M4G6KZWja9zWf7GzDEtRfygO8EP2ez6u+yI12ILhimrKK3bL2N0U5bXWlSoEonQ3qeiymTuRe0kdjt7qv8WVAA=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "e8o9UsDDgzMYq2EdZkJY8ACaPmjH/GzB0zffCDonShD+oKYAh5iZxOzC6db+at/X3Pp8HWwBde8l6YxypMz3CQ=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "must be <= parent max_depth - 1"
+    },
+    {
+      "description": "Invalid: chain longer than root max_depth",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 1,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "9+hwBlwxnSJELiDF+kTFJKfd6Kwq7aM7Ow9Yv+vs/CmpC1onuIy44FiBskfZunoOtfzHxGzQTP9IBNDL97SfCQ=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 0,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "0rpK+w7TGNOYrXrSARPdcEGuflBASijUk7jrFQ0P7kxxWufHjz824HsT7C0WGP2UBAXRp5niEzeCl4fHrjplAg=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":1,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":0,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "exceeds root max_depth"
+    },
+    {
+      "description": "Invalid: a signed field (trust_tier) altered after signing",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "owner",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "qaFWFH1faP1yioE4120+6bcvJMj3qK3sH1tQyn9NTnwU8IfCQ3kE3bfAOGahMcYTD8X0/nvqJfyDw4LN0ifhAQ=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "canonical_matches_signed": false,
+      "error_contains": "invalid signature"
+    },
+    {
+      "description": "Invalid: link signed for another chain position (parent_delegate binding)",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "M4G6KZWja9zWf7GzDEtRfygO8EP2ez6u+yI12ILhimrKK3bL2N0U5bXWlSoEonQ3qeiymTuRe0kdjt7qv8WVAA=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "khgEavhSCEpqo9pzhDTBxn/5Hr4RJcnRjgGbT33VyKJebP7vA8lmhZS3tb8imKeF5YfUf8HdPMf8cJbUkZMeCA=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://elsewhere.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "canonical_matches_signed": false,
+      "error_contains": "link 1: invalid signature"
+    },
+    {
+      "description": "Invalid: child budget remaining exceeds parent's",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "remaining=2.00USD;max=5.00USD",
+          "signature": "1S9khq7aUaDw2UG8lb6hl6EQY1s5i0axW2OyMC/bTJc3c/rL5OPcCDmDb+DSbyyX/x0QWOKU3wcy82ewR0+pBA=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "remaining=3.00USD;max=5.00USD",
+          "signature": "q/WTxuXJXQD7zdo/q27YQ57acrSdKhUmjKzlBtae90p1dMqTrR6LwYkOgEeJ+dq/hIYpERJXgALiQbA00IjWBg=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"remaining=2.00USD;max=5.00USD\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"remaining=3.00USD;max=5.00USD\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "exceeds parent budget"
+    },
+    {
+      "description": "Invalid: child drops the parent's budget",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "remaining=2.00USD;max=5.00USD",
+          "signature": "1S9khq7aUaDw2UG8lb6hl6EQY1s5i0axW2OyMC/bTJc3c/rL5OPcCDmDb+DSbyyX/x0QWOKU3wcy82ewR0+pBA=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "lDSsblMdYedJtYxM31k04lwHfG/HWCBpgflxsXeV1zKODC0+hF5mcdVzOV45k+QVrSpACNkGOQF+l3CgKE67DQ=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"remaining=2.00USD;max=5.00USD\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "chain_budget dropped"
+    },
+    {
+      "description": "Invalid: budget string not in the exact 'remaining=<n>USD;max=<n>USD' form",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "remaining=2USD;max=5USD;x=1",
+          "signature": "QjnvtdC4IZzTQQDnUu+g7ba4C2gNe6cJHhFRwBKiisPuptM4439FpoQRgKQBv/htes5qtVtnDmv5f4IZc4CxBw=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"remaining=2USD;max=5USD;x=1\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "invalid chain_budget"
+    },
+    {
+      "description": "Invalid: remaining exceeds max",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "remaining=6.00USD;max=5.00USD",
+          "signature": "hy15kq34qhKzisioxkF0lazIrwq8/CwLG59vUVOs3LiYZSMK08QArZ/Ws5EB/PLTcb2oyaBIFJqkiHJLw587CA=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"remaining=6.00USD;max=5.00USD\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "exceeds max"
+    },
+    {
+      "description": "Invalid: fan-out exhausted on the parent link (stateful check)",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 2,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "3zBpGFL37x92HN4xju9nqewHi4IBqUc++ck2OOvOtkvqFQ6BDZr24bXWEz21xTGtaGxDUm7yQuDCTnlrFhljBQ=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "lDSsblMdYedJtYxM31k04lwHfG/HWCBpgflxsXeV1zKODC0+hF5mcdVzOV45k+QVrSpACNkGOQF+l3CgKE67DQ=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":2,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "fan_out_counts": {
+        "0": 2
+      },
+      "error_contains": "max_fan_out 2 exhausted"
+    },
+    {
+      "description": "Valid: fan-out below the limit",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 2,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "3zBpGFL37x92HN4xju9nqewHi4IBqUc++ck2OOvOtkvqFQ6BDZr24bXWEz21xTGtaGxDUm7yQuDCTnlrFhljBQ=="
+        },
+        {
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "lDSsblMdYedJtYxM31k04lwHfG/HWCBpgflxsXeV1zKODC0+hF5mcdVzOV45k+QVrSpACNkGOQF+l3CgKE67DQ=="
+        }
+      ],
+      "valid": true,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":2,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "fan_out_counts": {
+        "0": 1
+      }
+    },
+    {
+      "description": "Invalid: expired link",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-02-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "Xk83dfz/SMsK/wrLLlE/uV8VkV1wdLWsSfUAJBNqwyFmYPC5rxmLYM7t5h2DUxiTHH4Z9Wspzr9x9etTrj+DDw=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-02-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "expired"
+    },
+    {
+      "description": "Invalid: chain discontinuity (delegator != previous delegate)",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "M4G6KZWja9zWf7GzDEtRfygO8EP2ez6u+yI12ILhimrKK3bL2N0U5bXWlSoEonQ3qeiymTuRe0kdjt7qv8WVAA=="
+        },
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": "d/etIC2tEUDgGHAx9fEikqf1CWJNf4JGc+n8ppXY37cWvJ/UsA1GQWxeOQGeREt9am9qmjr0oGJfIf93r6s2Bw=="
+        }
+      ],
+      "valid": false,
+      "signed_canonical": [
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":3,\"max_fan_out\":3,\"parent_delegate\":null,\"scopes\":[\"task:*\"],\"trust_tier\":\"verified\"}",
+        "{\"chain_budget\":\"\",\"created_at\":\"2026-01-01T00:00:00Z\",\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2099-01-01T00:00:00Z\",\"jwks_url\":\"\",\"max_depth\":2,\"max_fan_out\":3,\"parent_delegate\":\"agent://manager.example.com\",\"scopes\":[\"task:create\"],\"trust_tier\":\"verified\"}"
+      ],
+      "error_contains": "previous delegate"
+    },
+    {
+      "description": "Invalid: naive timestamp (no offset) is rejected at parse time",
+      "links": [
+        {
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "task:create"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00",
+          "expires_at": "2099-01-01T00:00:00Z",
+          "max_fan_out": 3,
+          "trust_tier": "verified",
+          "jwks_url": "",
+          "chain_budget": "",
+          "signature": ""
+        }
+      ],
+      "valid": false,
+      "error_contains": "timezone-aware"
     }
   ]
 }
