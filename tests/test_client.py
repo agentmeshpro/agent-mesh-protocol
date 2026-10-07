@@ -5,6 +5,8 @@ Uses httpx mock transport to test all client functions without network access.
 
 from __future__ import annotations
 
+import asyncio
+import socket
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -14,6 +16,19 @@ import pytest
 from ampro.client.errors import AmpProtocolError
 from ampro.core.envelope import AgentMessage
 from ampro.wire.errors import ErrorType, ProblemDetail
+
+
+@pytest.fixture(autouse=True)
+def _fake_public_dns(monkeypatch):
+    """The client now resolves (and pins) every target host before
+    connecting — make every name resolve to a public address so these
+    tests never touch real DNS."""
+
+    async def fake_getaddrinfo(self, host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+    monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", fake_getaddrinfo)
+
 
 # ---------------------------------------------------------------------------
 # Helpers — mock HTTP transport

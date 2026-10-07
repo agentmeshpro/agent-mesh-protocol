@@ -28,6 +28,7 @@ Test (API key — verified tier):
       -d '{"sender":"agent://partner","recipient":"agent://secure.example.com","body_type":"message","body":{"text":"hello"},"headers":{"Authorization":"ApiKey sk_live_demo123"}}'
 """
 
+import os
 from ampro.server import AgentServer
 from ampro import AgentMessage
 from ampro.identity.auth_methods import parse_authorization
@@ -112,4 +113,9 @@ if __name__ == "__main__":
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://trusted\",\"recipient\":\"agent://secure.example.com\",\"body_type\":\"message\",\"body\":{\"text\":\"hello\"},\"headers\":{\"Authorization\":\"Bearer eyJ0b2tlbiI6ImRlbW8ifQ\"}}'")
     print()
-    server.run(port=8003)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8003)

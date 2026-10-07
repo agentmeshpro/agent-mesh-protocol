@@ -15,6 +15,7 @@ Run:
     uvicorn examples.02_fastapi_agent:app --port 8000
 """
 
+# requires: fastapi  (tests/test_examples_run.py skips this example if missing)
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from uuid import uuid4

@@ -24,7 +24,12 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from ampro.client.core import _USER_AGENT, _raise_for_problem, _resolve_endpoint
+from ampro.client.core import (
+    _USER_AGENT,
+    _guarded_client,
+    _raise_for_problem,
+    _resolve_endpoint,
+)
 from ampro.streaming.events import StreamingEvent, StreamingEventType
 
 logger = logging.getLogger("ampro.client.stream")
@@ -101,6 +106,8 @@ async def stream(
     task_id: str,
     timeout: float = 300.0,
     last_event_id: str | None = None,
+    *,
+    allow_private: bool = False,
 ) -> AsyncIterator[StreamingEvent]:
     """Stream SSE events from an AMP agent task.
 
@@ -113,6 +120,9 @@ async def stream(
         task_id: The task ID to stream events for.
         timeout: Overall stream timeout in seconds (default 300).
         last_event_id: Resume from this event ID on reconnection.
+        allow_private: Allow the target to resolve to a loopback, private
+            or otherwise internal address.  Off by default (SSRF
+            protection); set ``True`` only for local development.
 
     Yields:
         ``StreamingEvent`` instances.
@@ -120,6 +130,8 @@ async def stream(
     Raises:
         AmpProtocolError: If the server returns a non-2xx response.
         ConnectionError: If all retry attempts are exhausted.
+        SSRFError: (subclass of ``ValueError``) if the target is internal
+            and ``allow_private`` is False.
     """
     endpoint = await _resolve_endpoint(to)
     url = f"{endpoint}/agent/stream"
@@ -138,7 +150,8 @@ async def stream(
         params = {"task_id": task_id}
 
         try:
-            async with httpx.AsyncClient() as client:
+            # Re-validated (and re-pinned) on every reconnect.
+            async with await _guarded_client(url, allow_private=allow_private) as client:
                 async with client.stream(
                     "GET",
                     url,

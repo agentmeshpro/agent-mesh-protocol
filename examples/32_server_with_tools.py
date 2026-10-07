@@ -15,6 +15,7 @@ Test:
       -d '{"sender":"agent://caller","recipient":"agent://tools.example.com","body_type":"task.create","body":{"description":"multiply","context":{"tool_name":"multiply","a":6,"b":7}}}'
 """
 
+import os
 from ampro.server import AgentServer
 from ampro import AgentMessage
 
@@ -100,4 +101,9 @@ if __name__ == "__main__":
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://caller\",\"recipient\":\"agent://tools.example.com\",\"body_type\":\"task.create\",\"body\":{\"description\":\"multiply\",\"context\":{\"tool_name\":\"multiply\",\"a\":6,\"b\":7}}}'")
     print()
-    server.run(port=8002)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8002)

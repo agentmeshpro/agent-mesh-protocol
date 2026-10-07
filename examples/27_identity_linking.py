@@ -10,11 +10,14 @@ Run:
     python examples/27_identity_linking.py
 """
 
+from datetime import UTC, datetime
+
 from ampro import (
     AgentMessage,
     IdentityLinkProofBody,
     validate_body,
 )
+from ampro.identity.link import DEFAULT_LINK_PROOF_LIFETIME, is_link_proof_valid
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -40,6 +43,8 @@ link_proof = IdentityLinkProofBody(
     proof_type="ed25519_cross_sign",
     proof="MEUCIQD2YnoGk5kqLwDhP8N2xJMB1rGpKY8E4vZf1kA9T7vXwAIgEfG3hOd6HjK5nRr8Q2eL1mN4pS7tU0vWxYz3aBcDeF=",
     timestamp="2026-04-09T10:00:00Z",
+    # Link proofs MUST carry an expiry strictly after their timestamp.
+    expires_at=datetime(2026, 4, 9, 10, 0, tzinfo=UTC) + DEFAULT_LINK_PROOF_LIFETIME,
 )
 
 print(f"  source_id:  {link_proof.source_id}")
@@ -47,6 +52,11 @@ print(f"  target_id:  {link_proof.target_id}")
 print(f"  proof_type: {link_proof.proof_type}")
 print(f"  proof:      {link_proof.proof[:50]}...")
 print(f"  timestamp:  {link_proof.timestamp}")
+print(f"  expires_at: {link_proof.expires_at.isoformat()}")
+at = datetime(2026, 6, 1, tzinfo=UTC)
+print(f"  valid on {at.date()}: {is_link_proof_valid(link_proof, now=at)}")
+later = datetime(2028, 1, 1, tzinfo=UTC)
+print(f"  valid on {later.date()}: {is_link_proof_valid(link_proof, now=later)}")
 
 # ---------------------------------------------------------------------------
 # Step 2: Wrap in AgentMessage and validate with validate_body
@@ -62,7 +72,7 @@ link_msg = AgentMessage(
         "Protocol-Version": "0.1.8",
         "Session-Id": SESSION_ID,
     },
-    body=link_proof.model_dump(),
+    body=link_proof.model_dump(mode="json"),
 )
 
 print(f"  sender:    {link_msg.sender}")
@@ -98,6 +108,7 @@ dns_link = IdentityLinkProofBody(
     proof_type="dns_txt",
     proof="amp-verify=abc123def456ghi789jkl012mno345pqr678stu901vwx234",
     timestamp="2026-04-09T10:05:00Z",
+    expires_at=datetime(2026, 4, 9, 10, 5, tzinfo=UTC) + DEFAULT_LINK_PROOF_LIFETIME,
 )
 
 dns_msg = AgentMessage(
@@ -108,7 +119,7 @@ dns_msg = AgentMessage(
         "Protocol-Version": "0.1.8",
         "Session-Id": SESSION_ID,
     },
-    body=dns_link.model_dump(),
+    body=dns_link.model_dump(mode="json"),
 )
 
 print(f"  source_id:  {dns_link.source_id}")

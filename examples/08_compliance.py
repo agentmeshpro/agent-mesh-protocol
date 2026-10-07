@@ -73,9 +73,49 @@ for i in range(3):
 print(f"\n  Chain integrity valid: {logger.verify_chain()}")
 print(f"  Total entries: {logger.count}")
 
-# Tamper detection
-logger._entries[1].action_taken = "TAMPERED"
-print(f"  After tampering: valid={logger.verify_chain()}")
+# Entries handed out by the logger are copies — editing them cannot
+# alter the log itself.
+copy = logger.get_entries()[1]
+copy.action_taken = "TAMPERED"
+print(f"  After editing a returned copy: valid={logger.verify_chain()}")
+
+# Tamper detection: simulate an attacker with write access to the
+# underlying storage (e.g. a compromised database) by plugging in a
+# deliberately mutable backend and editing an entry in place.
+class MutableStorage:
+    """Toy AuditStorage backend that does NOT protect its entries."""
+
+    def __init__(self) -> None:
+        self.rows: list[AuditEntry] = []
+
+    def append(self, entry: AuditEntry) -> None:
+        self.rows.append(entry)
+
+    def tail(self) -> AuditEntry | None:
+        return self.rows[-1] if self.rows else None
+
+    def entries(self) -> list[AuditEntry]:
+        return list(self.rows)
+
+    def count(self) -> int:
+        return len(self.rows)
+
+
+storage = MutableStorage()
+tamper_logger = AuditLogger(storage=storage)
+for i in range(3):
+    tamper_logger.log(AuditEntry(
+        message_id=f"msg-{i}",
+        sender="agent://alice.example.com",
+        recipient="agent://bob.example.com",
+        body_type="task.create",
+        content_classification="pii",
+        trust_tier="verified",
+        action_taken="processed",
+    ))
+print(f"  Mutable backend before tampering: valid={tamper_logger.verify_chain()}")
+storage.rows[1].action_taken = "TAMPERED"
+print(f"  Mutable backend after tampering:  valid={tamper_logger.verify_chain()}")
 
 # --- Erasure Processing ---
 print("\n=== GDPR Erasure ===\n")
