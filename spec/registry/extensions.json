@@ -1,12 +1,12 @@
 {
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/extensions.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/registry/extensions.json",
   "registry": "extensions",
   "description": "Extension URIs assigned by AMP and registered by third parties (docs/EXTENSIONS.md).",
   "protocol_version": "1.0.0",
   "change_process": "GOVERNANCE.md; third-party registrations per docs/EXTENSIONS.md",
   "entries": [
     {
-      "uri": "https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1",
+      "uri": "https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1",
       "name": "AMP extension for A2A",
       "kind": "a2a-extension",
       "status": "stable",

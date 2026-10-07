@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/registry.federation_sync_response.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/registry.federation_sync_response.json",
   "title": "AMP body: registry.federation_sync_response",
   "description": "body.type = 'registry.federation_sync_response' — Delta + cursor.",
   "properties": {

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ampro"
 version = "0.4.0"
-description = "Universal agent-to-agent communication protocol — agent:// addressing, trust tiers, delegation chains, compliance"
+description = "An open protocol for agent-to-agent communication: trust, delegation and compliance built in, interoperable with A2A, PACT and MCP"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -75,13 +75,17 @@ ampro-server = "ampro.server.cli:main"
 ampro-conformance = "ampro.conformance.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/CatlystAI/agent-mesh-protocol"
-Repository = "https://github.com/CatlystAI/agent-mesh-protocol"
-Issues = "https://github.com/CatlystAI/agent-mesh-protocol/issues"
-Documentation = "https://github.com/CatlystAI/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
+Homepage = "https://github.com/agentmeshpro/agent-mesh-protocol"
+Repository = "https://github.com/agentmeshpro/agent-mesh-protocol"
+Issues = "https://github.com/agentmeshpro/agent-mesh-protocol/issues"
+Documentation = "https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ampro"]
+
+[tool.hatch.build.targets.sdist]
+# The demo site and CI config are not part of the Python package.
+exclude = ["/site", "/.github"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

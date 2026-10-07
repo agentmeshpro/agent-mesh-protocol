@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/key.revocation.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/key.revocation.json",
   "title": "AMP body: key.revocation",
   "description": "body.type = 'key.revocation' — Broadcast that an agent key is revoked.",
   "properties": {

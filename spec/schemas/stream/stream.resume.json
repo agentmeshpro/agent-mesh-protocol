@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.resume.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.resume.json",
   "title": "AMP stream event data: stream.resume",
   "description": "stream.resume — client tells server it is ready for more events.",
   "properties": {

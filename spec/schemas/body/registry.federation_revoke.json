@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/registry.federation_revoke.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/registry.federation_revoke.json",
   "title": "AMP body: registry.federation_revoke",
   "description": "body.type = 'registry.federation_revoke' — Tear down a federation link.",
   "properties": {

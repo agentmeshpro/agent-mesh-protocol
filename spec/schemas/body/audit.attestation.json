@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/audit.attestation.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/audit.attestation.json",
   "title": "AMP body: audit.attestation",
   "description": "body.type = 'audit.attestation' — mutual session attestation.\n\nThe ``model_validator`` guarantees that the set of agents exactly\nmatches the set of signature keys — no missing and no extra\nsignatures are allowed.",
   "properties": {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/agent.deactivation_notice.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/agent.deactivation_notice.json",
   "title": "AMP body: agent.deactivation_notice",
   "description": "body.type = 'agent.deactivation_notice' — Notify peers of orderly shutdown.",
   "properties": {

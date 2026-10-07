@@ -6,7 +6,7 @@ requests consent to use a sensitive tool, the owner grants it with
 restrictions, and the caller checks consent before invoking.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/15_tool_consent.py
 """
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/erasure.propagation_status.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/erasure.propagation_status.json",
   "title": "AMP body: erasure.propagation_status",
   "description": "body.type = 'erasure.propagation_status' — downstream erasure report.\n\nDownstream receivers may be offline when an erasure is first\npropagated.  Senders SHOULD retry with exponential backoff and\nrecord retry metadata on the body.  See :func:`compute_next_retry`.\n\nCompliance-driven cache invalidations (e.g. dropping cached\n``agent.json`` or visibility metadata after a revocation) MAY reuse\nthe push-style flow.  See\n:class:`ampro.agent.schema.AgentMetadataInvalidateBody` for the\ncanonical invalidation body type.",
   "properties": {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.auth_refresh.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.auth_refresh.json",
   "title": "AMP stream event data: stream.auth_refresh",
   "description": "Server-sent event carrying a refreshed authentication token.",
   "properties": {

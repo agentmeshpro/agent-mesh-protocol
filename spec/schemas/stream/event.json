@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/event.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/event.json",
   "title": "StreamEvent",
   "description": "One Server-Sent Event on GET /agent/stream, as parsed from the `id:`, `event:` and `data:` lines (WIRE-BINDING section 8.3). `data` is the JSON-decoded payload. Receivers MUST ignore event types they do not understand.",
   "type": "object",

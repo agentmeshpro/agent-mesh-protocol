@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ampro.ampi.app import AgentApp
     from ampro.server.core import AgentServer
 
-AMP_EXTENSION_URI = "https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1"
+AMP_EXTENSION_URI = "https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1"
 
 # Body types that are protocol plumbing rather than user-facing skills.
 _NON_SKILL_BODY_TYPES = frozenset({

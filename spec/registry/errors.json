@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/errors.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/registry/errors.json",
   "registry": "errors",
   "description": "RFC 7807 problem `type` URNs (WIRE-BINDING section 7). Clients SHOULD match on the URN rather than the HTTP status.",
   "protocol_version": "1.0.0",

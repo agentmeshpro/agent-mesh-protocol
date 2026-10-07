@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/agent.metadata_invalidate.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/agent.metadata_invalidate.json",
   "title": "AMP body: agent.metadata_invalidate",
   "description": "body.type = 'agent.metadata_invalidate'.\n\nPush notification: an agent's ``agent.json`` has changed; any peer that\ncaches the record MUST drop its copy on receipt of this message.",
   "properties": {

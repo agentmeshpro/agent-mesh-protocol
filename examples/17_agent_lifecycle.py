@@ -6,7 +6,7 @@ decommissioned. The agent broadcasts a deactivation notice, drains
 sessions, and the registry marks it as gone.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/17_agent_lifecycle.py
 """
 

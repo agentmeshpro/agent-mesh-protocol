@@ -7,7 +7,7 @@ validates with validate_body, shows verifier checking, and links to
 CertificationLink in agent.json.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/30_trust_proof.py
 """
 

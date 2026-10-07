@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/stream-events.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/registry/stream-events.json",
   "registry": "stream-events",
   "description": "Server-Sent Event types on GET /agent/stream (WIRE-BINDING section 8.4). Receivers MUST ignore unknown event types.",
   "protocol_version": "1.0.0",
@@ -110,7 +110,7 @@
       "category": "Backpressure",
       "description": "Client acknowledges processed events",
       "data_schema": "../schemas/stream/stream.ack.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.ack.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.ack.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
@@ -120,7 +120,7 @@
       "category": "Backpressure",
       "description": "Server pauses the stream",
       "data_schema": "../schemas/stream/stream.pause.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.pause.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.pause.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
@@ -130,7 +130,7 @@
       "category": "Backpressure",
       "description": "Client signals readiness for more events",
       "data_schema": "../schemas/stream/stream.resume.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.resume.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.resume.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
@@ -140,7 +140,7 @@
       "category": "Multiplexing",
       "description": "Open a logical multiplexed channel",
       "data_schema": "../schemas/stream/stream.channel_open.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.channel_open.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.channel_open.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
@@ -150,7 +150,7 @@
       "category": "Multiplexing",
       "description": "Close a logical multiplexed channel",
       "data_schema": "../schemas/stream/stream.channel_close.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.channel_close.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.channel_close.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
@@ -160,7 +160,7 @@
       "category": "Reliability",
       "description": "Periodic state snapshot for reconnection",
       "data_schema": "../schemas/stream/stream.checkpoint.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.checkpoint.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.checkpoint.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
@@ -170,7 +170,7 @@
       "category": "Security",
       "description": "Mid-stream token renewal",
       "data_schema": "../schemas/stream/stream.auth_refresh.json",
-      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.auth_refresh.json",
+      "data_schema_id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.auth_refresh.json",
       "section": "8.4",
       "since": "0.1.7",
       "status": "stable"
