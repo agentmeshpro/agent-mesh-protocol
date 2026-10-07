@@ -35,7 +35,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
-from ampro.interop.pact._compat import A2AAdapter, Principal, Unauthorized
+from ampro.interop.a2a import PACT_AUTH_KEYS, TEXT_MODES, A2AAdapter, Principal, Unauthorized
 from ampro.interop.pact.auth import PAIdentity, PAJwtAuthenticator, bearer_token
 from ampro.interop.pact.brand import Brand
 from ampro.interop.pact.card import DEFAULT_SCHEME, build_pact_card
@@ -190,6 +190,12 @@ class PACTProvider:
             public_url=self.public_url,
             authenticators=(_PreAuthenticated(),),
             require_auth=True,
+            input_modes=TEXT_MODES,
+            output_modes=("text/plain",),
+            auth_required_keys=PACT_AUTH_KEYS,
+            serve_root_card=False,
+            streaming=False,
+            max_text_chars=self.max_text_chars,
         )
         self._brands[brand.brand_id] = _Hosted(brand, adapter, self.interface_url(brand.brand_id))
         return brand
@@ -396,6 +402,7 @@ class PACTProvider:
             _pact_task_metadata(task)
         if turn.close_requested:
             await self.contexts.close(reply_context)
+            await hosted.adapter.close_context(reply_context)
         return a2a_json(payload)
 
     def _receipt(self, turn: Turn, delegation: Delegation, hosted: _Hosted, context_id: str,

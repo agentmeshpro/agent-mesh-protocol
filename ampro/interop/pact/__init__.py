@@ -21,7 +21,7 @@ Requires ``pip install 'ampro[pact]'`` (PyJWT with crypto) at runtime.
 """
 from __future__ import annotations
 
-from ampro.interop.pact._compat import HAS_A2A, AuthRequired
+from ampro.interop.a2a import AuthRequired
 from ampro.interop.pact.auth import PAIdentity, PAJwtAuthenticator, principal_id
 from ampro.interop.pact.brand import Brand, BrandLogin, BrandUser, JWTBrandLogin, Scope
 from ampro.interop.pact.card import build_pact_card
@@ -57,7 +57,6 @@ from ampro.interop.pact.scopes import (
 from ampro.interop.pact.stores import DelegationStores, InMemoryContextStore
 
 __all__ = [
-    "HAS_A2A",
     "AuthRequired",
     "Brand",
     "BrandLogin",

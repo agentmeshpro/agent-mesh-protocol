@@ -27,7 +27,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ampro.interop.pact._compat import Principal, Unauthorized
 from ampro.interop.pact._jwt import (
     MAX_TOKEN_BYTES,
     JoseError,
@@ -39,6 +38,7 @@ from ampro.interop.pact._jwt import (
 from ampro.interop.pact.jwks import FetchError, JSONFetcher, JWKSCache
 from ampro.interop.pact.registry import PersonalAgentRegistry
 from ampro.interop.pact.stores import Clock, NonceStore
+from ampro.server.auth import Principal, Unauthorized
 from ampro.server.http import HTTPRequest
 from ampro.trust.tiers import TrustTier
 

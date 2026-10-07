@@ -93,8 +93,9 @@ class ProviderKeySet:
         if path:
             return cls.from_file(path)
         if allow_generate:
-            logger.warning("pact.keys.ephemeral",
-                           extra={"detail": "no provider key configured; generated an ephemeral key"})
+            logger.warning("pact.keys.ephemeral: no provider key configured; generated an "
+                           "ephemeral key (tokens and receipts die with this process)",
+                           extra={"event": "pact.keys.ephemeral"})
             return cls.generate()
         raise RuntimeError(f"Set {ENV_JWKS} or {ENV_JWKS_FILE} to the provider's private JWK(S)")
 

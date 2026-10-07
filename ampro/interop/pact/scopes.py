@@ -30,7 +30,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-from ampro.interop.pact._compat import AuthRequired
+from ampro.interop.a2a import AuthRequired
 from ampro.interop.pact._jwt import sha256_b64url
 
 MAX_ACTIONS = 64
