@@ -708,3 +708,38 @@ def test_es256_high_s_rejected():
         update={"signature": base64.urlsafe_b64encode(high).rstrip(b"=").decode()})
     assert _ok([link]) == (True, "valid")
     assert _ok([flipped]) == (False, "link 0: invalid signature")
+
+
+def test_key_status_resolver_integration():
+    from ampro.security.key_revocation import (
+        InMemoryKeyStatusResolver,
+        KeyStatus,
+        KeyStatusRecord,
+        delegation_key_check,
+    )
+
+    links = _chain(_link(A, B))
+    strict = delegation_key_check(InMemoryKeyStatusResolver())
+    assert _ok(links, key_status=strict)[0] is False  # unknown key
+    lenient = delegation_key_check(InMemoryKeyStatusResolver(), unknown_is_active=True)
+    assert _ok(links, key_status=lenient) == (True, "valid")
+
+    class Fixed:
+        def __init__(self, status, revoked_at=None):
+            self.rec = KeyStatusRecord(status=status, revoked_at=revoked_at)
+
+        def record(self, agent, kid):
+            return self.rec
+
+        def key_status(self, agent, kid):
+            return self.rec.status
+
+    for status, revoked_at, expect in [
+        (KeyStatus.ACTIVE, None, True),
+        (KeyStatus.ROTATED, NOW + timedelta(minutes=5), True),
+        (KeyStatus.ROTATED, NOW - timedelta(minutes=5), False),
+        (KeyStatus.COMPROMISED, NOW + timedelta(days=1), False),
+        (KeyStatus.DECOMMISSIONED, None, False),
+    ]:
+        check = delegation_key_check(Fixed(status, revoked_at), unknown_is_active=True)
+        assert _ok(links, key_status=check)[0] is expect, status

@@ -1,5 +1,5 @@
 {
-  "description": "Test vectors for key.revocation body type (AMP v0.1.2). Covers all 3 revocation reasons, optional fields, and invalid payloads. Valid cases carry a real Ed25519 signature (base64url, no padding) over canonical JSON of every field except 'signature' (sorted keys, ',' ':' separators, ASCII-escaped, null for absent optionals except compromised_at, which is omitted when absent); expected_canonical is that byte string. revoked_at / compromised_at are RFC 3339 with a UTC offset; compromised_at is informational and only allowed with key_compromise, at or before revoked_at.",
+  "description": "Test vectors for key.revocation body type (AMP v0.1.2). Covers all 3 revocation reasons, optional fields, and invalid payloads. Valid cases carry a real Ed25519 signature (base64url, no padding) over canonical JSON of every field except 'signature' (sorted keys, ',' ':' separators, raw UTF-8 without \\u escapes, null for absent optionals except compromised_at, which is omitted when absent); expected_canonical is that byte string. revoked_at / compromised_at are RFC 3339 with a UTC offset; compromised_at is informational and only allowed with key_compromise, at or before revoked_at.",
   "keys": {
     "ed25519-a": {
       "type": "Ed25519",

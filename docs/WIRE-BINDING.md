@@ -2868,7 +2868,7 @@ object with these properties:
   signed before the field existed still verify). When present it is
   signed like every other field.
 - Keys are sorted, the separators are `,` and `:`, and non-ASCII
-  characters are escaped as `\uXXXX`.
+  characters are emitted as raw UTF-8, not `\u` escapes.
 
 For the example above, the signed string is:
 

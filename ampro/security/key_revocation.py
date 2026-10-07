@@ -44,10 +44,11 @@ import re
 import threading
 import unicodedata
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -535,6 +536,46 @@ def signature_allowed(
             return False
         return signed_at < revoked
     return False
+
+
+def delegation_key_check(
+    resolver: Any,
+    *,
+    unknown_is_active: bool = False,
+) -> Callable[[str, str, datetime], bool]:
+    """Adapt a key-status resolver to ``validate_chain_v2(key_status=...)``.
+
+    The returned callable answers "may (agent, kid) be relied on for a
+    signature made at ``signed_at``?" using :func:`signature_allowed`.
+    *resolver* needs ``key_status(agent_id, kid)``; when it also has
+    ``record(agent_id, kid)`` (as :class:`InMemoryKeyStatusResolver`
+    does), the record's ``revoked_at`` lets rotated keys keep validating
+    older links.
+
+    Keys with no record are ``UNKNOWN`` and rejected, so verifiers should
+    ``mark_active`` keys as they fetch them. Pass
+    ``unknown_is_active=True`` only when the key itself comes from a source
+    you already trust to drop revoked keys; a revoked key is still
+    rejected either way.
+    """
+
+    def check(agent_id: str, kid: str, signed_at: datetime) -> bool:
+        try:
+            revoked_at = None
+            record_fn = getattr(resolver, "record", None)
+            if callable(record_fn):
+                record = record_fn(agent_id, kid)
+                status = record.status if record is not None else KeyStatus.UNKNOWN
+                revoked_at = record.revoked_at if record is not None else None
+            else:
+                status = resolver.key_status(agent_id, kid)
+        except Exception:
+            return False
+        if status is KeyStatus.UNKNOWN and unknown_is_active:
+            status = KeyStatus.ACTIVE
+        return signature_allowed(status, signed_at=signed_at, revoked_at=revoked_at)
+
+    return check
 
 
 @runtime_checkable
