@@ -17,7 +17,13 @@ the AMP extension.  The official ``a2a-sdk`` is *not* required.
 """
 from __future__ import annotations
 
-from ampro.interop.a2a.adapter import DEFAULT_INPUT_MODES, TEXT_MODES, A2AAdapter
+from ampro.interop.a2a.adapter import (
+    CHAIN_REJECTED_MESSAGE,
+    DEFAULT_INPUT_MODES,
+    TEXT_MODES,
+    A2AAdapter,
+    ChainVerifier,
+)
 from ampro.interop.a2a.auth import (
     ANONYMOUS,
     ANONYMOUS_ID,
@@ -32,6 +38,7 @@ from ampro.interop.a2a.auth import (
 from ampro.interop.a2a.card import AMP_EXTENSION_URI, bearer_scheme, build_agent_card
 from ampro.interop.a2a.client import A2AClient, A2AClientError, discover_protocol
 from ampro.interop.a2a.errors import A2AError
+from ampro.interop.a2a.mapping import UNVERIFIED_DELEGATION_CHAIN_KEY
 from ampro.interop.a2a.store import (
     ContextStore,
     IdempotencyStore,
@@ -66,6 +73,8 @@ __all__ = [
     "AuthRequired",
     "AuthRequiredKeys",
     "Authenticator",
+    "CHAIN_REJECTED_MESSAGE",
+    "ChainVerifier",
     "ContextStore",
     "DEFAULT_INPUT_MODES",
     "IdempotencyStore",
@@ -83,6 +92,7 @@ __all__ = [
     "TaskState",
     "TaskStatus",
     "TaskStore",
+    "UNVERIFIED_DELEGATION_CHAIN_KEY",
     "Unauthorized",
     "bearer_scheme",
     "build_agent_card",

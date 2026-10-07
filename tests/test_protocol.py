@@ -954,7 +954,7 @@ class TestDelegationSignatures:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"Expected valid chain, got: {reason}"
         assert reason == "valid"
 
@@ -990,7 +990,7 @@ class TestDelegationSignatures:
             "agent://a.example.com": pub_a,
             "agent://b.example.com": pub_b,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         assert "not subset" in reason or "scopes" in reason
 
@@ -1032,7 +1032,7 @@ class TestDelegationSignatures:
             "agent://a.example.com": pub_a,
             "agent://b.example.com": pub_b,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"Scope narrowing should be accepted, got: {reason}"
 
     def test_three_level_chain_all_signatures_verify(self):
@@ -1084,7 +1084,7 @@ class TestDelegationSignatures:
             "agent://b.example.com": pub_b,
             "agent://c.example.com": pub_c,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"3-level chain should verify, got: {reason}"
 
     def test_missing_signature_rejected(self):
@@ -1111,6 +1111,6 @@ class TestDelegationSignatures:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         assert "signature" in reason.lower() or "invalid" in reason.lower()

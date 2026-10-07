@@ -270,9 +270,14 @@ The response MUST be a JSON object with `Content-Type: application/json`.
 | `status`             | string   | Lifecycle status: `active`, `deactivating`, `decommissioned` |
 | `moved_to`           | string   | `agent://` URI this agent has migrated to                |
 | `certifications`     | object[] | Compliance certifications (SOC2, ISO 27001, etc.)        |
+| `foreign_identifiers` | object[] | Names for this agent in other ecosystems, each with an optional identity-link proof (Appendix E.4). At most 16. Confer no trust unless the proof verifies |
 
 Implementations MUST allow unknown fields in `agent.json`. Consumers
 MUST ignore fields they do not understand.
+
+`identifiers` stays a list of `agent://` strings: foreign identifiers
+go in their own `foreign_identifiers` array so that existing consumers,
+which expect every `identifiers` entry to be a string, keep working.
 
 #### 4.1.3 Example: Minimal Agent
 
@@ -1044,6 +1049,60 @@ implemented.
 
 Returned when the agent is temporarily unable to process requests.
 The response SHOULD include a `Retry-After` HTTP header.
+
+#### 7.2.14 403 -- Authority Required
+
+```json
+{
+  "type": "urn:amp:error:authority-required",
+  "title": "Authority required",
+  "status": 403,
+  "detail": "Cancelling an order needs orders:write and your approval",
+  "missing_scopes": ["orders:write"],
+  "required_constraints": [{"type": "com.acme:region", "region": "eu"}],
+  "payment_required": {"amount": 1250, "currency": "EUR", "methods": ["x402"]},
+  "human_approval": {
+    "verification_uri": "https://auth.example.com/device?user_code=WDJB-MJHT",
+    "expires_in": 600
+  },
+  "audience": "agent://shop.example.com"
+}
+```
+
+Returned when the caller is authenticated but needs more authority to
+proceed. Unlike `urn:amp:error:forbidden`, it tells the caller what to
+obtain. At least one of `missing_scopes`, `required_constraints`,
+`payment_required` or `human_approval` MUST be present.
+
+| Member                 | Type            | Rules |
+|------------------------|-----------------|-------|
+| `missing_scopes`       | string[]        | OAuth scope tokens (RFC 6749 section 3.3), each 1..256 chars; at most 64; duplicates are removed |
+| `required_constraints` | object[]        | At most 16. Each has a `type` (`^[A-Za-z][A-Za-z0-9._:/+-]{0,127}$`); the other members are defined by the owner of `type`, use only plain JSON (finite numbers, nesting at most 8), and fit in 4096 bytes |
+| `payment_required`     | object \| null  | `amount`: integer minor units, 1..2^53-1; `currency`: ISO 4217 code (`^[A-Z]{3}$`); `methods`: optional, at most 16 unique lowercase tokens |
+| `human_approval`       | object \| null  | `verification_uri`: absolute `https` URI, no userinfo or fragment, at most 2048 chars; `expires_in`: optional integer seconds, 1..86400 |
+| `audience`             | string \| null  | Resource or agent the new authority must be issued for; at most 2048 chars, no whitespace or control characters |
+
+The whole problem MUST NOT exceed 65536 bytes. A client MUST treat a
+member it cannot validate as absent and MUST NOT act on a
+`verification_uri` that is not `https`. When `missing_scopes` is not
+empty the response SHOULD also carry
+`WWW-Authenticate: Bearer realm="amp", error="insufficient_scope", scope="<space-separated scopes>"`.
+The schema is `spec/schemas/problem-authority-required.json`.
+
+Mapping to other protocols:
+
+| Protocol | Equivalent | Mapping |
+|----------|------------|---------|
+| MCP (OAuth 2.1 / RFC 6750) | HTTP `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` (optionally `resource_metadata=` per RFC 9728) | `scope` = `missing_scopes` joined by spaces. Other members have no MCP equivalent and stay in the problem body. |
+| A2A / PACT | Task in `TASK_STATE_AUTH_REQUIRED` with metadata `missingScopes` / `verificationUriComplete` (PACT: `pact.missingScopes` / `pact.verificationUriComplete`) | `missing_scopes` <-> `missingScopes`; `human_approval.verification_uri` <-> `verificationUriComplete`. A problem with `required_constraints` or `payment_required` cannot be expressed as `AUTH_REQUIRED` and MUST NOT be converted with those members dropped. |
+| x402 | HTTP `402 Payment Required` with x402 payment requirements | `payment_required` carries the amount and currency. AMP always answers `403`; a gateway that bridges to x402 MAY answer `402` when payment is the only missing authority, and a `402` received from an x402 server maps to an authority-required problem with `payment_required`. |
+
+The reference implementation provides `authority_required(...)`
+(builder), `AuthorityRequiredError` (raise it from a handler; the
+server answers with this problem and the challenge header),
+`parse_authority_required(...)`, `insufficient_scope_challenge(...)`,
+and `AuthRequired.to_problem()` / `AuthRequired.from_problem()` for the
+A2A adapter.
 
 ---
 
@@ -2219,6 +2278,10 @@ and the defaults are signed too:
 | `signature` | string | `""` | Standard base64 (with padding) Ed25519 signature by the delegator |
 
 Unknown fields are ignored and are **not** covered by the signature.
+Because of that, a v1 link cannot carry a restriction that an older
+verifier is forced to honour. New deployments SHOULD issue v2 links
+(section 11.11.2), and verifiers that only talk to v2 peers SHOULD refuse
+v1 chains.
 
 #### 11.11.1 Delegation Chain Validation
 
@@ -2288,6 +2351,154 @@ link, in order, and reject the chain at the first failure:
     budget.
 
 `tests/vectors/delegation_chain.json` has a case for each rule.
+
+#### 11.11.2 Delegation Link Format v2
+
+A v2 link carries `"v": 2`. A link without `v` is a v1 link. A receiver
+MUST reject any other `v` value, and MUST reject a chain that mixes v1
+and v2 links. A v1 verifier that receives a v2 link fails its signature
+check, so v2 chains fail closed on older software.
+
+| Member | Type | Default | Meaning |
+|--------|------|---------|---------|
+| `v` | integer | required | `2` |
+| `link_id` | string | required | 22–128 base64url characters, at least 128 bits of randomness. Unique within the chain. Revocation and fan-out are keyed on it |
+| `delegator`, `delegate` | string | required | Agent identifiers, 1–512 characters, no whitespace. MUST differ |
+| `scopes` | string[] | required | 1–100 unique scopes, each 1–256 visible ASCII characters |
+| `max_depth` | integer 1..10 | `3` | As in v1 |
+| `max_fan_out` | integer 1..10 | `3` | As in v1 |
+| `created_at`, `expires_at` | RFC 3339 string | required | MUST carry `Z` or an explicit offset, and fall in UTC years 1970–9998. Numbers and other formats MUST be rejected. `expires_at` MUST be later than `created_at` |
+| `trust_tier` | string | `"external"` | One of `internal`, `owner`, `verified`, `external`. Never higher than the parent's |
+| `alg` | string | required | `EdDSA` (Ed25519) or `ES256` (ECDSA P-256, SHA-256) |
+| `kid` | string | required | Key id, 1–128 visible ASCII characters |
+| `jwks_url` | https URL | absent | Where the delegator publishes its keys |
+| `aud` | string[] | absent | 1–20 identifiers where this authority may be exercised |
+| `principal` | object | absent | The person whose authority this is: `iss` (https URL or `agent://` URI), `sub` (SHOULD be pairwise per counterparty), optional `acr`, and `present` (boolean: the person approved interactively) |
+| `origin` | string | `"agent"` | Where the root authority came from: `agent`, `oauth`, `pact`, `pap`, `ap2`, `acp`, `ucp`, `network-token`, `other`. Any value except `agent` requires `principal` and at least one `credential_refs` entry |
+| `intent_hash` | string | absent | `sha-256:` + base64url SHA-256 of the canonical JSON of the intent the principal approved. Requires `principal` |
+| `credential_refs` | object[] | `[]` | Up to 10 references to foreign credentials: `type` (lowercase token), `ref` (opaque id), optional `digest` (`sha-256:` + base64url), optional `expires_at`. A `ref` MUST NOT be the credential itself; values shaped like a compact JWS/JWT or starting with `Bearer`/`Basic` MUST be rejected |
+| `constraints` | object[] | `[]` | Up to 20 typed limits, at most one per `(type, currency)`. See below |
+| `status_url` | https URL | absent | Where the link's revocation status is published |
+| `crit` | string[] | `[]` | Extension members the verifier MUST understand |
+| `signature` | string | required | base64url (no padding) signature. Ed25519: 64 bytes. ES256: 64 bytes, `r` then `s`, each 32 bytes big-endian, with `s` in low-S form (`s` ≤ n/2); a high-S signature MUST be rejected |
+
+Constraint types. Money is always an integer number of minor units of
+an ISO 4217 currency (for example cents for `USD`), never a decimal:
+
+| `type` | Members | Meaning |
+|--------|---------|---------|
+| `amount` | `currency`, `max_minor` | Most that one action may spend |
+| `budget` | `currency`, `remaining_minor`, `max_minor` | Total left for the chain; `remaining_minor` ≤ `max_minor` |
+| `count` | `max` (1..1 000 000) | Most actions under this link |
+| `resource` | `ids` (1–100 unique) | The only resources the authority applies to |
+
+An unknown constraint type MUST be rejected: every constraint is
+critical.
+
+**Extension members.** Any member not in the table above is an extension
+member. Its name MUST be a namespaced extension name (EXTENSIONS.md,
+"Naming rules"); a link with an unnamespaced unknown member MUST be
+rejected. At most 20 extension members are allowed. Values MUST be JSON
+without floating-point numbers, with integers of magnitude below 2^53 and
+nesting depth at most 8. Extension members are signed, and their values
+are signed verbatim: `null` values inside an extension value are kept,
+not omitted. A verifier ignores extension members it does not understand
+**unless** they are listed in `crit`, in which case it MUST reject the
+chain. `crit` MUST NOT list a v2 member, a name twice, or a member that
+is absent or `null`.
+
+**Canonical form.** The delegator signs the UTF-8 bytes of a JSON object
+holding every member of the link except `signature`, extension members
+included, with defaults filled in and absent optional members omitted,
+plus:
+
+- `parent_link_id`: the parent's `link_id`, or `null` for the root;
+- `parent_delegate`: the parent's `delegate`, or `null` for the root.
+
+It is serialised like v1 (sorted keys, `,` and `:` separators, raw UTF-8,
+sorted `scopes`, canonical UTC timestamps), with nested objects
+serialised the same way and their absent optional members omitted. The
+canonical form MUST NOT exceed 16 KiB.
+
+**Validation.** A receiver MUST reject an empty chain, a chain longer
+than 10 links, and a chain longer than the root's `max_depth`. A chain is
+not a bearer token: the receiver MUST reject it unless its last
+`delegate` is the agent that will exercise the authority. When the chain
+arrives with a task delegated to the receiver, that is the receiver
+itself, and the authenticated sender MUST be the last link's
+`delegator`. When a caller presents authority it holds, that is the
+authenticated caller. It SHOULD refuse a link
+whose JSON form exceeds 16 KiB before parsing it. For each link in order
+it MUST check, rejecting at the first failure:
+
+1. `link_id` is not repeated in the chain.
+2. Every `crit` member is one the receiver understands.
+3. The key for (`delegator`, `kid`) is known, and its algorithm equals
+   `alg`. A receiver MUST NOT verify a signature with a key of a
+   different algorithm.
+4. When the receiver tracks key status (section 12.12), the key may be
+   relied on for a signature made at `created_at`. A key revoked for
+   compromise or decommissioning is never relied on, whatever
+   `created_at` says.
+5. The signature verifies over the canonical form.
+6. `expires_at` is later than now minus 30 s, and `created_at` is not
+   later than now plus 30 s.
+7. Lifetime (`expires_at` − `created_at`) is at most 90 days, and at most
+   24 hours when the link has no `status_url`. Receivers MAY configure
+   shorter limits.
+8. A link with `status_url` has been checked for revocation. A receiver
+   that cannot check revocation MUST reject such a link, not accept it.
+   A revoked link rejects the chain.
+9. Every `credential_refs` entry with `expires_at` has not expired, and
+   the link does not expire more than 30 s after it.
+10. When the link has `aud`, the receiver's own identifier appears in it.
+    A receiver that is not given its own identifier MUST reject a link
+    that has `aud`.
+
+And for every link after the root:
+
+11. `delegator` equals the parent's `delegate`.
+12. `max_depth` ≤ the parent's `max_depth` − 1.
+13. Scopes narrow as in v1.
+14. Temporal nesting as in v1.
+15. `principal`, `origin`, `intent_hash` and `credential_refs` are
+    identical to the root's.
+16. When the parent has `aud`, the child has `aud` and it is a subset of
+    the parent's.
+17. Every parent constraint appears on the child with the same `type`
+    (and `currency`) and is equal or tighter: a lower or equal
+    `max_minor`, `remaining_minor` and `max`, and a subset of `ids`. The
+    child MAY add constraints.
+18. Every member named in the parent's `crit` is present and non-null on
+    the child and listed in the child's `crit`. Its value is identical to
+    the parent's, unless the extension's specification defines how it
+    narrows and the receiver applies that rule.
+19. `trust_tier` is not higher than the parent's
+    (`external` < `verified` < `owner` < `internal`).
+20. Fan-out, keyed by the parent's `link_id`, is below the parent's
+    `max_fan_out`.
+
+Any error the receiver hits while validating (an out-of-range value, a
+failing key or revocation lookup) MUST reject the chain.
+
+**Using a chain.** Before acting, a receiver checks that the actor is
+the chain's last `delegate` and checks the action against every link:
+the scope is granted, the resource is allowed, and for an action that
+moves money, the amount is given in the constrained currency, is within
+every `amount` cap, and together with what was already spent under each
+link stays within every `budget` remaining. A `budget` cannot be enforced
+without tracking spend: a receiver that does not track spend per
+`link_id` MUST refuse actions under a `budget`. After a spend succeeds,
+the receiver records it against every link in the chain. An action that
+moves money MUST be refused when no link carries an `amount` or `budget`
+constraint. The reference implementation provides `authorize_action`;
+count limits likewise need the receiver's counter.
+
+The reference implementation refuses v1 chains unless the caller passes
+`allow_v1=True`.
+
+`tests/vectors/delegation_chain_v2.json` covers these rules, and
+`spec/schemas/delegation-link-v2.json` describes the structure.
 
 ### 11.12 Task Redirect
 
@@ -2633,17 +2844,31 @@ message:
 ```
 
 Revocation reasons: `key_compromise`, `key_rotation`,
-`agent_decommissioned`. `replacement_key_id` and `jwks_url` are
-optional.
+`agent_decommissioned`. `replacement_key_id`, `jwks_url` and
+`compromised_at` are optional.
+
+| Field                | Type   | Required | Rules |
+|----------------------|--------|----------|-------|
+| `agent_id`           | string | YES      | 1..2048 chars, no whitespace or control characters |
+| `revoked_key_id`     | string | YES      | 1..256 chars, no whitespace or control characters |
+| `revoked_at`         | string | YES      | RFC 3339 `date-time` with an explicit UTC offset (`Z` or `+hh:mm`); naive timestamps MUST be rejected |
+| `reason`             | string | YES      | `key_compromise`, `key_rotation` or `agent_decommissioned` |
+| `replacement_key_id` | string | NO       | 1..256 chars; MUST differ from `revoked_key_id` |
+| `jwks_url`           | string | NO       | at most 2048 chars |
+| `compromised_at`     | string | NO       | `key_compromise` only; RFC 3339 with offset; MUST NOT be after `revoked_at`. Informational (see 12.12.1) |
+| `signature`          | string | YES      | at most 256 chars |
 
 `signature` is an Ed25519 signature, base64url-encoded without padding,
 by the revoking agent's key. It is computed over a canonical JSON
 object with these properties:
 
 - It contains every body field except `signature`.
-- Absent optional fields are included as `null`.
+- Absent optional fields are included as `null`, except
+  `compromised_at`, which is left out when absent (so revocations
+  signed before the field existed still verify). When present it is
+  signed like every other field.
 - Keys are sorted, the separators are `,` and `:`, and non-ASCII
-  characters are escaped as `\uXXXX`.
+  characters are emitted as raw UTF-8, not `\u` escapes.
 
 For the example above, the signed string is:
 
@@ -2658,6 +2883,45 @@ The receiver MUST verify the signature against a non-revoked key of
 `agent_id` before acting on the revocation, and MUST discard unverified
 revocations. Once a key is revoked, verifiers MUST stop accepting it
 immediately, including from caches (Section 12.15).
+
+#### 12.12.1 Compromise vs Rotation
+
+A thief holding a stolen key can put any timestamp it likes (for
+example a delegation link's `created_at`) on what it signs. A
+timestamp cut-off therefore cannot separate the owner's signatures
+from the thief's, and the reason decides what a revocation means:
+
+| `reason`               | Key status       | Signatures by the revoked key |
+|------------------------|------------------|-------------------------------|
+| `key_compromise`       | `compromised`    | Every one is invalid, whatever timestamp it claims, effective immediately. |
+| `agent_decommissioned` | `decommissioned` | Every one is invalid, whatever timestamp it claims, effective immediately. |
+| `key_rotation`         | `rotated`        | Artefacts signed strictly before `revoked_at` stay valid until their own expiry; the key MUST NOT be accepted for anything signed at or after `revoked_at`. Rotation is not compromise. |
+
+Rules for verifiers:
+
+- `compromised_at` is audit data only. Verifiers MUST NOT use it (or
+  `revoked_at`) to keep any signature by a compromised or
+  decommissioned key valid.
+- A key the verifier has no record of has status `unknown` and MUST
+  NOT be accepted. Statuses never move backwards: once a key is
+  `compromised`, `decommissioned` or `rotated`, seeing it in a JWKS
+  again MUST NOT make it `active`. A later `key_compromise` upgrades a
+  `rotated` key; of two `key_rotation` notices the earlier
+  `revoked_at` wins.
+- A verifier MUST only record a revocation after its signature
+  verifies (Section 12.12).
+- Agent ids are compared after the normalisation of Appendix E
+  (NFKC + IDNA host, case-insensitive), so one agent cannot have two
+  spellings with different statuses. Key ids are compared exactly.
+
+The reference implementation exposes this as `KeyStatus`
+(`active`, `rotated`, `compromised`, `decommissioned`, `unknown`), the
+`KeyStatusResolver` protocol (`key_status(agent_id, kid)`), the
+`signature_allowed(status, signed_at=..., revoked_at=...)` decision
+function and a bounded `InMemoryKeyStatusResolver` (LRU eviction of
+`active` entries only; revocation records are never evicted, and an
+agent that revokes more than 1000 keys is treated as wholly
+compromised).
 
 ### 12.13 Anti-Abuse Challenges
 
@@ -2707,6 +2971,49 @@ boundaries.
   SHOULD create a new span with the received span as parent.
 - When initiating a message with no existing trace context, the sender
   SHOULD generate new trace and span IDs.
+
+#### 12.14.1 W3C Trace Context and Hop Count (HTTP)
+
+The envelope headers above live inside the AMP envelope, as does
+`Visited-Agents` loop detection, so neither survives a hop through another
+protocol (AMP → A2A → MCP → AMP). Every HTTP route of the reference
+implementation (`POST /agent/message`, the A2A, PACT and MCP adapters) and
+every outbound client therefore also carries these **HTTP request headers**
+(not envelope headers), implemented in `ampro.interop.propagation`:
+
+| Header          | Format | Description |
+|-----------------|--------|-------------|
+| `traceparent`   | W3C Trace Context, version `00` | `00-<trace-id 32 hex>-<parent-id 16 hex>-<flags 2 hex>` |
+| `tracestate`    | W3C Trace Context | Vendor state, passed through unchanged (bounded) |
+| `AMP-Hop-Count` | 1-4 ASCII digits | Agent-to-agent hops taken so far, across all protocols |
+
+- **Strict parsing.** A receiver MUST reject (400; `INVALID_PARAMS` on A2A,
+  JSON-RPC `-32600` on MCP) a `traceparent` that is not exactly
+  `00-<32 lowercase hex>-<16 lowercase hex>-<2 lowercase hex>`, whose
+  trace-id or parent-id is all zeros, or whose version is `ff`. A higher
+  version is parsed per the W3C forward-compatibility rule (first 55
+  characters as version `00`; if longer, the 56th character MUST be `-`).
+  Values are bounded (256 characters) before parsing. Malformed input is
+  rejected, never repaired.
+- `tracestate` is read only alongside a valid `traceparent`. It MUST follow
+  the W3C list grammar with at most 32 members and no duplicate keys, or the
+  request is rejected. A value longer than 512 characters is truncated by
+  dropping members longer than 128 characters first, then members from the
+  end.
+- A receiver continues the trace: the handler's `trace_id` is the received
+  trace-id, its `parent_span_id` the received parent-id, and it mints a new
+  `span_id`. Outbound calls made while handling the request send that span
+  as their parent-id and the received `tracestate`. Only the `sampled` flag
+  is propagated.
+- **Hop count.** The effective hop count is the **maximum** of
+  `AMP-Hop-Count`, any protocol-specific copy (A2A `metadata["amp.hopCount"]`)
+  and the number of `Visited-Agents` entries; a lower value never lowers it.
+  If it exceeds the limit (`SecurityPolicy.max_visited_agents`, default 20)
+  the request is rejected: 409 `loop-detected` on `POST /agent/message`,
+  400 on A2A / PACT / MCP. Every outbound call sends `hop count + 1`, and a
+  client MUST NOT send a request whose hop count would exceed the limit.
+- When several carriers of the same request (HTTP header, A2A metadata, AMP
+  extension `traceId` / `spanId`) disagree, the request is rejected.
 
 ### 12.15 HTTP Message Signatures (RFC 9421 Profile)
 
@@ -3946,11 +4253,32 @@ below are abbreviated.
     "certifications": {
       "type": "array",
       "items": {"type": "object"}
+    },
+    "foreign_identifiers": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["scheme", "id", "kind"],
+        "properties": {
+          "scheme": {"type": "string", "enum": ["https", "did"]},
+          "id": {"type": "string", "maxLength": 2048},
+          "kind": {
+            "type": "string",
+            "enum": ["oauth-client-id", "did", "http-signature-directory"]
+          },
+          "proof": {"$ref": "body/identity.link_proof.json"}
+        }
+      },
+      "description": "Names for this agent in other ecosystems (Appendix E.4)"
     }
   },
   "additionalProperties": true
 }
 ```
+
+The generated schema in `spec/schemas/agent-json.json` is normative
+where it differs from this sketch.
 
 ---
 
@@ -4020,7 +4348,10 @@ otherwise follow the order of the reference server.
    being replayed against agent B.
 7. **Loop detection** -- A `Visited-Agents` header with more than 20
    entries, or one that already contains this agent, is rejected with
-   409.
+   409. So is a hop count (the larger of the `AMP-Hop-Count` HTTP header
+   and the `Visited-Agents` count, Section 12.14.1) above the same limit;
+   a malformed `traceparent`, `tracestate` or `AMP-Hop-Count` is rejected
+   with 400 before the body is dispatched.
 8. **Handler lookup** -- A body type with no handler gets 501.
 9. **Deduplication** -- The key is
    `principal_id || 0x00 || sender || 0x00 || id`.
@@ -4101,6 +4432,92 @@ acceptable as internal shorthand. They MUST be normalized to full
 | `@alice`              | `agent://alice@{default_registry}`       |
 | `https://example.com` | `agent://example.com`                    |
 | `example.com`         | `agent://example.com`                    |
+
+### E.4 Foreign Identifiers
+
+The same agent is often known elsewhere by another name: an MCP client
+ID metadata document URL, an ANP `did:wba` or a `did:web` DID, or a
+Web Bot Auth `Signature-Agent` key directory URL. `agent.json` lists
+them in `foreign_identifiers`:
+
+```json
+"foreign_identifiers": [
+  {
+    "scheme": "https",
+    "id": "https://assistant.example.com/oauth/client-metadata.json",
+    "kind": "oauth-client-id",
+    "proof": {
+      "source_id": "agent://assistant.example.com",
+      "target_id": "https://assistant.example.com/oauth/client-metadata.json",
+      "proof_type": "ed25519_cross_sign",
+      "proof": "...",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "expires_at": "2027-10-01T00:00:00Z"
+    }
+  },
+  {"scheme": "did", "id": "did:wba:example.com:user:assistant", "kind": "did"},
+  {
+    "scheme": "https",
+    "id": "https://assistant.example.com/.well-known/http-message-signatures-directory",
+    "kind": "http-signature-directory"
+  }
+]
+```
+
+| `kind`                     | `scheme` | Meaning |
+|----------------------------|----------|---------|
+| `oauth-client-id`          | `https`  | OAuth / MCP client ID metadata document URL |
+| `did`                      | `did`    | A DID; methods `key`, `web` and `wba` only |
+| `http-signature-directory` | `https`  | Web Bot Auth HTTP message signatures key directory |
+
+**Trust rule.** A foreign identifier confers no trust by itself.
+Verifiers MUST treat it as the same entity only when its `proof` is an
+identity link (`identity.link_proof`, Section 16.1.9) whose two ids are
+one of this agent's `agent://` identifiers and exactly this foreign id
+(in either order, compared in canonical form), that has not expired,
+whose `timestamp` is not in the future (5 minutes of skew allowed), and
+whose cryptographic proof verifies. Entries without such a proof MUST
+be ignored. A proof that verifies for one foreign id MUST NOT be
+applied to another.
+
+**Syntax.** Entries that break these rules MUST be ignored
+individually; they MUST NOT make the whole `agent.json` invalid, so
+that new `kind` values can be added later. A list longer than 16
+entries is invalid.
+
+`https` ids:
+
+- The scheme MUST be `https`; `http` and other schemes are rejected.
+- No userinfo (`@` in the authority), query or fragment; no
+  backslashes, whitespace or control characters.
+- The host is a DNS name with at least two labels, normalised as in
+  E.2 (NFKC, then IDNA to its A-label form, lowercased). IP literals,
+  a trailing dot and percent-encoded hosts are rejected. A
+  look-alike Unicode host therefore never equals the ASCII name it
+  imitates.
+- The port is 1..65535; `:443` is dropped.
+- The path is ASCII and is percent-normalised (RFC 3986 section 6.2.2):
+  escapes of unreserved characters are decoded and other escapes use
+  upper-case hex. Encoded control characters, `/`, `\` and `%`, as
+  well as `.` / `..` segments, are rejected. An empty path becomes
+  `/`.
+- At most 2048 characters.
+
+DIDs:
+
+- The method MUST be `key`, `web` or `wba`, in lowercase. A bare DID
+  only: no path, query or fragment.
+- `did:key` MUST be an Ed25519 multibase key (`z6Mk...`, base58btc).
+- `did:web` / `did:wba`: the first segment is a DNS name (same rules
+  as an `https` host, ASCII only), optionally followed by a
+  `%3A`-encoded port; any further `:`-separated segments use
+  `[A-Za-z0-9._-]` only.
+- At most 512 characters.
+
+The reference implementation provides `ForeignIdentifier`,
+`normalize_foreign_https_id`, `normalize_foreign_did` and
+`verified_foreign_aliases(own_identifiers, foreign_identifiers,
+verify_proof=...)`, which returns only the proven aliases.
 
 ---
 

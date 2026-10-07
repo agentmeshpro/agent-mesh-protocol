@@ -34,6 +34,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from ampro.delegation.tracing import TRACEPARENT_HEADER, TRACESTATE_HEADER, format_traceparent
 from ampro.interop.a2a.card import AMP_EXTENSION_URI
 from ampro.interop.a2a.errors import A2AError
 from ampro.interop.a2a.types import (
@@ -51,6 +52,15 @@ from ampro.interop.a2a.types import (
     StreamResponse,
     Task,
     dump,
+)
+from ampro.interop.propagation import (
+    DEFAULT_MAX_HOPS,
+    HOP_COUNT_METADATA_KEY,
+    TracePropagationError,
+    check_max_hops,
+    outbound_hop_count,
+    outbound_propagation,
+    parse_hop_count,
 )
 from ampro.transport.limits import (
     ResponseTooLarge,
@@ -247,6 +257,12 @@ class A2AClient:
             the same origin as the fetched card URL, so a card cannot send
             your token elsewhere.  A card passed in directly (object or dict)
             is trusted as given.
+        max_hops: refuse to send (``HopLimitExceeded``) when the outbound hop
+            count would exceed this.  Every request carries W3C
+            ``traceparent`` / ``tracestate`` and ``AMP-Hop-Count`` taken from
+            the handler the client is called from (see
+            :mod:`ampro.interop.propagation`); messages also carry
+            ``amp.hopCount`` in their metadata.
     """
 
     def __init__(
@@ -264,7 +280,9 @@ class A2AClient:
         allow_http: bool = False,
         stream_timeout: float = 300.0,
         trusted_origins: Iterable[str] = (),
+        max_hops: int = DEFAULT_MAX_HOPS,
     ) -> None:
+        self.max_hops = check_max_hops(max_hops)
         self._trusted_origins = {_origin(o) for o in trusted_origins}
         self._card: AgentCard | None = None
         self.card_url: str | None = None
@@ -341,8 +359,33 @@ class A2AClient:
         headers.update(self._auth_headers)
         return {"auth": self._auth} if self._auth is not None else {}
 
-    async def _headers(self) -> dict[str, str]:
+    def _trace_headers(self, amp: dict[str, Any] | None = None) -> dict[str, str]:
+        """``traceparent`` / ``tracestate`` / ``AMP-Hop-Count`` for one request.
+
+        When the AMP extension object names a ``traceId`` / ``spanId`` the
+        ``traceparent`` is built from them so the two never disagree (the
+        server rejects a request whose extension contradicts its
+        ``traceparent``); ids that are not W3C-shaped suppress the
+        ``traceparent`` instead.  The hop count is always sent.
+        """
+        prop = outbound_propagation(self.max_hops)
+        headers = prop.outbound_headers(self.max_hops)
+        if amp:
+            tid = amp.get("traceId", amp.get("trace_id"))
+            sid = amp.get("spanId", amp.get("span_id"))
+            if tid is not None or sid is not None:
+                try:
+                    headers[TRACEPARENT_HEADER] = format_traceparent(
+                        prop.trace_id if tid is None else tid,
+                        prop.span_id if sid is None else sid, prop.trace_flags)
+                except ValueError:
+                    headers.pop(TRACEPARENT_HEADER, None)
+                    headers.pop(TRACESTATE_HEADER, None)
+        return headers
+
+    async def _headers(self, amp: dict[str, Any] | None = None) -> dict[str, str]:
         headers = {"A2A-Version": A2A_PROTOCOL_VERSION, "Content-Type": "application/json"}
+        headers.update(self._trace_headers(amp))
         exts = self._extensions
         if exts is None:
             card = await self.fetch_card()
@@ -391,6 +434,17 @@ class A2AClient:
         update["metadata"] = meta or None
         return msg.model_copy(update=update)
 
+    def _with_hop_count(self, msg: Message) -> Message:
+        """Stamp ``amp.hopCount`` (never lowering a larger value already set)."""
+        hop = outbound_hop_count(self.max_hops)
+        meta = dict(msg.metadata or {})
+        try:
+            hop = max(hop, parse_hop_count(meta.get(HOP_COUNT_METADATA_KEY, 0)))
+        except TracePropagationError:
+            pass
+        meta[HOP_COUNT_METADATA_KEY] = hop
+        return msg.model_copy(update={"metadata": meta})
+
     async def send_message(
         self,
         content: str | Part | Iterable[Part | dict[str, Any]] | Message,
@@ -406,12 +460,14 @@ class A2AClient:
 
         *amp* is placed under the AMP extension key in the message metadata.
         """
-        msg = self.build_message(content, context_id=context_id, task_id=task_id,
-                                 metadata=metadata, amp=amp, message_id=message_id)
+        msg = self._with_hop_count(self.build_message(
+            content, context_id=context_id, task_id=task_id,
+            metadata=metadata, amp=amp, message_id=message_id))
         params: dict[str, Any] = {"message": dump(msg)}
         if configuration:
             params["configuration"] = configuration
-        result = await self._call("SendMessage", "POST", "/message:send", json_body=params)
+        result = await self._call("SendMessage", "POST", "/message:send", json_body=params,
+                                  amp=amp)
         resp = SendMessageResponse.model_validate(result)
         return resp.task if resp.task is not None else resp.message  # type: ignore[return-value]
 
@@ -426,10 +482,11 @@ class A2AClient:
         message_id: str | None = None,
     ) -> AsyncIterator[StreamResponse]:
         """Send a message and yield ``StreamResponse`` events as they arrive."""
-        msg = self.build_message(content, context_id=context_id, task_id=task_id,
-                                 metadata=metadata, amp=amp, message_id=message_id)
+        msg = self._with_hop_count(self.build_message(
+            content, context_id=context_id, task_id=task_id,
+            metadata=metadata, amp=amp, message_id=message_id))
         async for event in self._stream("SendStreamingMessage", "/message:stream",
-                                        {"message": dump(msg)}):
+                                        {"message": dump(msg)}, amp=amp):
             yield event
 
     async def subscribe(self, task_id: str) -> AsyncIterator[StreamResponse]:
@@ -465,9 +522,10 @@ class A2AClient:
     # ------------------------------------------------------------------
 
     async def _call(self, rpc_method: str, http_method: str, path: str, *,
-                    json_body: dict[str, Any], query: dict[str, str] | None = None) -> Any:
+                    json_body: dict[str, Any], query: dict[str, str] | None = None,
+                    amp: dict[str, Any] | None = None) -> Any:
         iface = await self.interface()
-        headers = await self._headers()
+        headers = await self._headers(amp)
         if iface.protocol_binding == BINDING_HTTP_JSON:
             url = iface.url.rstrip("/") + path
             kw: dict[str, Any] = {"headers": headers, "params": query or None}
@@ -498,9 +556,10 @@ class A2AClient:
         return payload.get("result")
 
     async def _stream(self, rpc_method: str, path: str,
-                      params: dict[str, Any]) -> AsyncIterator[StreamResponse]:
+                      params: dict[str, Any],
+                      amp: dict[str, Any] | None = None) -> AsyncIterator[StreamResponse]:
         iface = await self.interface()
-        headers = await self._headers()
+        headers = await self._headers(amp)
         headers["Accept"] = "text/event-stream"
         rest = iface.protocol_binding == BINDING_HTTP_JSON
         if rest:

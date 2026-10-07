@@ -39,6 +39,8 @@ from ampro.wire.schemas import (  # noqa: E402
 #: (file, section, index) -> the schema whose x-amp-constraints covers it.
 SEMANTIC_ONLY: dict[tuple[str, str, int], str] = {
     ("identity_link.json", "vectors", 10): "body/identity.link_proof.json",
+    ("key_revocation.json", "vectors", 13): "body/key.revocation.json",
+    ("key_revocation.json", "vectors", 14): "body/key.revocation.json",
 }
 
 

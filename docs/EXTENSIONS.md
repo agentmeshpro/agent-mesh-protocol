@@ -67,6 +67,10 @@ Use one of these forms:
   `title`, so that clients that do not know your URN still behave
   correctly.
 - `urn:amp:` is reserved.
+- To say "the caller needs more authority", do not define a new type:
+  use `urn:amp:error:authority-required` (WIRE-BINDING 7.2.14) and put
+  your requirement in a `required_constraints` entry whose `type` is in
+  your namespace (for example `com.acme:region`).
 
 ### Extension URIs
 
