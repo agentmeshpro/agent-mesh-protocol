@@ -496,7 +496,10 @@ def _h_key_revocation(doc, section, case, mp):
     body = KeyRevocationBody.model_validate(case["body"])
     # Canonical form: every field except signature, model defaults (null)
     # included, sorted keys, compact separators.
+    # The one exception: compromised_at is omitted when absent.
     fields = {k: v for k, v in body.model_dump(mode="json").items() if k != "signature"}
+    if fields.get("compromised_at") is None:
+        fields.pop("compromised_at", None)
     canonical = json.dumps(fields, sort_keys=True, separators=(",", ":"))
     expect_valid = case.get("signature_valid", True)
     assert (canonical == case["expected_canonical"]) is expect_valid

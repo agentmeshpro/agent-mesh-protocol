@@ -10,9 +10,18 @@ from ampro.security.concurrency_limiter import ConcurrencyLimiter
 from ampro.security.dedup import DedupStore, InMemoryDedupStore
 from ampro.security.encryption import CONTENT_ENCRYPTION_HEADER, EncryptedBody
 from ampro.security.key_revocation import (
+    InMemoryKeyStatusResolver,
     KeyRevocationBody,
+    KeyStatus,
+    KeyStatusRecord,
+    KeyStatusResolver,
+    KeyStatusStoreFullError,
     RevocationReason,
+    canonical_revocation_bytes,
     is_revocation_authentic,
+    key_status_for_reason,
+    parse_rfc3339_timestamp,
+    signature_allowed,
     validate_revocation_signature,
 )
 from ampro.security.nonce_tracker import NonceTracker
@@ -45,7 +54,10 @@ __all__ = [
     "EncryptedBody", "CONTENT_ENCRYPTION_HEADER",
     # Key revocation
     "RevocationReason", "KeyRevocationBody", "validate_revocation_signature",
-    "is_revocation_authentic",
+    "is_revocation_authentic", "canonical_revocation_bytes", "parse_rfc3339_timestamp",
+    # Key status (compromise vs rotation)
+    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord", "KeyStatusStoreFullError",
+    "InMemoryKeyStatusResolver", "signature_allowed", "key_status_for_reason",
     # Concurrency
     "ConcurrencyLimiter",
     # Sender tracker

@@ -274,14 +274,22 @@ from ampro.security.encryption import (
 
 # --- Key revocation ---
 from ampro.security.key_revocation import (
+    InMemoryKeyStatusResolver,
     KeyRevocationBody,
     KeyRevocationBroadcastBody,
+    KeyStatus,
+    KeyStatusRecord,
+    KeyStatusResolver,
+    KeyStatusStoreFullError,
     RevocationReason,
     RevocationStore,
+    canonical_revocation_bytes,
     is_revocation_authentic,
+    key_status_for_reason,
     register_revocation_store,
     revocation_verify_cached_key,
     should_reject_cached_key,
+    signature_allowed,
 )
 from ampro.security.nonce_tracker import NonceTracker
 from ampro.security.rate_limit import RateLimitInfo, format_rate_limit_headers
@@ -475,6 +483,10 @@ __all__ = [
     "KeyRevocationBroadcastBody", "RevocationStore",
     "register_revocation_store", "should_reject_cached_key",
     "revocation_verify_cached_key",
+    # Key status (compromise vs rotation)
+    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord", "KeyStatusStoreFullError",
+    "InMemoryKeyStatusResolver", "signature_allowed", "key_status_for_reason",
+    "canonical_revocation_bytes",
     # Tool consent
     "ToolConsentRequestBody", "ToolConsentGrantBody", "ToolDefinition",
     # Backpressure

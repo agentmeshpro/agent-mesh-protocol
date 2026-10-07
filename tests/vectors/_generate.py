@@ -1033,6 +1033,9 @@ def _revocation_canonical(body: dict) -> bytes:
 
     model = KeyRevocationBody.model_validate(body)
     fields = {k: v for k, v in model.model_dump(mode="json").items() if k != "signature"}
+    # compromised_at is omitted when absent (pre-existing signatures stay valid).
+    if fields.get("compromised_at") is None:
+        fields.pop("compromised_at", None)
     return json.dumps(fields, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 

@@ -2785,15 +2785,29 @@ message:
 ```
 
 Revocation reasons: `key_compromise`, `key_rotation`,
-`agent_decommissioned`. `replacement_key_id` and `jwks_url` are
-optional.
+`agent_decommissioned`. `replacement_key_id`, `jwks_url` and
+`compromised_at` are optional.
+
+| Field                | Type   | Required | Rules |
+|----------------------|--------|----------|-------|
+| `agent_id`           | string | YES      | 1..2048 chars, no whitespace or control characters |
+| `revoked_key_id`     | string | YES      | 1..256 chars, no whitespace or control characters |
+| `revoked_at`         | string | YES      | RFC 3339 `date-time` with an explicit UTC offset (`Z` or `+hh:mm`); naive timestamps MUST be rejected |
+| `reason`             | string | YES      | `key_compromise`, `key_rotation` or `agent_decommissioned` |
+| `replacement_key_id` | string | NO       | 1..256 chars; MUST differ from `revoked_key_id` |
+| `jwks_url`           | string | NO       | at most 2048 chars |
+| `compromised_at`     | string | NO       | `key_compromise` only; RFC 3339 with offset; MUST NOT be after `revoked_at`. Informational (see 12.12.1) |
+| `signature`          | string | YES      | at most 256 chars |
 
 `signature` is an Ed25519 signature, base64url-encoded without padding,
 by the revoking agent's key. It is computed over a canonical JSON
 object with these properties:
 
 - It contains every body field except `signature`.
-- Absent optional fields are included as `null`.
+- Absent optional fields are included as `null`, except
+  `compromised_at`, which is left out when absent (so revocations
+  signed before the field existed still verify). When present it is
+  signed like every other field.
 - Keys are sorted, the separators are `,` and `:`, and non-ASCII
   characters are escaped as `\uXXXX`.
 
@@ -2810,6 +2824,45 @@ The receiver MUST verify the signature against a non-revoked key of
 `agent_id` before acting on the revocation, and MUST discard unverified
 revocations. Once a key is revoked, verifiers MUST stop accepting it
 immediately, including from caches (Section 12.15).
+
+#### 12.12.1 Compromise vs Rotation
+
+A thief holding a stolen key can put any timestamp it likes (for
+example a delegation link's `created_at`) on what it signs. A
+timestamp cut-off therefore cannot separate the owner's signatures
+from the thief's, and the reason decides what a revocation means:
+
+| `reason`               | Key status       | Signatures by the revoked key |
+|------------------------|------------------|-------------------------------|
+| `key_compromise`       | `compromised`    | Every one is invalid, whatever timestamp it claims, effective immediately. |
+| `agent_decommissioned` | `decommissioned` | Every one is invalid, whatever timestamp it claims, effective immediately. |
+| `key_rotation`         | `rotated`        | Artefacts signed strictly before `revoked_at` stay valid until their own expiry; the key MUST NOT be accepted for anything signed at or after `revoked_at`. Rotation is not compromise. |
+
+Rules for verifiers:
+
+- `compromised_at` is audit data only. Verifiers MUST NOT use it (or
+  `revoked_at`) to keep any signature by a compromised or
+  decommissioned key valid.
+- A key the verifier has no record of has status `unknown` and MUST
+  NOT be accepted. Statuses never move backwards: once a key is
+  `compromised`, `decommissioned` or `rotated`, seeing it in a JWKS
+  again MUST NOT make it `active`. A later `key_compromise` upgrades a
+  `rotated` key; of two `key_rotation` notices the earlier
+  `revoked_at` wins.
+- A verifier MUST only record a revocation after its signature
+  verifies (Section 12.12).
+- Agent ids are compared after the normalisation of Appendix E
+  (NFKC + IDNA host, case-insensitive), so one agent cannot have two
+  spellings with different statuses. Key ids are compared exactly.
+
+The reference implementation exposes this as `KeyStatus`
+(`active`, `rotated`, `compromised`, `decommissioned`, `unknown`), the
+`KeyStatusResolver` protocol (`key_status(agent_id, kid)`), the
+`signature_allowed(status, signed_at=..., revoked_at=...)` decision
+function and a bounded `InMemoryKeyStatusResolver` (LRU eviction of
+`active` entries only; revocation records are never evicted, and an
+agent that revokes more than 1000 keys is treated as wholly
+compromised).
 
 ### 12.13 Anti-Abuse Challenges
 

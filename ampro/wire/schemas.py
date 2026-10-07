@@ -43,6 +43,12 @@ SEMANTIC_CONSTRAINTS: dict[str, list[str]] = {
     ],
     "key.revocation": [
         "signature MUST verify over the canonical form (tests/vectors/key_revocation.json)",
+        "revoked_at and compromised_at MUST be valid calendar instants",
+        "replacement_key_id MUST differ from revoked_key_id",
+        "compromised_at is only allowed with reason key_compromise and MUST NOT be after revoked_at",
+        "key_compromise / agent_decommissioned invalidate every signature by the key "
+        "regardless of its timestamp; key_rotation invalidates only signatures made at "
+        "or after revoked_at (WIRE-BINDING section 12.12.1)",
     ],
     "registry.federation_request": [
         "trust proof MUST verify per WIRE-BINDING section 12.16.1",
