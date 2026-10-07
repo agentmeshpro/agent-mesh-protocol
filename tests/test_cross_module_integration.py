@@ -61,11 +61,17 @@ def test_1_handshake_session_binding_message():
         body={"text": "hello"},
         headers={"Session-Id": "s1"},
     )
-    hmac_val = create_message_binding("s1", msg.id, est.binding_token)
-    assert verify_message_binding("s1", msg.id, est.binding_token, hmac_val)
+    hmac_val = create_message_binding("s1", msg.id, est.binding_token, body=msg.body)
+    assert verify_message_binding(
+        "s1", msg.id, est.binding_token, hmac_val, body=msg.body
+    )
+    # Body tampering must be detected
+    assert not verify_message_binding(
+        "s1", msg.id, est.binding_token, hmac_val, body={"text": "evil"}
+    )
 
     # Negative: wrong binding token should fail
-    assert not verify_message_binding("s1", msg.id, "wrong-token", hmac_val)
+    assert not verify_message_binding("s1", msg.id, "wrong-token", hmac_val, body=msg.body)
 
     print("PASS: Handshake -> Session Binding -> Message")
 

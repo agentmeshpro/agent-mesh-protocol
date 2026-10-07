@@ -2,10 +2,15 @@
 AMP Client SDK — Session management with 3-phase handshake.
 
 Implements the full session lifecycle:
-  1. Client sends ``session.init`` with ``client_nonce``
-  2. Server replies ``session.established`` with ``server_nonce`` + ``binding_token``
-  3. Client sends ``session.confirm`` with ``binding_proof``
+  1. Client sends ``session.init`` with ``client_nonce`` and an ephemeral
+     X25519 public key (``client_ephemeral_key``)
+  2. Server replies ``session.established`` with ``server_nonce``,
+     ``confirm_nonce`` and ``server_ephemeral_key``; both sides derive the
+     binding key via X25519 + HKDF (the key is never transmitted)
+  3. Client sends ``session.confirm`` with ``binding_proof`` and the echoed
+     ``confirm_nonce``
   4. Session is ACTIVE — all subsequent messages include binding headers
+     whose HMAC covers the message body
 
 Usage::
 
@@ -18,13 +23,17 @@ Usage::
 
 from __future__ import annotations
 
-import secrets
 from types import TracebackType
 from typing import Any
 
 from ampro.client.core import _post_message, _resolve_endpoint
 from ampro.core.envelope import AgentMessage
 from ampro.session.binding import create_message_binding
+from ampro.session.handshake import (
+    SessionEstablishedBody,
+    client_finish_handshake,
+    client_start_handshake,
+)
 
 
 class Session:
@@ -44,7 +53,9 @@ class Session:
         sender: str,
         session_id: str,
         binding_token: str,
+        allow_private: bool = False,
     ) -> None:
+        self._allow_private = allow_private
         self._endpoint = endpoint
         self._target_uri = target_uri
         self._sender = sender
@@ -84,11 +95,12 @@ class Session:
             body=body,
         )
 
-        # Compute per-message binding proof
+        # Compute per-message binding proof (covers the wire-form body)
         binding_proof = create_message_binding(
             self.session_id,
             msg.id,
             self._binding_token,
+            body=msg.model_dump(mode="json")["body"],
         )
 
         return await _post_message(
@@ -96,6 +108,7 @@ class Session:
             msg,
             timeout=timeout,
             extra_headers={"Session-Binding": binding_proof},
+            allow_private=self._allow_private,
         )
 
     async def close(self) -> None:
@@ -111,11 +124,13 @@ class Session:
             self.session_id,
             msg.id,
             self._binding_token,
+            body=msg.model_dump(mode="json")["body"],
         )
         await _post_message(
             self._endpoint,
             msg,
             extra_headers={"Session-Binding": binding_proof},
+            allow_private=self._allow_private,
         )
 
     async def __aenter__(self) -> Session:
@@ -137,19 +152,25 @@ class Session:
 async def connect(
     to: str,
     sender: str | None = None,
+    *,
+    allow_private: bool = False,
 ) -> Session:
     """Establish a session via the 3-phase AMP handshake.
 
-    1. Sends ``session.init`` with a random ``client_nonce``.
+    1. Sends ``session.init`` with a random ``client_nonce`` and an
+       ephemeral X25519 public key.
     2. Receives ``session.established`` with ``server_nonce``,
-       ``session_id``, and ``binding_token``.
-    3. Sends ``session.confirm`` with ``binding_proof``
-       (HMAC-SHA256 with binding_token as key over
-       client_nonce + server_nonce + session_id).
+       ``session_id``, ``confirm_nonce`` and ``server_ephemeral_key``;
+       derives the binding key locally (never sent on the wire). A
+       response without ``server_ephemeral_key`` is refused.
+    3. Sends ``session.confirm`` with ``binding_proof`` (HMAC over the
+       handshake transcript) and the echoed ``confirm_nonce``.
 
     Args:
         to: Agent URI of the target agent.
         sender: Agent URI of the sender (defaults to ``"anonymous"``).
+        allow_private: Allow the target to resolve to a loopback/private
+            address (local development only).
 
     Returns:
         An active ``Session`` ready for communication.
@@ -157,24 +178,21 @@ async def connect(
     Raises:
         AmpProtocolError: If any handshake step fails.
         ValueError: If the URI cannot be resolved or the server
-            returns an unexpected body type.
+            returns an unexpected / malformed body.
+        SessionBindingError: If the server did not perform key agreement.
     """
     endpoint = await _resolve_endpoint(to)
     sender_uri = sender or "anonymous"
-    client_nonce = secrets.token_hex(32)
 
-    # Phase 1: session.init
+    # Phase 1: session.init (with ephemeral key)
+    init_body, client_state = client_start_handshake(["messaging"], "1.0.0")
     init_msg = AgentMessage(
         sender=sender_uri,
         recipient=to,
         body_type="session.init",
-        body={
-            "proposed_capabilities": ["messaging"],
-            "proposed_version": "1.0.0",
-            "client_nonce": client_nonce,
-        },
+        body=init_body.model_dump(mode="json", exclude_none=True),
     )
-    established_msg = await _post_message(endpoint, init_msg)
+    established_msg = await _post_message(endpoint, init_msg, allow_private=allow_private)
 
     # Validate the response
     if established_msg.body_type != "session.established":
@@ -185,44 +203,28 @@ async def connect(
     body = established_msg.body
     if not isinstance(body, dict):
         raise ValueError("session.established body must be a dict")
+    try:
+        established = SessionEstablishedBody.model_validate(body)
+    except Exception as exc:
+        raise ValueError(f"malformed session.established: {exc}") from exc
 
-    required_keys = {"session_id", "server_nonce", "binding_token"}
-    missing = required_keys - set(body.keys())
-    if missing:
-        raise ValueError(f"session.established missing required fields: {missing}")
+    # Phase 2/3: derive key locally, compute proof, echo confirm_nonce
+    confirm_body, binding = client_finish_handshake(client_state, established)
 
-    session_id = body["session_id"]
-    server_nonce = body["server_nonce"]
-    binding_token = body["binding_token"]
-
-    # Phase 2: compute binding proof
-    # HMAC-SHA256 with binding_token as key, client_nonce + server_nonce as message
-    from ampro.session.binding import derive_binding_token
-
-    binding_proof = derive_binding_token(
-        client_nonce=client_nonce,
-        server_nonce=server_nonce,
-        session_id=session_id,
-        shared_secret=binding_token,
-    )
-
-    # Phase 3: session.confirm
     confirm_msg = AgentMessage(
         sender=sender_uri,
         recipient=to,
         body_type="session.confirm",
-        headers={"Session-Id": session_id},
-        body={
-            "session_id": session_id,
-            "binding_proof": binding_proof,
-        },
+        headers={"Session-Id": binding.session_id},
+        body=confirm_body.model_dump(mode="json"),
     )
-    await _post_message(endpoint, confirm_msg)
+    await _post_message(endpoint, confirm_msg, allow_private=allow_private)
 
     return Session(
         endpoint=endpoint,
         target_uri=to,
         sender=sender_uri,
-        session_id=session_id,
-        binding_token=binding_token,
+        session_id=binding.session_id,
+        binding_token=binding.binding_token,
+        allow_private=allow_private,
     )

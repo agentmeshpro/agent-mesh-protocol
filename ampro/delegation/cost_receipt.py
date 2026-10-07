@@ -7,7 +7,7 @@ enabling end-to-end cost visibility.
 
 This module is PURE — only stdlib + pydantic + cryptography.
 No platform-specific imports (app.*, etc.).
-Designed for extraction as part of `pip install agent-protocol`.
+Designed for extraction as part of `pip install ampro`.
 """
 
 # ─── Reference implementation, not production-wired ────────────────
@@ -47,7 +47,14 @@ class CostReceipt(BaseModel):
 
     agent_id: str = Field(description="Agent that incurred the cost")
     task_id: str = Field(description="Task the cost is associated with")
-    cost_usd: float = Field(description="Cost in USD")
+    cost_usd: float = Field(
+        ge=0,
+        allow_inf_nan=False,
+        description=(
+            "Cost in USD. MUST be finite and >= 0 — a negative cost would "
+            "act as a refund and let a hop inflate the remaining chain budget."
+        ),
+    )
     currency: str = Field(default="USD", description="ISO 4217 currency code")
     breakdown: dict[str, Any] | None = Field(
         default=None,

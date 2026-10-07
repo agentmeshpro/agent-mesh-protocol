@@ -11,11 +11,11 @@ Run:
 """
 
 from ampro import (
+    CONTENT_ENCRYPTION_HEADER,
     AgentMessage,
     EncryptedBody,
     TaskCreateBody,
     validate_body,
-    CONTENT_ENCRYPTION_HEADER,
 )
 
 # ---------------------------------------------------------------------------
@@ -61,11 +61,11 @@ print(f"  sender:    {encrypted_msg.sender}")
 print(f"  recipient: {encrypted_msg.recipient}")
 print(f"  body_type: {encrypted_msg.body_type}")
 print(f"  id:        {encrypted_msg.id}")
-print(f"  headers:")
+print("  headers:")
 for k, v in encrypted_msg.headers.items():
     print(f"    {k}: {v}")
 
-print(f"\n  Encrypted body fields:")
+print("\n  Encrypted body fields:")
 print(f"    ciphertext:       {encrypted_body.ciphertext[:40]}...")
 print(f"    iv:               {encrypted_body.iv}")
 print(f"    tag:              {encrypted_body.tag}")
@@ -142,7 +142,7 @@ print()
 print("  DECRYPTED envelope:")
 dec_dump = decrypted_msg.model_dump()
 print(f"    body_type: {dec_dump['body_type']}")
-print(f"    headers:   (no encryption header)")
+print("    headers:   (no encryption header)")
 print(f"    body:      description={dec_dump['body']['description']}")
 
 # ---------------------------------------------------------------------------

@@ -9,18 +9,19 @@ Run:
     python examples/06_delegation_chains.py
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ampro import (
-    DelegationLink,
     DelegationChain,
+    DelegationLink,
+    check_visited_agents_limit,
+    check_visited_agents_loop,
+    parse_chain_budget,
+    sign_delegation,
     validate_chain,
     validate_scope_narrowing,
-    sign_delegation,
-    parse_chain_budget,
-    check_visited_agents_loop,
-    check_visited_agents_limit,
 )
 
 # --- Generate keypairs for 3 agents ---

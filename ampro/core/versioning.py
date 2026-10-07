@@ -5,7 +5,7 @@ Tracks supported protocol versions, validates client version requests,
 and formats HTTP Sunset headers per RFC 7231.
 
 This module is PURE — no platform-specific imports (app.*, etc.).
-Designed for extraction as part of `pip install agent-protocol`.
+Designed for extraction as part of `pip install ampro`.
 """
 
 from __future__ import annotations
@@ -30,20 +30,39 @@ _SEMVER_RE = re.compile(
 )
 
 
+def _major(version: str) -> int:
+    return int(version.split(".", 1)[0])
+
+
+def _best_for_major(major: int) -> str | None:
+    """Highest supported version sharing *major*, or None."""
+    candidates = [v for v in SUPPORTED_VERSIONS if _major(v) == major]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda v: tuple(int(p) for p in v.split("-")[0].split("+")[0].split(".")))
+
+
 def check_version(requested: str | None) -> str:
     """
     Validate a client-requested protocol version.
+
+    Per PROTOCOL-CONTRACTS, receivers MUST NOT reject based on version
+    alone unless the MAJOR component differs. A well-formed version whose
+    MAJOR matches a supported version is accepted; the return value is
+    the version this implementation will actually speak (the request
+    itself when it is exactly supported, otherwise the highest supported
+    version with the same MAJOR).
 
     Args:
         requested: The version string from the ``Accept-Version`` header,
                    or ``None`` if the client did not specify one.
 
     Returns:
-        A valid version string (``CURRENT_VERSION`` when *requested* is None).
+        A supported version string (``CURRENT_VERSION`` when *requested* is None).
 
     Raises:
-        ValueError: If *requested* is malformed (not SemVer) or is not in
-                    ``SUPPORTED_VERSIONS``.
+        ValueError: If *requested* is malformed (not SemVer) or its MAJOR
+                    component matches no supported version.
     """
     if requested is None:
         return CURRENT_VERSION
@@ -52,12 +71,17 @@ def check_version(requested: str | None) -> str:
             f"Malformed protocol version '{requested}'. "
             f"Expected SemVer (e.g. '1.0.0', '1.0.0-beta', '1.0.0+build.1')."
         )
-    if requested not in SUPPORTED_VERSIONS:
+    if requested in SUPPORTED_VERSIONS:
+        return requested
+    best = _best_for_major(_major(requested))
+    if best is None:
         raise ValueError(
-            f"Unsupported protocol version '{requested}'. "
+            f"Unsupported protocol version '{requested}' (MAJOR differs). "
             f"Supported: {', '.join(SUPPORTED_VERSIONS)}"
         )
-    return requested
+    if requested != best:
+        logger.info("[versioning] peer requested %s; speaking %s", requested, best)
+    return best
 
 
 def format_sunset_header(deprecated_at: datetime) -> str:
@@ -116,6 +140,14 @@ def negotiate_version(
     for version in requested:
         if version in SUPPORTED_VERSIONS:
             return version
+
+    # No exact match: accept the first same-MAJOR preference (contract:
+    # never reject unless MAJOR differs).
+    for version in requested:
+        if _SEMVER_RE.match(version):
+            best = _best_for_major(_major(version))
+            if best is not None:
+                return best
 
     if fallback_version is not None:
         logger.warning(

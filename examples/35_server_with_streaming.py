@@ -22,13 +22,13 @@ Test:
 """
 
 import asyncio
+import os
 import uuid
 
-from ampro.server import AgentServer
 from ampro import AgentMessage
-from ampro.streaming.events import StreamingEvent, StreamingEventType
+from ampro.server import AgentServer
 from ampro.streaming.bus import StreamBus
-
+from ampro.streaming.events import StreamingEvent, StreamingEventType
 
 server = AgentServer(
     agent_id="agent://stream.example.com",
@@ -126,16 +126,21 @@ async def handle_task(msg: AgentMessage) -> dict:
 if __name__ == "__main__":
     print("=== AMP Server with Streaming ===\n")
     print(f"Agent: {server.agent_id}")
-    print(f"Streaming event types used:")
-    print(f"  1. thinking     — agent reasoning")
-    print(f"  2. tool_call    — invoking a tool")
-    print(f"  3. tool_result  — tool returned data")
-    print(f"  4. text_delta   — partial text output")
-    print(f"  5. state_change — task status transition")
-    print(f"  6. done         — stream complete (auto-emitted on close)\n")
+    print("Streaming event types used:")
+    print("  1. thinking     — agent reasoning")
+    print("  2. tool_call    — invoking a tool")
+    print("  3. tool_result  — tool returned data")
+    print("  4. text_delta   — partial text output")
+    print("  5. state_change — task status transition")
+    print("  6. done         — stream complete (auto-emitted on close)\n")
     print("Try:\n")
     print("  curl -X POST http://localhost:8005/agent/message \\")
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://caller\",\"recipient\":\"agent://stream.example.com\",\"body_type\":\"task.create\",\"body\":{\"description\":\"analyze server logs\"}}'")
     print()
-    server.run(port=8005)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8005)

@@ -12,11 +12,11 @@ Run:
 
 from ampro import (
     AgentMessage,
-    TaskCreateBody,
     TaskCompleteBody,
+    TaskCreateBody,
     TraceContext,
-    generate_trace_id,
     generate_span_id,
+    generate_trace_id,
     inject_trace_headers,
     validate_body,
 )
@@ -77,7 +77,7 @@ gateway_msg = AgentMessage(
     ).model_dump(),
 )
 
-print(f"\n  Envelope:")
+print("\n  Envelope:")
 print(f"    From:      {gateway_msg.sender}")
 print(f"    To:        {gateway_msg.recipient}")
 print(f"    Body type: {gateway_msg.body_type}")
@@ -124,7 +124,7 @@ specialist_msg = AgentMessage(
     ).model_dump(),
 )
 
-print(f"\n  Envelope:")
+print("\n  Envelope:")
 print(f"    From:      {specialist_msg.sender}")
 print(f"    To:        {specialist_msg.recipient}")
 print(f"    Body type: {specialist_msg.body_type}")
@@ -179,7 +179,7 @@ worker_msg = AgentMessage(
     body=complete_body.model_dump(),
 )
 
-print(f"\n  Envelope (response):")
+print("\n  Envelope (response):")
 print(f"    From:      {worker_msg.sender}")
 print(f"    To:        {worker_msg.recipient}")
 print(f"    Body type: {worker_msg.body_type}")
@@ -214,7 +214,7 @@ for i, (label, ctx) in enumerate(spans):
     print(f"  {label:12s} {ctx.span_id:20s} {parent:20s} {agents[i]}")
 
 # Show the tree visually
-print(f"\n  Tree:")
+print("\n  Tree:")
 print(f"    [{gateway_ctx.span_id[:8]}...] {GATEWAY}")
 print(f"      [{specialist_ctx.span_id[:8]}...] {SPECIALIST}")
 print(f"        [{worker_ctx.span_id[:8]}...] {WORKER}")

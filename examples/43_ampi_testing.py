@@ -20,7 +20,6 @@ from ampro.ampi.context import AMPContext
 from ampro.core.envelope import AgentMessage
 from ampro.server.test import TestServer
 
-
 agent = AgentApp(
     agent_id="agent://tested-bot.example.com",
     endpoint="http://localhost:8000/agent/message",

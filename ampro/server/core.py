@@ -55,16 +55,24 @@ from ampro.ampi.errors import AMPError
 from ampro.core.body_schemas import validate_body
 from ampro.core.envelope import AgentMessage
 from ampro.core.versioning import CURRENT_VERSION
+from ampro.server.auth import ANONYMOUS, Principal, Unauthorized, authenticate
 from ampro.server.http import HTTPRequest, HTTPResponse, ProtocolAdapter
+from ampro.server.security import CachedResponse, SecurityPolicy
 from ampro.trust.tiers import TrustTier
 from ampro.wire.config import DEFAULTS, WireConfig
 from ampro.wire.errors import (
     ProblemDetail,
+    forbidden,
     internal_error,
     invalid_message,
+    loop_detected,
     not_found,
     not_implemented,
     payload_too_large,
+    rate_limited,
+    timeout,
+    unauthorized,
+    unavailable,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,6 +95,7 @@ class AgentServer:
         agent_json: AgentJson | None = None,
         *,
         trust_tier: TrustTier = TrustTier.EXTERNAL,
+        security: SecurityPolicy | None = None,
     ) -> None:
         self.agent_id = agent_id
         self.endpoint = endpoint
@@ -118,12 +127,21 @@ class AgentServer:
         # Additional wire protocols (A2A, MCP, ...) served alongside AMP.
         self._adapters: list[ProtocolAdapter] = []
 
+        # Security pipeline for POST /agent/message (WIRE-BINDING App. D).
+        self.security = security or SecurityPolicy.from_config(self.config)
+
     # ------------------------------------------------------------------
     # Alternate constructors
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_app(cls, app: AgentApp) -> AgentServer:
+    def from_app(
+        cls,
+        app: AgentApp,
+        *,
+        security: SecurityPolicy | None = None,
+        config: WireConfig | None = None,
+    ) -> AgentServer:
         """Create an AgentServer from an AgentApp.
 
         AMPI handlers are called as ``(msg, ctx)`` through the same
@@ -135,6 +153,8 @@ class AgentServer:
             agent_id=app.agent_id,
             endpoint=app.endpoint,
             agent_json=app.agent_json,
+            config=config,
+            security=security,
         )
         server._app = app
         # Share the registry: ``@server.on`` on an app-backed server
@@ -172,6 +192,9 @@ class AgentServer:
             response = await adapter.handle(request)
             if response is not None:
                 return response
+
+        if request.method.upper() == "POST" and request.path.rstrip("/") == "/agent/message":
+            return await self._handle_message_request(request)
 
         payload: Any = None
         if request.method.upper() == "POST":
@@ -352,11 +375,75 @@ class AgentServer:
     # Message handling pipeline
     # ------------------------------------------------------------------
 
+    async def _handle_message_request(self, request: HTTPRequest) -> HTTPResponse:
+        """Full security pipeline for ``POST /agent/message``.
+
+        Order follows WIRE-BINDING Appendix D, except that deduplication
+        runs *after* authentication and is keyed by the authenticated
+        caller: replaying a cached response to an unauthenticated party
+        would let anyone who learns a message id read its reply.
+        """
+        policy = self.security
+
+        def problem(err: ProblemDetail, extra: dict[str, str] | None = None) -> HTTPResponse:
+            status, headers, body = self._error_response(err)
+            hdrs = _lower(headers)
+            if extra:
+                hdrs.update({k.lower(): v for k, v in extra.items()})
+            return HTTPResponse(status, hdrs, body.encode("utf-8"))
+
+        # Authentication.
+        try:
+            principal = await authenticate(request, policy.authenticators)
+        except Unauthorized as exc:
+            logger.info("Rejected credential on /agent/message: %s", exc)
+            return problem(unauthorized(), {"WWW-Authenticate": 'Bearer realm="amp"'})
+        if principal is None:
+            if policy.require_auth:
+                return problem(unauthorized(), {"WWW-Authenticate": 'Bearer realm="amp"'})
+            principal = ANONYMOUS
+
+        # Rate limiting — by principal, or by peer address when anonymous.
+        rate_key = principal.id if principal is not ANONYMOUS else f"ip:{request.client}"
+        if policy.rate_limiter is not None:
+            allowed, info = policy.rate_limiter.check(rate_key)
+            rl_headers = {
+                "X-RateLimit-Limit": str(info.limit),
+                "X-RateLimit-Remaining": str(info.remaining),
+                "X-RateLimit-Reset": str(info.reset),
+            }
+            if not allowed:
+                retry = max(1, info.reset - int(time.time()))
+                rl_headers["Retry-After"] = str(retry)
+                return problem(rate_limited("Rate limit exceeded", retry_after=retry), rl_headers)
+
+        try:
+            payload = request.json()
+        except ValueError:
+            return problem(invalid_message("Request body is not valid JSON"))
+
+        status, headers, body = await self._handle_message(payload, principal=principal)
+        return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+
+    def _addresses(self) -> set[str]:
+        from ampro.delegation.chain import normalize_agent_uri
+
+        names = {self.agent_id, *self.agent_json.identifiers, *self.security.aliases}
+        return {normalize_agent_uri(n) for n in names}
+
     async def _handle_message(
         self,
         body: dict[str, Any] | None,
+        *,
+        principal: Principal | None = None,
     ) -> tuple[int, dict[str, Any], str]:
-        """Process POST /agent/message."""
+        """Validate and dispatch one AMP envelope.
+
+        *principal* is the authenticated caller; ``None`` (the legacy
+        :meth:`route` entry point, which has no headers) means anonymous.
+        """
+        policy = self.security
+        principal = principal or ANONYMOUS
 
         # Step 1: Parse body as AgentMessage (Pydantic validation).
         if body is None:
@@ -380,6 +467,38 @@ class AgentServer:
                 )
                 return self._error_response(err)
 
+        # Sender binding: a principal proven to own an agent address may
+        # only send as that address.
+        if (
+            policy.enforce_sender_binding
+            and principal.claims.get("bound_sender")
+            and msg.sender != principal.id
+        ):
+            return self._error_response(forbidden("Envelope sender does not match credential"))
+
+        # Recipient check: refuse envelopes addressed to another agent so a
+        # message signed for agent A cannot be replayed against agent B.
+        if policy.enforce_recipient and msg.recipient:
+            from ampro.delegation.chain import normalize_agent_uri
+
+            if normalize_agent_uri(msg.recipient) not in self._addresses():
+                return self._error_response(
+                    invalid_message("Envelope recipient is not this agent")
+                )
+
+        # Loop detection on the Visited-Agents header.
+        visited = (msg.headers or {}).get("Visited-Agents")
+        if visited:
+            from ampro.delegation.chain import (
+                check_visited_agents_limit,
+                check_visited_agents_loop,
+            )
+
+            if not check_visited_agents_limit(visited, policy.max_visited_agents):
+                return self._error_response(loop_detected("Visited-Agents limit exceeded"))
+            if any(check_visited_agents_loop(visited, a) for a in self._addresses()):
+                return self._error_response(loop_detected("Message has already visited this agent"))
+
         # Step 3: Look up handler.
         handler = self._handlers.get(msg.body_type)
         if handler is None and self._app is None:
@@ -390,18 +509,77 @@ class AgentServer:
             )
             return self._error_response(err)
 
-        # Step 4: Call handler (supports sync and async), then serialise
-        # inside the same guard so a non-JSON result cannot escape as an
-        # unhandled exception.
+        # Deduplication, keyed by caller so one party cannot read
+        # another's cached reply.
+        dedup_key = f"{principal.id}\x00{msg.sender}\x00{msg.id}"
+        if policy.dedup is not None:
+            claim = await policy.dedup.reserve(dedup_key)
+            if isinstance(claim, CachedResponse):
+                return claim.status, dict(claim.headers), claim.body.decode("utf-8")
+            if claim is False:
+                return self._error_response(
+                    _conflict("A message with this id is already being processed")
+                )
+
+        # Concurrency.
+        slot_key = principal.id if principal is not ANONYMOUS else msg.sender
+        if policy.concurrency is not None and not policy.concurrency.acquire(slot_key):
+            if policy.dedup is not None:
+                await policy.dedup.release(dedup_key)
+            return self._error_response(unavailable("Agent is at capacity", retry_after=5))
+
         try:
-            if self._app is not None:
-                ctx = build_context(self.agent_id, msg, trust_tier=self.trust_tier)
-                result = await dispatch(self._app, msg, ctx)
+            response = await self._invoke(msg, handler, principal)
+        finally:
+            if policy.concurrency is not None:
+                policy.concurrency.release(slot_key)
+
+        if policy.dedup is not None:
+            status, headers, body_str = response
+            if status < 500:
+                await policy.dedup.complete(
+                    dedup_key, CachedResponse(status, dict(headers), body_str.encode("utf-8"))
+                )
             else:
-                result = handler(msg)
-                if inspect.isawaitable(result):
-                    result = await result
+                await policy.dedup.release(dedup_key)
+        return response
+
+    async def _invoke(
+        self,
+        msg: AgentMessage,
+        handler: Callable[..., Any],
+        principal: Principal,
+    ) -> tuple[int, dict[str, Any], str]:
+        """Call the handler with a timeout and map failures to problems.
+
+        Serialisation happens inside the same guard so a non-JSON result
+        cannot escape as an unhandled exception.
+        """
+        tier = principal.trust_tier if principal is not ANONYMOUS else self.trust_tier
+
+        async def call() -> Any:
+            if self._app is not None:
+                ctx = build_context(
+                    self.agent_id,
+                    msg,
+                    trust_tier=tier,
+                    principal=principal,
+                    scopes=principal.scopes,
+                    protocol="amp",
+                )
+                return await dispatch(self._app, msg, ctx)
+            result = handler(msg)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+
+        try:
+            limit = self.security.handler_timeout_seconds
+            result = await (asyncio.wait_for(call(), limit) if limit else call())
             return self._success_response(result)
+        except TimeoutError:
+            logger.warning("Handler timed out for body_type '%s'", msg.body_type)
+            return self._error_response(timeout("Handler did not finish in time"))
         except AMPError as exc:
             logger.info("Handler rejected body_type '%s': %s", msg.body_type, exc)
             return self._error_response(exc.to_problem_detail(status=400))
@@ -514,6 +692,13 @@ class AgentServer:
             return Response(resp.body, status=resp.status, headers=resp.headers)
 
         app.run(host=host, port=port)
+
+
+def _conflict(detail: str) -> ProblemDetail:
+    from ampro.wire.errors import nonce_replay
+
+    err = nonce_replay(detail)
+    return err
 
 
 def _lower(headers: dict[str, Any]) -> dict[str, str]:

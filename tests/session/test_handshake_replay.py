@@ -109,17 +109,20 @@ class TestNonceTracking:
 
 
 class TestBindingTokenPreservation:
-    """Verify binding_token was NOT deleted (AM-1) and TLS comment exists (C5)."""
+    """binding_token is kept only as a deprecated, never-populated field.
 
-    def test_binding_token_field_still_exists(self) -> None:
-        """Introspect SessionEstablishedBody.model_fields for binding_token."""
+    The binding key is derived via X25519 key agreement and is never sent
+    on the wire (it previously travelled in the clear, which made
+    binding_proof meaningless).
+    """
+
+    def test_binding_token_field_is_deprecated_and_optional(self) -> None:
         assert "binding_token" in SessionEstablishedBody.model_fields
         field_info = SessionEstablishedBody.model_fields["binding_token"]
-        assert field_info.description is not None
-        assert "TLS" in field_info.description
+        assert field_info.default is None
+        assert "DEPRECATED" in (field_info.description or "")
 
-    def test_binding_token_tls_comment_exists(self) -> None:
-        """Grep the handshake.py source for the TLS documentation comment."""
+    def test_handshake_module_documents_key_is_never_sent(self) -> None:
         handshake_path = (
             Path(__file__).resolve().parents[2]
             / "ampro"
@@ -127,7 +130,4 @@ class TestBindingTokenPreservation:
             / "handshake.py"
         )
         source = handshake_path.read_text()
-        assert "MUST only travel over TLS" in source, (
-            "Missing required TLS documentation comment in handshake.py "
-            "(C5 reframe per AM-1)"
-        )
+        assert "NEVER sent on the wire" in source

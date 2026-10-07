@@ -9,6 +9,9 @@ Spec ref: Section 3.2
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hmac
 import logging
 from typing import Any
 
@@ -61,6 +64,38 @@ class VerificationResult:
         self.reason = reason
 
 
+def _decode_expected_key(value: str) -> bytes:
+    """Decode a base64 (standard or url-safe, padding optional) public key."""
+    value = value.strip()
+    padded = value + "=" * (-len(value) % 4)
+    if "-" in value or "_" in value:
+        return base64.urlsafe_b64decode(padded)
+    return base64.b64decode(padded, validate=True)
+
+
+def _verify_did_key(
+    identifier: str, did: str, expected_public_key: str | None,
+) -> VerificationResult:
+    """did:key embeds its Ed25519 key — compare it to the expected key."""
+    from ampro.trust.resolver import did_key_to_public_key
+
+    try:
+        did_key_bytes = did_key_to_public_key(did)
+    except ValueError as exc:
+        return VerificationResult(identifier, False, f"Invalid did:key: {exc}")
+    if not expected_public_key:
+        return VerificationResult(
+            identifier, False, "No expected public key to compare did:key against",
+        )
+    try:
+        expected_bytes = _decode_expected_key(expected_public_key)
+    except (binascii.Error, ValueError) as exc:
+        return VerificationResult(identifier, False, f"Invalid expected public key: {exc}")
+    if not hmac.compare_digest(did_key_bytes, expected_bytes):
+        return VerificationResult(identifier, False, "Public key mismatch for did:key")
+    return VerificationResult(identifier, True, "did:key public key matches")
+
+
 async def cross_verify_identifiers(
     identifiers: list[str],
     expected_endpoint: str,
@@ -73,7 +108,8 @@ async def cross_verify_identifiers(
     For each identifier:
     - HOST type: would fetch agent.json from host and compare endpoint + key
     - SLUG type: would resolve via registry and compare
-    - DID type: would resolve DID document and compare key
+    - DID type: did:key — the embedded Ed25519 key must equal
+      ``expected_public_key``; other DID methods are unsupported (unverified)
 
     Args:
         identifiers: List of agent:// URIs to verify
@@ -98,18 +134,11 @@ async def cross_verify_identifiers(
             continue
 
         if addr.address_type == AddressType.DID:
-            # DID verification: the key IS the identifier
-            # For did:key, the public key is embedded in the DID
-            # For did:web, would need DID resolution
+            # DID verification: the key IS the identifier.
+            # did:key embeds the Ed25519 key — compare to expected_public_key.
+            # did:web would need DID resolution (not supported).
             if addr.did and addr.did.startswith("did:key:"):
-                # did:key encodes the public key — cross-verify requires
-                # extracting the multicodec-encoded key and comparing it
-                # against expected_public_key. Not yet implemented.
-                results.append(VerificationResult(
-                    identifier=identifier,
-                    verified=False,
-                    reason="DID key verification not yet implemented",
-                ))
+                results.append(_verify_did_key(identifier, addr.did, expected_public_key))
             else:
                 # did:web requires resolution — not yet implemented
                 results.append(VerificationResult(

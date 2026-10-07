@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 
 from ampro import (
     AgentMessage,
+    StreamChannelCloseEvent,
+    StreamChannelOpenEvent,
     StreamingEvent,
     StreamingEventType,
-    StreamChannelOpenEvent,
-    StreamChannelCloseEvent,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ for ch_open in [open_mon, open_proc]:
     )
     print(f"  Channel: {ch_open.channel_id}")
     print(f"  Task:    {ch_open.task_id}")
-    print(f"  SSE:")
+    print("  SSE:")
     for line in event.to_sse().strip().split("\n"):
         print(f"    {line}")
     print()
@@ -130,11 +130,11 @@ example_event = StreamingEvent(
     seq=4,
 )
 
-print(f"  Envelope headers:")
+print("  Envelope headers:")
 for k, v in example_msg.headers.items():
     print(f"    {k}: {v}")
 
-print(f"\n  SSE frame:")
+print("\n  SSE frame:")
 for line in example_event.to_sse().strip().split("\n"):
     print(f"    {line}")
 
@@ -142,7 +142,7 @@ for line in example_event.to_sse().strip().split("\n"):
 # Step 3: Close each channel independently
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 3: Close Channels Independently ===\n")
+print("\n=== Step 3: Close Channels Independently ===\n")
 
 # Close monitoring channel first (normal completion)
 close_mon = StreamChannelCloseEvent(
@@ -159,13 +159,13 @@ close_mon_event = StreamingEvent(
 
 print(f"  Close {CHANNEL_MON}:")
 print(f"    Reason: {close_mon.reason}")
-print(f"    SSE:")
+print("    SSE:")
 for line in close_mon_event.to_sse().strip().split("\n"):
     print(f"      {line}")
 
 # Send one more event on the processing channel (monitoring is closed)
-print(f"\n  (ch-monitoring is closed; ch-processing still active)")
-print(f"  [PROC] seq=9  text_delta       Pipeline stage 2 complete")
+print("\n  (ch-monitoring is closed; ch-processing still active)")
+print("  [PROC] seq=9  text_delta       Pipeline stage 2 complete")
 
 # Close processing channel with error
 close_proc = StreamChannelCloseEvent(
@@ -182,7 +182,7 @@ close_proc_event = StreamingEvent(
 
 print(f"\n  Close {CHANNEL_PROC}:")
 print(f"    Reason: {close_proc.reason}")
-print(f"    SSE:")
+print("    SSE:")
 for line in close_proc_event.to_sse().strip().split("\n"):
     print(f"      {line}")
 
@@ -190,7 +190,7 @@ for line in close_proc_event.to_sse().strip().split("\n"):
 # Step 4: SSE wire format output for each event type
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 4: SSE Wire Format Reference ===\n")
+print("\n=== Step 4: SSE Wire Format Reference ===\n")
 
 wire_examples = [
     (

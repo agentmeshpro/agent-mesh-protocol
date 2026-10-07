@@ -12,10 +12,10 @@ Run:
 """
 
 from ampro import (
-    AgentMessage,
     AgentJson,
-    TrustProofBody,
+    AgentMessage,
     CertificationLink,
+    TrustProofBody,
     validate_body,
 )
 
@@ -172,7 +172,7 @@ agent_json = AgentJson(
 
 print(f"  protocol_version: {agent_json.protocol_version}")
 print(f"  identifiers:      {agent_json.identifiers}")
-print(f"  certifications:")
+print("  certifications:")
 for cert in agent_json.certifications:
     parsed = CertificationLink.model_validate(cert)
     print(f"    - {parsed.standard}: {parsed.url}")
