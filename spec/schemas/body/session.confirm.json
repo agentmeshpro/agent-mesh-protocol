@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.confirm.json",
+  "title": "AMP body: session.confirm",
+  "description": "body.type = 'session.confirm' — Client proves it holds the binding token.",
+  "properties": {
+    "session_id": {
+      "description": "Session ID from the session.established message",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "binding_proof": {
+      "description": "HMAC-SHA256 under the derived binding key over the handshake transcript (see ampro.session.binding.compute_binding_proof)",
+      "title": "Binding Proof",
+      "type": "string"
+    },
+    "confirm_nonce": {
+      "description": "Echo of the confirm_nonce from session.established. The server validates this via HandshakeStateMachine.consume_confirm_nonce() and raises SessionReplayError if replayed or unknown.",
+      "title": "Confirm Nonce",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "binding_proof",
+    "confirm_nonce"
+  ],
+  "type": "object",
+  "x-amp-body-type": "session.confirm"
+}

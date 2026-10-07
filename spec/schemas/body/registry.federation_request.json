@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/registry.federation_request.json",
+  "title": "AMP body: registry.federation_request",
+  "description": "Request to establish federation between two registries.",
+  "properties": {
+    "registry_id": {
+      "description": "agent:// URI of the requesting registry",
+      "title": "Registry Id",
+      "type": "string"
+    },
+    "capabilities": {
+      "description": "Capabilities offered (resolve, search, presence)",
+      "items": {
+        "type": "string"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "trust_proof": {
+      "description": "Base64 Ed25519 signature over the canonical proof payload (see federation_trust_proof_payload)",
+      "minLength": 1,
+      "title": "Trust Proof",
+      "type": "string"
+    },
+    "audience": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "agent:// URI of the registry this request is addressed to (signed)",
+      "title": "Audience"
+    },
+    "issued_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "UTC issuance time of the proof (signed; freshness-checked)",
+      "title": "Issued At"
+    },
+    "nonce": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 16,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Single-use random nonce (signed; replay-checked)",
+      "title": "Nonce"
+    }
+  },
+  "required": [
+    "registry_id",
+    "capabilities",
+    "trust_proof"
+  ],
+  "type": "object",
+  "x-amp-body-type": "registry.federation_request",
+  "x-amp-constraints": [
+    "trust proof MUST verify per WIRE-BINDING section 12.16.1"
+  ]
+}

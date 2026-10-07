@@ -38,6 +38,8 @@ class ProblemDetail(BaseModel):
     detail: str | None = Field(default=None, max_length=1024, description="Human-readable explanation specific to this occurrence")
     instance: str | None = Field(default=None, description="URI identifying the specific occurrence of the problem")
     retry_after_seconds: int | None = Field(default=None, ge=0, description="Seconds the client should wait before retrying")
+    max_bytes: int | None = Field(default=None, ge=0, description="413 only: the receiver's maximum message size in bytes")
+    supported_versions: list[str] | None = Field(default=None, description="406 only: protocol versions the receiver supports")
 
     model_config = {"extra": "ignore"}
 
@@ -163,13 +165,14 @@ def not_found(detail: str = "Resource not found") -> ProblemDetail:
     )
 
 
-def version_mismatch(detail: str) -> ProblemDetail:
+def version_mismatch(detail: str, supported_versions: list[str] | None = None) -> ProblemDetail:
     """Create a 406 Not Acceptable error for protocol version mismatches."""
     return ProblemDetail(
         type=ErrorType.VERSION_MISMATCH,
         title="Protocol version mismatch",
         status=406,
         detail=detail,
+        supported_versions=supported_versions,
     )
 
 

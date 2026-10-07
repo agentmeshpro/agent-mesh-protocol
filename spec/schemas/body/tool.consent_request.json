@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/tool.consent_request.json",
+  "title": "AMP body: tool.consent_request",
+  "description": "body.type = 'tool.consent.request' — Request consent for a specific tool.",
+  "properties": {
+    "tool_name": {
+      "description": "Name of the tool requiring consent",
+      "title": "Tool Name",
+      "type": "string"
+    },
+    "scopes": {
+      "description": "Permission scopes being requested",
+      "items": {
+        "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+    },
+    "reason": {
+      "description": "Human-readable reason for the request",
+      "title": "Reason",
+      "type": "string"
+    },
+    "session_id": {
+      "description": "Session to scope the grant to",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "ttl_seconds": {
+      "default": 3600,
+      "description": "Requested grant lifetime in seconds",
+      "title": "Ttl Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool_name",
+    "scopes",
+    "reason",
+    "session_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "tool.consent_request"
+}

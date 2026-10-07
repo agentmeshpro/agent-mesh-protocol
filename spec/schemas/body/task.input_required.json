@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.input_required.json",
+  "title": "AMP body: task.input_required",
+  "description": "body.type = 'task.input_required' — Request additional input from sender.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the blocked task",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why input is required",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    },
+    "prompt": {
+      "description": "What to ask the user or calling agent",
+      "maxLength": 8192,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "options": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of valid response options",
+      "title": "Options"
+    },
+    "consent_url": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "URL for consent or authorization flow",
+      "title": "Consent Url"
+    },
+    "timeout_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How long to wait for a response before timing out",
+      "title": "Timeout Seconds"
+    }
+  },
+  "required": [
+    "task_id",
+    "reason",
+    "prompt"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.input_required"
+}

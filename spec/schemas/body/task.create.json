@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.create.json",
+  "title": "AMP body: task.create",
+  "description": "body.type = 'task.create' — Create a new task.",
+  "properties": {
+    "description": {
+      "description": "Human-readable task description",
+      "maxLength": 8192,
+      "title": "Description",
+      "type": "string"
+    },
+    "task_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Caller-supplied task ID",
+      "title": "Task Id"
+    },
+    "priority": {
+      "default": "normal",
+      "description": "Task priority level",
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "tools_required": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tools the assignee must support to execute this task",
+      "title": "Tools Required"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Arbitrary context data to pass to the assignee",
+      "title": "Context"
+    },
+    "attachments": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional file or media attachments",
+      "title": "Attachments"
+    },
+    "timeout_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Maximum seconds to allow for task completion",
+      "title": "Timeout Seconds"
+    }
+  },
+  "required": [
+    "description"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.create"
+}

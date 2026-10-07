@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.spawn.json",
+  "title": "AMP body: task.spawn",
+  "description": "body.type = 'task.spawn' — Spawn a child task from a parent.",
+  "properties": {
+    "parent_task_id": {
+      "description": "ID of the parent task",
+      "maxLength": 256,
+      "title": "Parent Task Id",
+      "type": "string"
+    },
+    "task_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional child task ID",
+      "title": "Task Id"
+    },
+    "description": {
+      "description": "Description of the child task",
+      "maxLength": 8192,
+      "title": "Description",
+      "type": "string"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Context inherited or injected for the child task",
+      "title": "Context"
+    }
+  },
+  "required": [
+    "parent_task_id",
+    "description"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.spawn"
+}

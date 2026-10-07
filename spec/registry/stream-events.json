@@ -1,0 +1,179 @@
+{
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/stream-events.json",
+  "registry": "stream-events",
+  "description": "Server-Sent Event types on GET /agent/stream (WIRE-BINDING section 8.4). Receivers MUST ignore unknown event types.",
+  "protocol_version": "1.0.0",
+  "change_process": "GOVERNANCE.md; third-party registrations per docs/EXTENSIONS.md",
+  "entries": [
+    {
+      "name": "thinking",
+      "category": "Processing",
+      "description": "Agent is reasoning",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "tool_call",
+      "category": "Processing",
+      "description": "Agent is invoking a tool",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "tool_result",
+      "category": "Processing",
+      "description": "Tool returned a result",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "text_delta",
+      "category": "Processing",
+      "description": "Partial text response (streaming output)",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "state_change",
+      "category": "Lifecycle",
+      "description": "Task status changed",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "agent_call",
+      "category": "Delegation",
+      "description": "Agent is delegating to another agent",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "agent_result",
+      "category": "Delegation",
+      "description": "Delegated agent returned a result",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "error",
+      "category": "Error",
+      "description": "An error occurred",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "heartbeat",
+      "category": "Control",
+      "description": "Keepalive (no payload required)",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "done",
+      "category": "Control",
+      "description": "Final event -- stream complete",
+      "data_schema": null,
+      "data_schema_id": null,
+      "section": "8.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "stream.ack",
+      "category": "Backpressure",
+      "description": "Client acknowledges processed events",
+      "data_schema": "../schemas/stream/stream.ack.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.ack.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "stream.pause",
+      "category": "Backpressure",
+      "description": "Server pauses the stream",
+      "data_schema": "../schemas/stream/stream.pause.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.pause.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "stream.resume",
+      "category": "Backpressure",
+      "description": "Client signals readiness for more events",
+      "data_schema": "../schemas/stream/stream.resume.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.resume.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "stream.channel_open",
+      "category": "Multiplexing",
+      "description": "Open a logical multiplexed channel",
+      "data_schema": "../schemas/stream/stream.channel_open.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.channel_open.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "stream.channel_close",
+      "category": "Multiplexing",
+      "description": "Close a logical multiplexed channel",
+      "data_schema": "../schemas/stream/stream.channel_close.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.channel_close.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "stream.checkpoint",
+      "category": "Reliability",
+      "description": "Periodic state snapshot for reconnection",
+      "data_schema": "../schemas/stream/stream.checkpoint.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.checkpoint.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "stream.auth_refresh",
+      "category": "Security",
+      "description": "Mid-stream token renewal",
+      "data_schema": "../schemas/stream/stream.auth_refresh.json",
+      "data_schema_id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.auth_refresh.json",
+      "section": "8.4",
+      "since": "0.1.7",
+      "status": "stable"
+    }
+  ]
+}

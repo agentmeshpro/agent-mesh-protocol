@@ -179,6 +179,9 @@ The HTTP binding uses HTTPS (HTTP over TLS) as the underlying transport.
   `application/cbor`, `application/msgpack`) as extensions.
 - If a request does not include a `Content-Type` header, the receiver
   MUST assume `application/json`.
+- A receiver that does not support the declared content type MUST
+  reject the request with HTTP 415 and an error of type
+  `urn:amp:error:content-type-mismatch` (Section 7).
 
 ### 3.3 Character Encoding
 
@@ -3304,9 +3307,12 @@ header with the new agent's endpoint URL.
 | 401  | UNAUTHORIZED       | Authentication required but not provided       |
 | 403  | FORBIDDEN          | Authenticated but insufficient permissions     |
 | 404  | NOT_FOUND          | Agent, task, tool, or session not found         |
+| 406  | VERSION_MISMATCH   | Requested protocol version not supported        |
 | 408  | TIMEOUT            | Request timed out                               |
-| 409  | CONFLICT           | Nonce replay, dedup conflict, or race condition |
+| 409  | CONFLICT           | Nonce replay, dedup conflict, loop, or race condition |
+| 410  | SESSION_EXPIRED    | Referenced session has expired or been closed   |
 | 413  | PAYLOAD_TOO_LARGE  | Message exceeds maximum size                    |
+| 415  | UNSUPPORTED_MEDIA  | Content type not supported (Section 3.2)        |
 | 429  | RATE_LIMITED       | Too many requests from this sender              |
 
 ### 15.5 Server Error (5xx)
@@ -3410,6 +3416,7 @@ types are defined by this specification.
 | Body Type                    | Description                            | Idempotent |
 |------------------------------|----------------------------------------|------------|
 | `agent.deactivation_notice`  | Agent going offline permanently        | Yes        |
+| `agent.metadata_invalidate`  | Cached agent.json is stale; refetch (PROTOCOL-CONTRACTS section 6) | Yes |
 
 #### 16.1.9 Identity
 
@@ -3715,6 +3722,16 @@ to run them from another language are described in
   revocations, cost receipts, and federation proofs and revokes;
 - the session-binding key agreement and HMACs.
 
+The JSON Schemas in `spec/schemas/` accept and reject the schema-shaped
+vectors exactly as the reference does (except for the cross-field rules
+listed as `x-amp-constraints`), so an implementation can validate
+messages with any JSON Schema 2020-12 validator.
+
+A running implementation can be tested over HTTP with the black-box
+conformance suite, `ampro-conformance --url <origin>` (see
+`docs/CONFORMANCE.md`). Every check names the section and requirement
+level it verifies.
+
 Implementations SHOULD pass all test vectors for their declared
 conformance level. Implementations that sign or verify any of the
 artefacts above MUST reproduce the canonical bytes exactly.
@@ -3782,6 +3799,15 @@ artefacts above MUST reproduce the canonical bytes exactly.
 
 ## Appendix B: AgentMessage JSON Schema
 
+The complete, machine-readable schemas for the envelope, every body
+type, `agent.json`, health, problem details and streaming events are
+published under [`spec/schemas/`](../spec/schemas/) (JSON Schema
+2020-12), with the HTTP binding in [`spec/openapi.yaml`](../spec/openapi.yaml)
+and the registries in [`spec/registry/`](../spec/registry/). They are
+generated from the reference implementation by
+`scripts/generate_spec.py`, and CI fails when they drift. The schemas
+below are abbreviated.
+
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3815,7 +3841,7 @@ artefacts above MUST reproduce the canonical bytes exactly.
       "description": "Message payload, structure determined by body_type"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
 ```
 

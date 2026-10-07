@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.consent_request.json",
+  "title": "AMP body: data.consent_request",
+  "description": "body.type = 'data.consent_request' — Request consent for scoped access.",
+  "properties": {
+    "requester": {
+      "description": "Agent ID requesting consent",
+      "maxLength": 256,
+      "title": "Requester",
+      "type": "string"
+    },
+    "target": {
+      "description": "Agent ID whose consent is sought",
+      "maxLength": 256,
+      "title": "Target",
+      "type": "string"
+    },
+    "scopes": {
+      "description": "Requested permission scopes",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "title": "Scopes",
+      "type": "array"
+    },
+    "reason": {
+      "description": "Human-readable reason",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    },
+    "ttl_seconds": {
+      "default": 86400,
+      "description": "Grant lifetime",
+      "maximum": 604800,
+      "minimum": 0,
+      "title": "Ttl Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "requester",
+    "target",
+    "scopes",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.consent_request"
+}

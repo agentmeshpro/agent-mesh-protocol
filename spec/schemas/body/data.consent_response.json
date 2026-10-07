@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.consent_response.json",
+  "title": "AMP body: data.consent_response",
+  "description": "body.type = 'data.consent_response' — Grant or deny consent.",
+  "properties": {
+    "grant_id": {
+      "default": "",
+      "description": "Unique grant ID if approved",
+      "maxLength": 256,
+      "title": "Grant Id",
+      "type": "string"
+    },
+    "requester": {
+      "description": "Agent that requested consent",
+      "maxLength": 256,
+      "title": "Requester",
+      "type": "string"
+    },
+    "target": {
+      "description": "Agent that responded",
+      "maxLength": 256,
+      "title": "Target",
+      "type": "string"
+    },
+    "scopes": {
+      "description": "Granted scopes",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "title": "Scopes",
+      "type": "array"
+    },
+    "approved": {
+      "description": "Whether consent was granted",
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "When grant expires",
+      "title": "Expires At"
+    }
+  },
+  "required": [
+    "requester",
+    "target",
+    "approved"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.consent_response"
+}

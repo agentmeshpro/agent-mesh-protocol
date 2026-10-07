@@ -1,0 +1,760 @@
+{
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/headers.json",
+  "registry": "headers",
+  "description": "AMP envelope headers (WIRE-BINDING section 14) and the HTTP header fields the binding uses. Receivers MUST ignore headers they do not understand.",
+  "protocol_version": "1.0.0",
+  "change_process": "GOVERNANCE.md; third-party registrations per docs/EXTENSIONS.md",
+  "entries": [
+    {
+      "name": "Accept-Capabilities",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Capability Negotiation Headers",
+      "direction": "request",
+      "format": "Comma-separated",
+      "description": "Capabilities the client desires",
+      "section": "14.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Accept-Language",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "BCP 47 tags",
+      "description": "Client's preferred languages",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Accept-Version",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Core Headers",
+      "direction": "request",
+      "format": "Comma-separated semver",
+      "description": "Client's preferred protocol versions",
+      "section": "14.1",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Anonymous-Sender-Hint",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Identity and Trust Headers",
+      "direction": "request",
+      "format": "String",
+      "description": "Hint for anonymous sender handling",
+      "section": "14.2",
+      "since": "0.1.2",
+      "status": "stable"
+    },
+    {
+      "name": "Authorization",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Core Headers",
+      "direction": "request",
+      "format": "Scheme + token",
+      "description": "Authentication credentials",
+      "section": "14.1",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Callback-Events",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "Comma-separated",
+      "description": "Event types to deliver to callback URL",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Callback-URL",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "HTTPS URL",
+      "description": "URL for asynchronous result delivery",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Capabilities",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Capability Negotiation Headers",
+      "direction": "request",
+      "format": "Comma-separated",
+      "description": "Client's capability groups",
+      "section": "14.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Chain-Budget",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "request",
+      "format": "Budget string",
+      "description": "Remaining and max budget (e.g., `remaining=3.50USD;max=5.00USD`)",
+      "section": "14.6",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Commitment-Level",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "request",
+      "format": "String",
+      "description": "Level of commitment expected (informational, binding, etc.)",
+      "section": "14.6",
+      "since": "0.1.1",
+      "status": "stable"
+    },
+    {
+      "name": "Content-Classification",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Compliance Headers",
+      "direction": "both",
+      "format": "Enum string",
+      "description": "Data sensitivity: `public`, `internal`, `pii`, `sensitive-pii`, `confidential`",
+      "section": "14.10",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Content-Encryption",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Security Headers",
+      "direction": "request",
+      "format": "Algorithm string",
+      "description": "Indicates end-to-end encrypted body",
+      "section": "14.9",
+      "since": "0.1.9",
+      "status": "stable"
+    },
+    {
+      "name": "Content-Language",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "both",
+      "format": "BCP 47 tag",
+      "description": "Language of the message content",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Content-Type",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Core Headers",
+      "direction": "both",
+      "format": "MIME type",
+      "description": "Payload content type (default: `application/json`)",
+      "section": "14.1",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Context-Schema",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Context Headers",
+      "direction": "request",
+      "format": "Schema URN",
+      "description": "URN of the context schema in use",
+      "section": "14.12",
+      "since": "0.1.1",
+      "status": "stable"
+    },
+    {
+      "name": "Correlation-Group",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "both",
+      "format": "String",
+      "description": "Groups related messages together",
+      "section": "14.6",
+      "since": "0.1.1",
+      "status": "stable"
+    },
+    {
+      "name": "Data-Residency",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Compliance Headers",
+      "direction": "both",
+      "format": "Region code",
+      "description": "Required data residency region",
+      "section": "14.10",
+      "since": "0.1.6",
+      "status": "stable"
+    },
+    {
+      "name": "Delegation-Depth",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "request",
+      "format": "Integer",
+      "description": "Current depth in the delegation chain",
+      "section": "14.6",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Downgrade-Warning",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Capability Negotiation Headers",
+      "direction": "response",
+      "format": "Semicolon-separated",
+      "description": "Warnings about unsupported capabilities",
+      "section": "14.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Hop-Timeout",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "Integer (seconds)",
+      "description": "Timeout for this specific hop in a delegation chain",
+      "section": "14.5",
+      "since": "0.1.3",
+      "status": "stable"
+    },
+    {
+      "name": "Identity-Context",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Identity and Trust Headers",
+      "direction": "request",
+      "format": "String",
+      "description": "Additional identity context for trust resolution",
+      "section": "14.2",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "In-Reply-To",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Core Headers",
+      "direction": "response",
+      "format": "Message ID",
+      "description": "ID of the message being replied to",
+      "section": "14.1",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Jurisdiction",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Compliance Headers",
+      "direction": "both",
+      "format": "ISO 3166-1",
+      "description": "Legal jurisdiction governing this message",
+      "section": "14.10",
+      "since": "0.1.6",
+      "status": "stable"
+    },
+    {
+      "name": "Key-Revoked-At",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Security Headers",
+      "direction": "both",
+      "format": "ISO 8601",
+      "description": "Timestamp when a key was revoked",
+      "section": "14.9",
+      "since": "0.1.2",
+      "status": "stable"
+    },
+    {
+      "name": "Negotiated-Capabilities",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Capability Negotiation Headers",
+      "direction": "response",
+      "format": "Comma-separated",
+      "description": "Agreed capability groups (intersection)",
+      "section": "14.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Negotiated-Level",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Capability Negotiation Headers",
+      "direction": "response",
+      "format": "Integer 0--5",
+      "description": "Computed capability level",
+      "section": "14.4",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Nonce",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "String",
+      "description": "One-time value for replay protection",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Poll-Interval",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "response",
+      "format": "Integer (seconds)",
+      "description": "Recommended polling interval for async tasks",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Priority",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "Enum string",
+      "description": "Message priority: `batch`, `normal`, `priority`, `urgent`, `critical`",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Protocol-Version",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Core Headers",
+      "direction": "both",
+      "format": "Semver string",
+      "description": "AMP protocol version (e.g., `\"1.0.0\"`)",
+      "section": "14.1",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Retry-After",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "response",
+      "format": "Integer (seconds)",
+      "description": "Seconds to wait before retrying",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Session-Binding",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Session Headers",
+      "direction": "request",
+      "format": "Hex HMAC",
+      "description": "Per-message HMAC proof of session binding",
+      "section": "14.3",
+      "since": "0.1.1",
+      "status": "stable"
+    },
+    {
+      "name": "Session-Id",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Session Headers",
+      "direction": "both",
+      "format": "String",
+      "description": "Session identifier",
+      "section": "14.3",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Span-Id",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Tracing Headers",
+      "direction": "both",
+      "format": "16 hex chars",
+      "description": "Span identifier (64-bit)",
+      "section": "14.11",
+      "since": "0.1.5",
+      "status": "stable"
+    },
+    {
+      "name": "Stream-Channel",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Streaming Headers",
+      "direction": "both",
+      "format": "String",
+      "description": "Logical stream channel identifier",
+      "section": "14.8",
+      "since": "0.1.7",
+      "status": "stable"
+    },
+    {
+      "name": "Timeout",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Messaging Control Headers",
+      "direction": "request",
+      "format": "Integer (seconds)",
+      "description": "Maximum time for synchronous processing",
+      "section": "14.5",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Trace-Id",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Tracing Headers",
+      "direction": "both",
+      "format": "32 hex chars",
+      "description": "Distributed trace identifier (128-bit)",
+      "section": "14.11",
+      "since": "0.1.5",
+      "status": "stable"
+    },
+    {
+      "name": "Transaction-Id",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "both",
+      "format": "String",
+      "description": "Transaction identifier for correlated operations",
+      "section": "14.6",
+      "since": "0.1.1",
+      "status": "stable"
+    },
+    {
+      "name": "Trust-Score",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Identity and Trust Headers",
+      "direction": "response",
+      "format": "Integer 0--1000",
+      "description": "Numeric trust score",
+      "section": "14.2",
+      "since": "0.1.1",
+      "status": "stable"
+    },
+    {
+      "name": "Trust-Tier",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Identity and Trust Headers",
+      "direction": "response",
+      "format": "Enum string",
+      "description": "Trust tier resolved for this sender: `internal`, `owner`, `verified`, `external`",
+      "section": "14.2",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Trust-Upgrade",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Identity and Trust Headers",
+      "direction": "both",
+      "format": "String",
+      "description": "Trust tier upgrade request or grant",
+      "section": "14.2",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Via",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "both",
+      "format": "Comma-separated",
+      "description": "Intermediaries the message passed through",
+      "section": "14.6",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Visited-Agents",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Delegation Headers",
+      "direction": "request",
+      "format": "Comma-separated",
+      "description": "Agent URIs already visited (loop detection)",
+      "section": "14.6",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-Circuit-Failures",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Integer",
+      "description": "Number of consecutive failures",
+      "section": "14.7",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-Circuit-Reset-At",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Unix timestamp",
+      "description": "When the circuit breaker will reset",
+      "section": "14.7",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-Circuit-State",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Enum string",
+      "description": "Circuit breaker state: `closed`, `open`, `half_open`",
+      "section": "14.7",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-Load-Level",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Float 0.0--1.0",
+      "description": "Current load level for routing decisions",
+      "section": "14.7",
+      "since": "0.1.4",
+      "status": "stable"
+    },
+    {
+      "name": "X-RateLimit-Limit",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Integer",
+      "description": "Maximum requests per window",
+      "section": "14.7",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-RateLimit-Remaining",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Integer",
+      "description": "Requests remaining in current window",
+      "section": "14.7",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-RateLimit-Reset",
+      "locations": [
+        "envelope",
+        "http"
+      ],
+      "group": "Rate Limiting and Circuit Breaker Headers",
+      "direction": "response",
+      "format": "Unix timestamp",
+      "description": "When the rate limit window resets",
+      "section": "14.7",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "X-Session-Restarted",
+      "locations": [
+        "envelope"
+      ],
+      "group": "Session Headers",
+      "direction": "response",
+      "format": "Boolean string",
+      "description": "Indicates session was restarted",
+      "section": "14.3",
+      "since": "0.1.0",
+      "status": "stable"
+    },
+    {
+      "name": "Content-Digest",
+      "locations": [
+        "http"
+      ],
+      "group": "HTTP binding",
+      "direction": "request",
+      "format": "RFC 9530 sha-256",
+      "description": "Digest of the request body; MUST be covered when the body is non-empty",
+      "section": "12.15.2",
+      "since": null,
+      "status": "stable"
+    },
+    {
+      "name": "Last-Event-ID",
+      "locations": [
+        "http"
+      ],
+      "group": "HTTP binding",
+      "direction": "request",
+      "format": "SSE event id",
+      "description": "Resume a stream after the given event",
+      "section": "8.5",
+      "since": null,
+      "status": "stable"
+    },
+    {
+      "name": "Signature",
+      "locations": [
+        "http"
+      ],
+      "group": "HTTP binding",
+      "direction": "request",
+      "format": "RFC 9421 Signature",
+      "description": "Ed25519 HTTP message signature (label sig1)",
+      "section": "12.15.1",
+      "since": null,
+      "status": "stable"
+    },
+    {
+      "name": "Signature-Input",
+      "locations": [
+        "http"
+      ],
+      "group": "HTTP binding",
+      "direction": "request",
+      "format": "RFC 9421 Signature-Input",
+      "description": "Covered components and created/keyid/alg/nonce parameters",
+      "section": "12.15.1",
+      "since": null,
+      "status": "stable"
+    },
+    {
+      "name": "Sunset",
+      "locations": [
+        "http"
+      ],
+      "group": "HTTP binding",
+      "direction": "response",
+      "format": "HTTP-date",
+      "description": "Deprecation date of the protocol version in use",
+      "section": "18.5",
+      "since": null,
+      "status": "stable"
+    },
+    {
+      "name": "WWW-Authenticate",
+      "locations": [
+        "http"
+      ],
+      "group": "HTTP binding",
+      "direction": "response",
+      "format": "RFC 9110",
+      "description": "Accepted authentication schemes on a 401",
+      "section": "7.2.2",
+      "since": null,
+      "status": "stable"
+    }
+  ]
+}

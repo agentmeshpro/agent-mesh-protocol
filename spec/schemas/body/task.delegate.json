@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.delegate.json",
+  "title": "AMP body: task.delegate",
+  "description": "body.type = 'task.delegate' — Delegate a task with full chain context.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being delegated",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "description": {
+      "description": "Description of the work to delegate",
+      "maxLength": 8192,
+      "title": "Description",
+      "type": "string"
+    },
+    "delegation_chain": {
+      "description": "DelegationLink objects forming the authority chain",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 50,
+      "title": "Delegation Chain",
+      "type": "array"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Arbitrary context to pass along with the delegation",
+      "title": "Context"
+    },
+    "attachments": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional file or media attachments",
+      "title": "Attachments"
+    }
+  },
+  "required": [
+    "task_id",
+    "description",
+    "delegation_chain"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.delegate"
+}

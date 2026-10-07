@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/trust.proof.json",
+  "title": "AMP body: trust.proof",
+  "description": "body.type = 'trust.proof' — ZK proof that trust meets a threshold.",
+  "properties": {
+    "agent_id": {
+      "description": "Agent proving its trust level",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "claim": {
+      "description": "Human-readable threshold claim (e.g. score_above_500)",
+      "title": "Claim",
+      "type": "string"
+    },
+    "proof_type": {
+      "description": "Proof method (e.g. zkp)",
+      "title": "Proof Type",
+      "type": "string"
+    },
+    "proof": {
+      "description": "The cryptographic proof",
+      "title": "Proof",
+      "type": "string"
+    },
+    "verifier_key_id": {
+      "description": "Key ID of the verifier",
+      "title": "Verifier Key Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent_id",
+    "claim",
+    "proof_type",
+    "proof",
+    "verifier_key_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "trust.proof"
+}

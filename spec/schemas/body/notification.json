@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/notification.json",
+  "title": "AMP body: notification",
+  "description": "body.type = 'notification' — Push a notification to an agent.",
+  "properties": {
+    "topic": {
+      "description": "Notification topic or category",
+      "maxLength": 256,
+      "title": "Topic",
+      "type": "string"
+    },
+    "message": {
+      "description": "Human-readable notification message",
+      "maxLength": 8192,
+      "title": "Message",
+      "type": "string"
+    },
+    "data": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional structured data payload",
+      "title": "Data"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO-8601 timestamp when this notification expires",
+      "title": "Expires At"
+    }
+  },
+  "required": [
+    "topic",
+    "message"
+  ],
+  "type": "object",
+  "x-amp-body-type": "notification"
+}

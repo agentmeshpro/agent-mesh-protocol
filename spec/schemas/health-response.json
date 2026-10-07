@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/health-response.json",
+  "title": "HealthResponse",
+  "description": "Response of GET /agent/health (WIRE-BINDING section 4.2).",
+  "properties": {
+    "status": {
+      "description": "healthy or unhealthy",
+      "title": "Status",
+      "type": "string",
+      "enum": [
+        "healthy",
+        "unhealthy"
+      ]
+    },
+    "protocol_version": {
+      "description": "Semantic version of the agent protocol in use (e.g. 0.1.0)",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "uptime_seconds": {
+      "default": 0,
+      "description": "Seconds since the agent process started",
+      "title": "Uptime Seconds",
+      "type": "integer"
+    },
+    "current_tasks": {
+      "default": 0,
+      "description": "Number of tasks currently being processed",
+      "title": "Current Tasks",
+      "type": "integer"
+    },
+    "max_tasks": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Maximum concurrent tasks the agent supports, if limited",
+      "title": "Max Tasks"
+    }
+  },
+  "required": [
+    "status",
+    "protocol_version"
+  ],
+  "type": "object"
+}

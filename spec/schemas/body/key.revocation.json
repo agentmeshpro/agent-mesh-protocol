@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/key.revocation.json",
+  "title": "AMP body: key.revocation",
+  "description": "body.type = 'key.revocation' — Broadcast that an agent key is revoked.",
+  "properties": {
+    "agent_id": {
+      "description": "agent:// URI of the agent whose key is revoked",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "revoked_key_id": {
+      "description": "Key ID being revoked",
+      "title": "Revoked Key Id",
+      "type": "string"
+    },
+    "revoked_at": {
+      "description": "ISO-8601 timestamp of revocation",
+      "title": "Revoked At",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Revocation reason (key_compromise, key_rotation, agent_decommissioned)",
+      "title": "Reason",
+      "type": "string"
+    },
+    "replacement_key_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Replacement key ID, if key was rotated",
+      "title": "Replacement Key Id"
+    },
+    "jwks_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "URL to fetch updated JWKS",
+      "title": "Jwks Url"
+    },
+    "signature": {
+      "description": "Ed25519 signature proving authenticity of this revocation",
+      "title": "Signature",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent_id",
+    "revoked_key_id",
+    "revoked_at",
+    "reason",
+    "signature"
+  ],
+  "type": "object",
+  "x-amp-body-type": "key.revocation",
+  "x-amp-constraints": [
+    "signature MUST verify over the canonical form (tests/vectors/key_revocation.json)"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/registry.federation_revoke.json",
+  "title": "AMP body: registry.federation_revoke",
+  "description": "body.type = 'registry.federation_revoke' — Tear down a federation link.",
+  "properties": {
+    "revoking_registry": {
+      "description": "Registry initiating the revoke",
+      "title": "Revoking Registry",
+      "type": "string"
+    },
+    "revoked_registry": {
+      "description": "Registry being revoked",
+      "title": "Revoked Registry",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 1024,
+      "title": "Reason",
+      "type": "string"
+    },
+    "effective_at": {
+      "description": "UTC; revocation effective from this time",
+      "format": "date-time",
+      "title": "Effective At",
+      "type": "string"
+    },
+    "signature": {
+      "description": "Ed25519 signature by revoking_registry's key",
+      "title": "Signature",
+      "type": "string"
+    }
+  },
+  "required": [
+    "revoking_registry",
+    "revoked_registry",
+    "reason",
+    "effective_at",
+    "signature"
+  ],
+  "type": "object",
+  "x-amp-body-type": "registry.federation_revoke",
+  "x-amp-constraints": [
+    "signature MUST verify per WIRE-BINDING section 12.16.2"
+  ]
+}

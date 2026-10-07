@@ -1,0 +1,1330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/envelope.json",
+  "title": "AgentMessage",
+  "description": "AMP message envelope (WIRE-BINDING section 5.1). Receiver acceptance schema: senders MUST also include `id` and `body_type`. Unknown top-level fields and headers MUST be ignored.",
+  "properties": {
+    "sender": {
+      "description": "Agent address of the sender (@slug, DID, or URL)",
+      "maxLength": 512,
+      "title": "Sender",
+      "type": "string"
+    },
+    "recipient": {
+      "description": "Agent address of the recipient (@slug, DID, or URL)",
+      "maxLength": 512,
+      "title": "Recipient",
+      "type": "string"
+    },
+    "id": {
+      "description": "Unique message identifier for dedup and correlation",
+      "title": "Id",
+      "type": "string"
+    },
+    "body_type": {
+      "default": "message",
+      "description": "Body type — one of 23 canonical types or a reverse-domain extension",
+      "title": "Body Type",
+      "type": "string"
+    },
+    "headers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Extensible key-value headers (string values only, RFC 7230 §3.2).",
+      "title": "Headers",
+      "type": "object"
+    },
+    "body": {
+      "default": null,
+      "description": "Message content — text, structured JSON, or binary reference",
+      "title": "Body"
+    }
+  },
+  "required": [
+    "sender",
+    "recipient"
+  ],
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "headers": {
+            "required": [
+              "Content-Encryption"
+            ]
+          }
+        },
+        "required": [
+          "headers"
+        ]
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "if": {
+              "type": "object"
+            },
+            "then": {
+              "$ref": "encrypted-body.json"
+            }
+          }
+        }
+      },
+      "else": {
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "agent.deactivation_notice"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/agent.deactivation_notice.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "agent.metadata_invalidate"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/agent.metadata_invalidate.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "audit.attestation"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/audit.attestation.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.consent_request"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.consent_request.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.consent_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.consent_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.consent_revoke"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.consent_revoke.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.erasure_request"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.erasure_request.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.erasure_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.erasure_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.export_request"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.export_request.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "data.export_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/data.export_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "erasure.propagation_status"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/erasure.propagation_status.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "identity.link_proof"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/identity.link_proof.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "identity.migration"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/identity.migration.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "key.revocation"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/key.revocation.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "message"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/message.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "notification"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/notification.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "registry.federation_request"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/registry.federation_request.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "registry.federation_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/registry.federation_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "registry.federation_revoke"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/registry.federation_revoke.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "registry.federation_sync"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/registry.federation_sync.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "registry.federation_sync_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/registry.federation_sync_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.close"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.close.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.confirm"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.confirm.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.established"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.established.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.init"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.init.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.pause"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.pause.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.ping"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.ping.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.pong"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.pong.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "session.resume"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/session.resume.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.acknowledge"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.acknowledge.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.assign"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.assign.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.challenge"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.challenge.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.challenge_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.challenge_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.complete"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.complete.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.create"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.create.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.delegate"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.delegate.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.error"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.error.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.escalate"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.escalate.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.input_required"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.input_required.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.progress"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.progress.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.quote"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.quote.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.redirect"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.redirect.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.reject"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.reject.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.reroute"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.reroute.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.revoke"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.revoke.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.spawn"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.spawn.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "task.transfer"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/task.transfer.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "tool.consent_grant"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/tool.consent_grant.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "tool.consent_request"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/tool.consent_request.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "trust.proof"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/trust.proof.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "trust.upgrade_request"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/trust.upgrade_request.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body_type": {
+                  "const": "trust.upgrade_response"
+                },
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body_type",
+                "body"
+              ]
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/trust.upgrade_response.json"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "body": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "body"
+              ],
+              "not": {
+                "required": [
+                  "body_type"
+                ]
+              }
+            },
+            "then": {
+              "properties": {
+                "body": {
+                  "$ref": "body/message.json"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "x-amp-sender-required": [
+    "sender",
+    "recipient",
+    "id",
+    "body_type"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.channel_close.json",
+  "title": "AMP stream event data: stream.channel_close",
+  "description": "Event emitted when a stream channel is closed.",
+  "properties": {
+    "channel_id": {
+      "description": "Channel being closed",
+      "title": "Channel Id",
+      "type": "string"
+    },
+    "reason": {
+      "default": "complete",
+      "description": "Reason for closing (complete, error, timeout)",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "channel_id"
+  ],
+  "type": "object",
+  "x-amp-event-type": "stream.channel_close"
+}

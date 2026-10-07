@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.resume.json",
+  "title": "AMP body: session.resume",
+  "description": "body.type = 'session.resume' — Resume a paused session.",
+  "properties": {
+    "session_id": {
+      "description": "Session ID to resume",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "resume_token": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Token provided during pause, if one was issued",
+      "title": "Resume Token"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "session.resume"
+}

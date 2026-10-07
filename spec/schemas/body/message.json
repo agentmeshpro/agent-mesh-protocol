@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/message.json",
+  "title": "AMP body: message",
+  "description": "body.type = 'message' — Free-form message with optional attachments.",
+  "properties": {
+    "text": {
+      "description": "Message text content",
+      "maxLength": 65536,
+      "title": "Text",
+      "type": "string"
+    },
+    "attachments": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional file or media attachments",
+      "title": "Attachments"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "type": "object",
+  "x-amp-body-type": "message"
+}

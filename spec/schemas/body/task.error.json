@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.error.json",
+  "title": "AMP body: task.error",
+  "description": "body.type = 'task.error' — Report a terminal task error.",
+  "properties": {
+    "task_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ID of the failed task (may be absent for routing errors)",
+      "title": "Task Id"
+    },
+    "reason": {
+      "description": "Short machine-readable error reason",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable error detail",
+      "title": "Detail"
+    },
+    "retry_eligible": {
+      "description": "Whether the caller can retry this task",
+      "title": "Retry Eligible",
+      "type": "boolean"
+    },
+    "retry_after_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How long to wait before retrying",
+      "title": "Retry After Seconds"
+    },
+    "partial_result": {
+      "anyOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Any partial result produced before the error",
+      "title": "Partial Result"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Diagnostic context for debugging",
+      "title": "Context"
+    }
+  },
+  "required": [
+    "reason",
+    "retry_eligible"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.error"
+}

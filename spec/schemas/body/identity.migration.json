@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/identity.migration.json",
+  "title": "AMP body: identity.migration",
+  "description": "body.type = 'identity.migration' — Announce address migration.",
+  "properties": {
+    "old_id": {
+      "description": "Previous agent:// URI",
+      "title": "Old Id",
+      "type": "string"
+    },
+    "new_id": {
+      "description": "New agent:// URI",
+      "title": "New Id",
+      "type": "string"
+    },
+    "migration_proof": {
+      "description": "Signed by both old and new keys",
+      "title": "Migration Proof",
+      "type": "string"
+    },
+    "effective_at": {
+      "description": "ISO-8601 timestamp when migration takes effect",
+      "title": "Effective At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "old_id",
+    "new_id",
+    "migration_proof",
+    "effective_at"
+  ],
+  "type": "object",
+  "x-amp-body-type": "identity.migration"
+}

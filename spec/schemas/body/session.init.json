@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.init.json",
+  "title": "AMP body: session.init",
+  "description": "body.type = 'session.init' — Propose a new session with capabilities.",
+  "properties": {
+    "proposed_capabilities": {
+      "description": "Capabilities the client wants to negotiate (e.g. messaging, tools, streaming)",
+      "items": {
+        "type": "string"
+      },
+      "title": "Proposed Capabilities",
+      "type": "array"
+    },
+    "proposed_version": {
+      "description": "Protocol version the client proposes (e.g. 1.0.0)",
+      "title": "Proposed Version",
+      "type": "string"
+    },
+    "client_nonce": {
+      "description": "Random 256-bit hex string for replay protection. MUST be cryptographically random and globally unique. Use secrets.token_hex(32) or equivalent.",
+      "title": "Client Nonce",
+      "type": "string"
+    },
+    "conversation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional conversation ID to resume or bind to",
+      "title": "Conversation Id"
+    },
+    "previous_session_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Previous session ID for session resumption",
+      "title": "Previous Session Id"
+    },
+    "client_ephemeral_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Client ephemeral X25519 public key (32 bytes, base64url, no padding) for binding-key agreement. Required by servers that bind sessions (server_accept_init rejects an init without it).",
+      "title": "Client Ephemeral Key"
+    }
+  },
+  "required": [
+    "proposed_capabilities",
+    "proposed_version",
+    "client_nonce"
+  ],
+  "type": "object",
+  "x-amp-body-type": "session.init"
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/agent.metadata_invalidate.json",
+  "title": "AMP body: agent.metadata_invalidate",
+  "description": "body.type = 'agent.metadata_invalidate'.\n\nPush notification: an agent's ``agent.json`` has changed; any peer that\ncaches the record MUST drop its copy on receipt of this message.",
+  "properties": {
+    "agent_id": {
+      "description": "agent:// URI whose metadata changed",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "changed_at": {
+      "description": "UTC timestamp when the underlying agent.json was updated",
+      "format": "date-time",
+      "title": "Changed At",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why the cached record must be dropped",
+      "enum": [
+        "visibility_change",
+        "endpoint_change",
+        "migration",
+        "revocation"
+      ],
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent_id",
+    "changed_at",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "agent.metadata_invalidate"
+}

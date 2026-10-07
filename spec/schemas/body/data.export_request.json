@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.export_request.json",
+  "title": "AMP body: data.export_request",
+  "properties": {
+    "subject_id": {
+      "description": "Unique identifier of the data subject requesting export",
+      "title": "Subject Id",
+      "type": "string"
+    },
+    "subject_proof": {
+      "description": "Proof of identity for the data subject (e.g. signed token)",
+      "title": "Subject Proof",
+      "type": "string"
+    },
+    "scope": {
+      "default": "all",
+      "description": "Scope of data to export",
+      "enum": [
+        "all",
+        "conversations",
+        "tasks",
+        "tools"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "format": {
+      "default": "json",
+      "description": "Desired export file format",
+      "enum": [
+        "json",
+        "csv"
+      ],
+      "title": "Format",
+      "type": "string"
+    },
+    "callback_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "URL to notify when export is ready for download",
+      "title": "Callback Url"
+    }
+  },
+  "required": [
+    "subject_id",
+    "subject_proof"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.export_request"
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.complete.json",
+  "title": "AMP body: task.complete",
+  "description": "body.type = 'task.complete' — Signal successful task completion.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the completed task",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "result": {
+      "description": "The task result or output",
+      "title": "Result"
+    },
+    "attachments": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional result attachments",
+      "title": "Attachments"
+    },
+    "metadata": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Arbitrary completion metadata",
+      "title": "Metadata"
+    },
+    "delegation_chain": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Full delegation chain for traceability",
+      "title": "Delegation Chain"
+    },
+    "cost_usd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Actual cost incurred in USD",
+      "title": "Cost Usd"
+    },
+    "duration_seconds": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Actual wall-clock duration in seconds",
+      "title": "Duration Seconds"
+    },
+    "cost_receipt": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Per-hop cost receipt for delegation chain cost attribution",
+      "title": "Cost Receipt"
+    }
+  },
+  "required": [
+    "task_id",
+    "result"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.complete"
+}

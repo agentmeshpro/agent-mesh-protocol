@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.quote.json",
+  "title": "AMP body: task.quote",
+  "description": "body.type = 'task.quote' — Non-binding cost/time estimate for a task.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being quoted",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "ISO-8601 timestamp when this quote expires",
+      "maxLength": 256,
+      "title": "Expires At",
+      "type": "string"
+    },
+    "estimated_cost_usd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Estimated cost in USD",
+      "title": "Estimated Cost Usd"
+    },
+    "estimated_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Estimated token usage",
+      "title": "Estimated Tokens"
+    },
+    "estimated_duration_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Estimated duration in seconds",
+      "title": "Estimated Duration Seconds"
+    },
+    "breakdown": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Itemized cost or time breakdown",
+      "title": "Breakdown"
+    }
+  },
+  "required": [
+    "task_id",
+    "expires_at"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.quote"
+}

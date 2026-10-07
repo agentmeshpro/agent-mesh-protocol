@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.pause.json",
+  "title": "AMP stream event data: stream.pause",
+  "description": "stream.pause — server tells client it is pausing the stream.",
+  "properties": {
+    "reason": {
+      "description": "Why the stream is paused (e.g. 'client_behind', 'buffer_full')",
+      "title": "Reason",
+      "type": "string"
+    },
+    "resume_after_ack": {
+      "description": "Resume when client ACKs this sequence number",
+      "title": "Resume After Ack",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "reason",
+    "resume_after_ack"
+  ],
+  "type": "object",
+  "x-amp-event-type": "stream.pause"
+}
