@@ -462,22 +462,34 @@ def _multibase_decode_ed25519(method_specific: str) -> bytes:
     return decoded[2:]
 
 
-def _lookup_api_key(key: str) -> TrustTier | None:
+def lookup_api_key_owner(key: str) -> tuple[str, TrustTier] | None:
+    """Return ``(agent_id, tier)`` for a registered API key, else ``None``.
+
+    The owning agent id is what callers must use as the authenticated
+    identity: API keys are per-agent credentials, so two keys must never
+    collapse into one principal.
+    """
     presented = _hash_api_key(key)
     with _API_KEYS_LOCK:
         entry = _API_KEYS.get(presented)
         validator = _API_KEY_VALIDATOR
     # The dict lookup narrows by digest; confirm in constant time.
     if entry is not None and hmac.compare_digest(entry[0], presented):
-        return entry[2]
+        return entry[1], entry[2]
     if validator is not None:
         try:
-            if validator.validate(key) is not None:
-                return TrustTier.VERIFIED
+            owner = validator.validate(key)
         except Exception as exc:
             logger.warning("API key store raised: %s", exc)
             return None
+        if owner:
+            return owner, TrustTier.VERIFIED
     return None
+
+
+def _lookup_api_key(key: str) -> TrustTier | None:
+    found = lookup_api_key_owner(key)
+    return found[1] if found is not None else None
 
 
 def _resolve_api_key(key: str, client_ip: str | None = None) -> TrustTier:

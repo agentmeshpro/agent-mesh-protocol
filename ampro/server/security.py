@@ -127,6 +127,12 @@ class SecurityPolicy:
     #: Extra identifiers this agent answers to (besides ``agent_id`` and
     #: the identifiers in its agent.json).
     aliases: Sequence[str] = field(default_factory=tuple)
+    #: Browser origins allowed to make state-changing requests.  Requests
+    #: carrying any other ``Origin`` header are refused with 403 (CSRF and
+    #: DNS-rebinding protection).  Loopback origins and the origin of the
+    #: agent's own endpoint are always allowed.  Agent-to-agent calls
+    #: send no ``Origin`` and are unaffected.
+    allowed_origins: Sequence[str] = field(default_factory=tuple)
 
     @classmethod
     def from_config(cls, config: WireConfig, **overrides: object) -> SecurityPolicy:
@@ -166,3 +172,36 @@ class SecurityPolicy:
             require_auth=True,
             **overrides,
         )
+
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "[::1]", "::1"}
+
+
+def origin_of(url: str) -> str | None:
+    """``scheme://host[:port]`` of *url*, lower-cased; ``None`` if unparsable."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    if not parts.scheme or not parts.netloc:
+        return None
+    return f"{parts.scheme.lower()}://{parts.netloc.lower()}"
+
+
+def origin_allowed(origin: str, allowed: Sequence[str]) -> bool:
+    """True if a browser *origin* may call this server."""
+    from urllib.parse import urlsplit
+
+    normalized = origin.strip().lower()
+    if normalized in {o.rstrip("/").lower() for o in allowed}:
+        return True
+    try:
+        parts = urlsplit(normalized)
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https"):
+        return False
+    host = parts.hostname or ""
+    return host in _LOOPBACK_HOSTS or f"[{host}]" in _LOOPBACK_HOSTS

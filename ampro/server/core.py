@@ -57,7 +57,12 @@ from ampro.core.envelope import AgentMessage
 from ampro.core.versioning import CURRENT_VERSION
 from ampro.server.auth import ANONYMOUS, Principal, Unauthorized, authenticate
 from ampro.server.http import HTTPRequest, HTTPResponse, ProtocolAdapter
-from ampro.server.security import CachedResponse, SecurityPolicy
+from ampro.server.security import (
+    CachedResponse,
+    SecurityPolicy,
+    origin_allowed,
+    origin_of,
+)
 from ampro.trust.tiers import TrustTier
 from ampro.wire.config import DEFAULTS, WireConfig
 from ampro.wire.errors import (
@@ -188,7 +193,27 @@ class AgentServer:
         if len(request.body) > self.config.max_message_bytes:
             return self.too_large_response()
 
+        # Adapters that enforce their own Origin policy (and answer in
+        # their protocol's error format) see requests first.
         for adapter in self._adapters:
+            if getattr(adapter, "enforces_origin", False):
+                response = await adapter.handle(request)
+                if response is not None:
+                    return response
+
+        # Browser-originated state-changing requests must come from an
+        # allowed origin (CSRF / DNS rebinding).  Applies to every other
+        # protocol; agent-to-agent traffic carries no Origin header.
+        origin = request.header("origin")
+        if origin is not None and request.method.upper() not in ("GET", "HEAD", "OPTIONS"):
+            if not origin_allowed(origin, self._allowed_origins()):
+                logger.info("Refused cross-origin %s %s from %r", request.method, request.path, origin)
+                status, headers, body = self._error_response(forbidden("Origin not allowed"))
+                return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+
+        for adapter in self._adapters:
+            if getattr(adapter, "enforces_origin", False):
+                continue
             response = await adapter.handle(request)
             if response is not None:
                 return response
@@ -207,6 +232,10 @@ class AgentServer:
                 return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
         status, headers, body = await self.route(request.method, request.path, payload)
         return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+
+    def _allowed_origins(self) -> list[str]:
+        own = origin_of(self.endpoint)
+        return [*self.security.allowed_origins, *([own] if own else [])]
 
     def too_large_response(self) -> HTTPResponse:
         """413 problem response for a body over ``max_message_bytes``."""
@@ -416,6 +445,14 @@ class AgentServer:
                 retry = max(1, info.reset - int(time.time()))
                 rl_headers["Retry-After"] = str(retry)
                 return problem(rate_limited("Rate limit exceeded", retry_after=retry), rl_headers)
+
+        content_type = (request.header("content-type") or "").split(";")[0].strip().lower()
+        if content_type != "application/json" and not content_type.endswith("+json"):
+            from ampro.wire.errors import content_type_mismatch
+
+            err = content_type_mismatch("Content-Type must be application/json")
+            err = err.model_copy(update={"status": 415})
+            return problem(err)
 
         try:
             payload = request.json()

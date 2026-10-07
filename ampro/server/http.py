@@ -43,7 +43,11 @@ class HTTPRequest:
         """Decode the body as JSON (raises ``ValueError`` on bad input)."""
         if not self.body:
             return None
-        return json.loads(self.body)
+        try:
+            return json.loads(self.body)
+        except RecursionError as exc:
+            # Pathologically nested input; treat as malformed, not a crash.
+            raise ValueError("JSON nesting too deep") from exc
 
 
 @dataclass
@@ -89,5 +93,7 @@ class ProtocolAdapter(Protocol):
     """
 
     name: str
+    # Adapters may also set ``enforces_origin = True`` to apply their own
+    # browser Origin policy instead of the server-wide one.
 
     async def handle(self, request: HTTPRequest) -> HTTPResponse | None: ...

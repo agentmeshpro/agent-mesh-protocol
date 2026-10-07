@@ -350,6 +350,9 @@ class MCPAdapter:
     :class:`AgentServer`.
     """
 
+    #: MCP applies its own Origin allow-list (spec DNS-rebinding rule).
+    enforces_origin = True
+
     name = "mcp"
 
     def __init__(

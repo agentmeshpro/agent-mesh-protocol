@@ -68,7 +68,10 @@ def post(server, env, headers=None, client="203.0.113.7"):
     req = HTTPRequest(
         method="POST",
         path="/agent/message",
-        headers={k.lower(): v for k, v in (headers or {}).items()},
+        headers={
+            "content-type": "application/json",
+            **{k.lower(): v for k, v in (headers or {}).items()},
+        },
         body=json.dumps(env).encode(),
         client=client,
     )
@@ -195,3 +198,65 @@ async def test_oversized_body_rejected_before_parsing():
 def test_production_policy_requires_an_authenticator():
     with pytest.raises(ValueError):
         SecurityPolicy.production([])
+
+
+async def test_cross_origin_browser_post_is_refused():
+    server, calls = make_server()
+    resp = await post(server, envelope(), {"Origin": "http://evil.example"})
+    assert resp.status == 403
+    assert calls == []
+
+
+async def test_loopback_and_own_origin_allowed():
+    server, _ = make_server()
+    assert (await post(server, envelope(id="a"), {"Origin": "http://localhost:3000"})).status == 202
+    assert (await post(server, envelope(id="b"), {"Origin": "https://me.example.com"})).status == 202
+
+
+async def test_configured_origin_allowed():
+    server, _ = make_server(SecurityPolicy(allowed_origins=["https://ui.example.org"]))
+    assert (await post(server, envelope(), {"Origin": "https://ui.example.org"})).status == 202
+
+
+async def test_non_json_content_type_rejected():
+    server, calls = make_server()
+    resp = await post(server, envelope(), {"Content-Type": "text/plain"})
+    assert resp.status == 415
+    assert calls == []
+
+
+async def test_deeply_nested_json_is_a_400_not_a_crash():
+    server, _ = make_server()
+    req = HTTPRequest(
+        "POST", "/agent/message",
+        headers={"content-type": "application/json"},
+        body=b"[" * 200_000,
+    )
+    assert (await server.handle(req)).status == 400
+
+
+async def test_api_key_callers_get_distinct_bound_identities():
+    from ampro.server.auth import TrustResolverAuthenticator
+    from ampro.trust.resolver import _reset_api_keys_for_tests, register_api_key
+
+    _reset_api_keys_for_tests()
+    try:
+        register_api_key("alice-key", "agent://alice.example.com")
+        register_api_key("mallory-key", "agent://mallory.example.com")
+        auth = TrustResolverAuthenticator(AGENT)
+        server, calls = make_server(SecurityPolicy.production([auth]))
+
+        alice = envelope(sender="agent://alice.example.com", id="shared-id")
+        resp = await post(server, alice, {"Authorization": "ApiKey alice-key"})
+        assert json.loads(resp.body)["principal"] == "agent://alice.example.com"
+
+        # Mallory cannot send as Alice ...
+        spoof = await post(server, alice, {"Authorization": "ApiKey mallory-key"})
+        assert spoof.status == 403
+        # ... nor read Alice's cached reply by reusing her message id.
+        own = envelope(sender="agent://mallory.example.com", id="shared-id")
+        resp = await post(server, own, {"Authorization": "ApiKey mallory-key"})
+        assert json.loads(resp.body)["principal"] == "agent://mallory.example.com"
+        assert len(calls) == 2
+    finally:
+        _reset_api_keys_for_tests()

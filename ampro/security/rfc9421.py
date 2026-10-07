@@ -383,6 +383,11 @@ def verify_request(
     # Parse covered components: "comp1" "comp2" ...
     covered = re.findall(r'"([^"]+)"', components_str)
 
+    # The signature must bind the request line and the target, otherwise a
+    # signature captured on one route or agent could be replayed on another.
+    if "@method" not in covered or not ({"@target-uri", "@authority"} & set(covered)):
+        return False
+
     # Body integrity. A non-empty body is only authenticated when
     # ``content-digest`` is covered by the signature AND matches the body;
     # otherwise an attacker could swap the body of a signed request.

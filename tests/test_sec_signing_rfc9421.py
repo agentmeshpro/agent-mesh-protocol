@@ -214,3 +214,29 @@ class TestAuthority:
         headers = _signed(priv, nonce=secrets.token_hex(8))
         assert verify_request(pub, "POST", "https://a.example.com/x", headers,
                               body=b"{}") is True
+
+
+def test_signature_must_cover_method_and_target():
+    """A signature that omits @method/@target-uri could be replayed on another route."""
+    import base64
+    import time
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from ampro.security.nonce_tracker import NonceTracker
+    from ampro.security.rfc9421 import create_signature_base, verify_request
+
+    sk = Ed25519PrivateKey.generate()
+    pk = sk.public_key().public_bytes_raw()
+    created = int(time.time())
+    url = "https://a.example/agent/message"
+    headers = {"content-type": "application/json"}
+    base = create_signature_base(
+        "POST", url, headers, ["content-type"], created=created, keyid="k1", nonce="n-1",
+    )
+    sig = base64.b64encode(sk.sign(base.encode())).decode()
+    headers["Signature-Input"] = (
+        f'sig1=("content-type");created={created};keyid="k1";alg="ed25519";nonce="n-1"'
+    )
+    headers["Signature"] = f"sig1=:{sig}:"
+    assert not verify_request(pk, "POST", url, headers, None, nonce_tracker=NonceTracker())

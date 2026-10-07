@@ -166,7 +166,7 @@ class TrustResolverAuthenticator:
             raise Unauthorized("credential did not resolve to a trusted tier")
         from ampro.identity.auth_methods import AuthMethod, parse_authorization
 
-        method = parse_authorization(authorization).method
+        parsed = parse_authorization(authorization)
         if request.client_cert_identity:
             return Principal(
                 id=request.client_cert_identity,
@@ -174,16 +174,52 @@ class TrustResolverAuthenticator:
                 claims={"bound_sender": True},
                 auth_method="mtls",
             )
-        # Only a DID proof is cryptographically bound to the envelope
-        # sender (the resolver checks it); other methods authenticate the
-        # caller but not the ``sender`` field it chose.
-        bound = method == AuthMethod.DID and sender is not None
-        return Principal(
-            id=sender if bound else f"{method.value}:caller",
-            trust_tier=tier,
-            claims={"bound_sender": bound},
-            auth_method=method.value,
-        )
+        if parsed.method == AuthMethod.DID:
+            # The resolver verified the DID proof is bound to ``sender``.
+            if not sender:
+                raise Unauthorized("DID proof without an envelope sender")
+            return Principal(
+                id=sender, trust_tier=tier, claims={"bound_sender": True}, auth_method="did",
+            )
+        if parsed.method == AuthMethod.API_KEY:
+            from ampro.trust.resolver import lookup_api_key_owner
+
+            found = lookup_api_key_owner(parsed.token)
+            if found is None:
+                raise Unauthorized("API key has no owning agent")
+            # API keys are per-agent credentials: the key's owner is the
+            # caller, and it may only send as itself.
+            return Principal(
+                id=found[0], trust_tier=tier, claims={"bound_sender": True}, auth_method="api_key",
+            )
+        if parsed.method == AuthMethod.JWT:
+            # The host's JWT resolver has verified the token; identify the
+            # caller by its (issuer, subject) so callers never share an id.
+            claims = _jwt_claims(parsed.token)
+            iss, sub = claims.get("iss"), claims.get("sub")
+            if not isinstance(iss, str) or not isinstance(sub, str) or not iss or not sub:
+                raise Unauthorized("JWT lacks iss/sub; cannot identify the caller")
+            return Principal(
+                id=f"jwt:{iss}#{sub}",
+                trust_tier=tier,
+                claims={"bound_sender": False, "iss": iss, "sub": sub},
+                auth_method="jwt",
+            )
+        raise Unauthorized("credential did not yield a caller identity")
+
+
+def _jwt_claims(token: str) -> dict[str, Any]:
+    """Decode the payload of an already-verified compact JWT."""
+    import base64
+    import json
+
+    try:
+        payload = token.split(".")[1]
+        padded = payload + "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(padded))
+    except (IndexError, ValueError, RecursionError):
+        return {}
+    return claims if isinstance(claims, dict) else {}
 
 
 def _parse_keyid(signature_input: str) -> str | None:
