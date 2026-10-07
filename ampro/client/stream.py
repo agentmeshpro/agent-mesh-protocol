@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 
 import httpx
@@ -30,7 +31,14 @@ from ampro.client.core import (
     _raise_for_problem,
     _resolve_endpoint,
 )
-from ampro.streaming.events import StreamingEvent, StreamingEventType
+from ampro.streaming.events import MAX_SSE_EVENT_BYTES, StreamingEvent, StreamingEventType
+from ampro.transport.limits import (
+    ResponseTooLarge,
+    StreamDeadlineExceeded,
+    iter_sse_lines,
+    read_capped,
+)
+from ampro.wire.config import DEFAULTS
 
 logger = logging.getLogger("ampro.client.stream")
 
@@ -91,6 +99,8 @@ def _parse_sse_line(
         # SSE spec: multiple data lines are joined with newlines
         existing = current_event.get("data")
         if existing is not None:
+            if len(existing) + len(value) > MAX_SSE_EVENT_BYTES:
+                raise ResponseTooLarge(f"SSE event exceeds {MAX_SSE_EVENT_BYTES} bytes")
             current_event["data"] = existing + "\n" + value
         else:
             current_event["data"] = value
@@ -132,9 +142,16 @@ async def stream(
         ConnectionError: If all retry attempts are exhausted.
         SSRFError: (subclass of ``ValueError``) if the target is internal
             and ``allow_private`` is False.
+        ResponseTooLarge: (a ``ValueError``) if a line or event exceeds
+            ``MAX_SSE_EVENT_BYTES`` or an error body ``max_response_bytes``.
+        StreamDeadlineExceeded: (a ``TimeoutError``) once *timeout* has
+            elapsed in total, reconnects included.
     """
     endpoint = await _resolve_endpoint(to)
     url = f"{endpoint}/agent/stream"
+    # Overall deadline across reconnects; lines are capped so a server that
+    # never terminates a line cannot grow client memory.
+    deadline = time.monotonic() + timeout
     retries = 0
     current_last_id = last_event_id
 
@@ -160,13 +177,18 @@ async def stream(
                     timeout=httpx.Timeout(timeout, connect=10.0),
                 ) as response:
                     if response.status_code >= 400:
+                        await read_capped(response, DEFAULTS.max_response_bytes)
                         _raise_for_problem(response)
 
                     # Reset retry counter on successful connection
                     retries = 0
                     current_event: dict[str, str | None] = {}
 
-                    async for raw_line in response.aiter_lines():
+                    if time.monotonic() > deadline:
+                        raise StreamDeadlineExceeded("stream deadline exceeded")
+                    async for raw_line in iter_sse_lines(
+                        response, max_line_bytes=MAX_SSE_EVENT_BYTES, deadline=deadline,
+                    ):
                         event = _parse_sse_line(raw_line, current_event)
                         if event is not None:
                             if event.id:

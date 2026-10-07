@@ -136,6 +136,10 @@ _UNSET = _Unset()
 DEFAULT_INPUT_MODES = ("text/plain", "application/json", "*/*")
 
 
+class _Busy(Exception):
+    """Capacity exhausted: answered with ``503`` and no body."""
+
+
 @dataclass
 class _Call:
     """Per-request state shared by both bindings."""
@@ -144,6 +148,10 @@ class _Call:
     extensions: frozenset[str]
     request: HTTPRequest
     request_id: str = ""
+    # Concurrency lease for this request.  A ``returnImmediately`` send
+    # takes it over so the slot stays held until the background run ends.
+    lease: Callable[[], None] | None = None
+    lease_transferred: bool = False
 
     @property
     def amp_active(self) -> bool:
@@ -231,6 +239,7 @@ class A2AAdapter:
         serve_root_card: also serve ``/.well-known/agent-card.json``.
         streaming: advertise and serve ``message:stream`` / subscribe.
         max_parts: maximum parts per message.
+        max_background_tasks: cap on concurrent ``returnImmediately`` runs.
         max_text_chars: maximum total characters across text parts.
         max_metadata_bytes: maximum JSON size of request / message metadata.
         handler_timeout: seconds a handler may run per request (``None`` =
@@ -271,6 +280,7 @@ class A2AAdapter:
         serve_root_card: bool = True,
         streaming: bool = True,
         max_parts: int = 64,
+        max_background_tasks: int = 100,
         max_text_chars: int = 65_536,
         max_metadata_bytes: int = 16_384,
         handler_timeout: float | None | _Unset = _UNSET,
@@ -310,6 +320,7 @@ class A2AAdapter:
         self.serve_root_card = serve_root_card
         self.streaming = streaming
         self.max_parts = max_parts
+        self.max_background_tasks = max_background_tasks
         self.max_text_chars = max_text_chars
         self.max_metadata_bytes = max_metadata_bytes
         self.handler_timeout = handler_timeout
@@ -409,18 +420,32 @@ class A2AAdapter:
                     "x-ratelimit-reset": str(info.reset),
                 })
         limiter = policy.concurrency if policy is not None else None
-        if limiter is not None and not limiter.acquire(limit_key):
-            return HTTPResponse.empty(503, {"retry-after": "5"})
+        if limiter is not None:
+            if not limiter.acquire(limit_key):
+                return HTTPResponse.empty(503, {"retry-after": "5"})
+            held = [True]
+
+            def release_once() -> None:
+                if held[0]:
+                    held[0] = False
+                    limiter.release(limit_key)
+
+            call.lease = release_once
         try:
             response = await self._dispatch(kind, arg, call)
+        except _Busy:
+            if call.lease is not None:
+                call.lease()
+            return HTTPResponse.empty(503, {"retry-after": "5"})
         except BaseException:
-            if limiter is not None:
-                limiter.release(limit_key)
+            if call.lease is not None:
+                call.lease()
             raise
-        if limiter is None:
+        lease = call.lease
+        if lease is None or call.lease_transferred:
             return response
         if not response.is_streaming:
-            limiter.release(limit_key)
+            lease()
             return response
         inner = response.body
 
@@ -429,7 +454,7 @@ class A2AAdapter:
                 async for chunk in inner:  # type: ignore[union-attr]
                     yield chunk
             finally:
-                limiter.release(limit_key)
+                lease()
 
         response.body = released()
         return response
@@ -442,6 +467,8 @@ class A2AAdapter:
             return await self._handle_rest(kind, arg, call)
         except A2AError as exc:
             return self._rest_error(exc, call)
+        except _Busy:
+            raise
         except Exception:
             logger.exception("A2A request failed (request_id=%s)", call.request_id)
             return self._rest_error(A2AError("INTERNAL_ERROR"), call)
@@ -622,6 +649,8 @@ class A2AAdapter:
                 return reply({"jsonrpc": "2.0", "id": rid, "result": result})
         except A2AError as exc:
             return error(rid, exc)
+        except _Busy:
+            raise
         except Exception:
             logger.exception("A2A JSON-RPC request failed")
             return error(rid, A2AError("INTERNAL_ERROR"))
@@ -1231,7 +1260,16 @@ class A2AAdapter:
             task_id=tid, context_id=cid, status=final.status, metadata=final.metadata))}
 
     async def _start_background(self, prep: _Prepared) -> dict[str, Any]:
-        """``returnImmediately``: answer with a WORKING task, finish in the background."""
+        """``returnImmediately``: answer with a WORKING task, finish in the background.
+
+        The request's concurrency lease is held until the background run
+        finishes, and at most ``max_background_tasks`` runs exist at once
+        (``503`` beyond that).
+        """
+        if len(self._background) >= self.max_background_tasks:
+            raise _Busy()
+        lease = prep.call.lease
+        prep.call.lease_transferred = True
         owner = prep.call.principal.id
         working = self._working_task(prep)
         await self.store.save_task(working, owner)
@@ -1275,6 +1313,8 @@ class A2AAdapter:
                 self._live.pop(prep.task_id, None)
                 await self._release(prep, payload)
                 self._background.discard(asyncio.current_task())  # type: ignore[arg-type]
+                if lease is not None:
+                    lease()
 
         # ``live.runner`` is the handler work itself so cancel() always lands
         # there (even before it started); the wrapper always cleans up.

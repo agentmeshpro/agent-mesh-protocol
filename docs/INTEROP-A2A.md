@@ -128,6 +128,10 @@ Limits on streams:
 the handler in the background. The task can be polled, subscribed to, or
 cancelled while it runs.
 
+Background runs count against the server's concurrency limit until they
+finish, not just until the response is sent. At most `max_background_tasks`
+runs (default 100) exist at once; beyond that the caller gets `503` with no body.
+
 ## Authentication hook
 
 The adapter uses the server-wide contract in `ampro.server.auth`, re-exported
@@ -227,7 +231,12 @@ kind = await discover_protocol("https://agent.example")   # "amp" or "a2a"
   in the card: HTTP+JSON 1.x first, then JSON-RPC 1.x.
 * Every request has a timeout.
 * Redirects are followed only within the same origin, up to 3.
-* Responses and SSE events are capped by `max_response_bytes`.
+* Responses, SSE events and each buffered SSE line (comment lines
+  included) are capped by `max_response_bytes`.
+* A streaming call must finish within `stream_timeout` (default 300 s).
+* `auth` is sent only to interfaces on the same origin as the fetched card
+  URL, or to origins listed in `trusted_origins`. A card passed in directly
+  is trusted as given.
 * When the client creates its own HTTP connection, each URL is checked with
   `ampro.security.ssrf.validate_url_async`, and the connection is pinned to the
   validated addresses. Only HTTPS and public addresses are allowed unless you

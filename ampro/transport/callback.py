@@ -73,11 +73,14 @@ async def deliver_callback(
     ) as client:
         # HEAD reachability check (spec Section 5.5)
         try:
-            head_resp = await client.head(callback_url)
-            if head_resp.status_code >= 300:
+            # Responses are opened as streams and closed without reading
+            # the body: a callback target cannot make us buffer anything.
+            async with client.stream("HEAD", callback_url) as head_resp:
+                head_status = head_resp.status_code
+            if head_status >= 300:
                 logger.warning(
                     "Callback URL HEAD check failed: %s → %d",
-                    callback_url, head_resp.status_code,
+                    callback_url, head_status,
                 )
                 return False
         except Exception as exc:
@@ -86,17 +89,19 @@ async def deliver_callback(
 
         for attempt in range(max_retries):
             try:
-                resp = await client.post(
+                async with client.stream(
+                    "POST",
                     callback_url,
                     json=message,
                     headers={"Content-Type": "application/json"},
-                )
-                if resp.status_code in (200, 201, 202, 204):
+                ) as resp:
+                    status = resp.status_code
+                if status in (200, 201, 202, 204):
                     logger.info("Callback delivered to %s (attempt %d)", callback_url, attempt + 1)
                     return True
                 logger.warning(
                     "Callback to %s returned %d (attempt %d)",
-                    callback_url, resp.status_code, attempt + 1,
+                    callback_url, status, attempt + 1,
                 )
             except Exception as exc:
                 logger.warning(
