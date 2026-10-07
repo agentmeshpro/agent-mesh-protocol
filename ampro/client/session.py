@@ -53,7 +53,9 @@ class Session:
         sender: str,
         session_id: str,
         binding_token: str,
+        allow_private: bool = False,
     ) -> None:
+        self._allow_private = allow_private
         self._endpoint = endpoint
         self._target_uri = target_uri
         self._sender = sender
@@ -106,6 +108,7 @@ class Session:
             msg,
             timeout=timeout,
             extra_headers={"Session-Binding": binding_proof},
+            allow_private=self._allow_private,
         )
 
     async def close(self) -> None:
@@ -127,6 +130,7 @@ class Session:
             self._endpoint,
             msg,
             extra_headers={"Session-Binding": binding_proof},
+            allow_private=self._allow_private,
         )
 
     async def __aenter__(self) -> Session:
@@ -148,6 +152,8 @@ class Session:
 async def connect(
     to: str,
     sender: str | None = None,
+    *,
+    allow_private: bool = False,
 ) -> Session:
     """Establish a session via the 3-phase AMP handshake.
 
@@ -163,6 +169,8 @@ async def connect(
     Args:
         to: Agent URI of the target agent.
         sender: Agent URI of the sender (defaults to ``"anonymous"``).
+        allow_private: Allow the target to resolve to a loopback/private
+            address (local development only).
 
     Returns:
         An active ``Session`` ready for communication.
@@ -184,7 +192,7 @@ async def connect(
         body_type="session.init",
         body=init_body.model_dump(mode="json", exclude_none=True),
     )
-    established_msg = await _post_message(endpoint, init_msg)
+    established_msg = await _post_message(endpoint, init_msg, allow_private=allow_private)
 
     # Validate the response
     if established_msg.body_type != "session.established":
@@ -210,7 +218,7 @@ async def connect(
         headers={"Session-Id": binding.session_id},
         body=confirm_body.model_dump(mode="json"),
     )
-    await _post_message(endpoint, confirm_msg)
+    await _post_message(endpoint, confirm_msg, allow_private=allow_private)
 
     return Session(
         endpoint=endpoint,
@@ -218,4 +226,5 @@ async def connect(
         sender=sender_uri,
         session_id=binding.session_id,
         binding_token=binding.binding_token,
+        allow_private=allow_private,
     )

@@ -152,7 +152,20 @@ class TestKeyAgreement:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def _fake_public_dns(monkeypatch):
+    """The client resolves and pins target hosts; keep tests off real DNS."""
+    import asyncio
+    import socket
+
+    async def fake_getaddrinfo(self, host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+    monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", fake_getaddrinfo)
+
+
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_fake_public_dns")
 async def test_client_connect_echoes_confirm_nonce_and_server_verifies():
     from ampro.client.session import connect
 

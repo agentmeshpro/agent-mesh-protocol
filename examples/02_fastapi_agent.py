@@ -16,18 +16,19 @@ Run:
 """
 
 # requires: fastapi  (tests/test_examples_run.py skips this example if missing)
+from uuid import uuid4
+
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from uuid import uuid4
 
 from ampro import (
     AgentMessage,
     CapabilityGroup,
     CapabilitySet,
+    HealthResponse,
     StreamingEvent,
     StreamingEventType,
     validate_body,
-    HealthResponse,
 )
 
 app = FastAPI(title="FastAPI Agent")

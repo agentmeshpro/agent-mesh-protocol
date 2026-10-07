@@ -12,7 +12,7 @@ Run:
 
 import asyncio
 
-from ampro.client import stream, AmpProtocolError
+from ampro.client import AmpProtocolError, stream
 from ampro.streaming.events import StreamingEventType
 
 TARGET = "agent://analyst.example.com"
@@ -51,18 +51,18 @@ async def main() -> None:
                 print(f"   [error] {event.data.get('message', 'unknown')}")
 
             elif event.type == StreamingEventType.DONE:
-                print(f"   [done] Stream complete.")
+                print("   [done] Stream complete.")
                 break
 
             elif event.type == StreamingEventType.HEARTBEAT:
                 pass  # Keepalive — ignore silently
 
     except AmpProtocolError as exc:
-        print(f"   Protocol error (expected — no server running):")
+        print("   Protocol error (expected — no server running):")
         print(f"     {exc.status_code}: {exc}")
 
     except Exception as exc:
-        print(f"   Connection error (expected — no server running):")
+        print("   Connection error (expected — no server running):")
         print(f"     {type(exc).__name__}: {exc}")
 
     # ── 2. Reconnection with Last-Event-ID ──────────────────────────

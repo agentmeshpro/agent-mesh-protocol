@@ -20,7 +20,7 @@ import base64
 import json
 import secrets
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -75,7 +75,7 @@ def _sign_receipt(agent_id: str, task_id: str, cost_usd: float,
 # Step 1: Tool Agent completes work — issues a cost receipt
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 1: Tool Agent Completes Work ===\n")
+print("\n=== Step 1: Tool Agent Completes Work ===\n")
 
 tool_nonce = secrets.token_urlsafe(16)
 tool_issued = now.isoformat()
@@ -109,7 +109,7 @@ print(f"  Duration:  {tool_receipt.duration_seconds}s")
 # Step 2: Specialist adds its own receipt, builds the chain
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 2: Specialist Adds Its Receipt ===\n")
+print("\n=== Step 2: Specialist Adds Its Receipt ===\n")
 
 spec_nonce = secrets.token_urlsafe(16)
 spec_issued = (now + timedelta(seconds=2)).isoformat()
@@ -140,7 +140,7 @@ print(f"  Agent:     {specialist_receipt.agent_id}")
 print(f"  Cost:      ${specialist_receipt.cost_usd:.4f}")
 print(f"  Tokens:    {specialist_receipt.token_usage['input']}in / {specialist_receipt.token_usage['output']}out")
 print(f"  Duration:  {specialist_receipt.duration_seconds}s")
-print(f"\n  Chain so far:")
+print("\n  Chain so far:")
 print(f"    Receipts: {len(chain.receipts)}")
 print(f"    Running total: ${chain.total_cost_usd:.4f}")
 
@@ -148,7 +148,7 @@ print(f"    Running total: ${chain.total_cost_usd:.4f}")
 # Step 3: Gateway receives chain, adds its own receipt
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 3: Gateway Adds Its Receipt ===\n")
+print("\n=== Step 3: Gateway Adds Its Receipt ===\n")
 
 gw_nonce = secrets.token_urlsafe(16)
 gw_issued = (now + timedelta(seconds=4)).isoformat()
@@ -181,7 +181,7 @@ print(f"  Duration:  {gateway_receipt.duration_seconds}s")
 # Per-hop breakdown and total
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Per-Hop Cost Breakdown ===\n")
+print("\n=== Per-Hop Cost Breakdown ===\n")
 
 print(f"  {'Hop':5s} {'Agent':40s} {'Cost':>10s} {'Duration':>10s}")
 print(f"  {'---':5s} {'-----':40s} {'----':>10s} {'--------':>10s}")
@@ -197,7 +197,7 @@ print(f"  {'':5s} {'TOTAL':40s} ${chain.total_cost_usd:>8.4f} {total_duration:>8
 # Step 4: Wrap in task.complete with cost_receipt field
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 4: TaskCompleteBody with Cost Receipt ===\n")
+print("\n=== Step 4: TaskCompleteBody with Cost Receipt ===\n")
 
 completion = TaskCompleteBody(
     task_id=TASK_ID,
@@ -239,7 +239,7 @@ print(f"  Chain total:  ${receipt_chain.total_cost_usd:.4f}")
 # Token usage summary
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Token Usage Summary ===\n")
+print("\n=== Token Usage Summary ===\n")
 
 total_input = sum(r.token_usage.get("input", 0) for r in chain.receipts if r.token_usage)
 total_output = sum(r.token_usage.get("output", 0) for r in chain.receipts if r.token_usage)

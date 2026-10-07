@@ -10,13 +10,13 @@ Run:
     python examples/17_agent_lifecycle.py
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ampro import (
-    AgentJson,
-    AgentMessage,
-    AgentLifecycleStatus,
     AgentDeactivationNoticeBody,
+    AgentJson,
+    AgentLifecycleStatus,
+    AgentMessage,
     RegistryResolution,
     validate_body,
 )
@@ -91,7 +91,7 @@ notice_msg = AgentMessage(
     body=notice.model_dump(),
 )
 
-print(f"\n  Envelope:")
+print("\n  Envelope:")
 print(f"    From:      {notice_msg.sender}")
 print(f"    To:        {notice_msg.recipient}")
 print(f"    Body type: {notice_msg.body_type}")
@@ -114,7 +114,7 @@ while sessions_remaining > 0:
     sessions_remaining -= drained
     print(f"  Drained {drained} session(s) — {sessions_remaining} remaining")
 
-print(f"  All sessions drained.")
+print("  All sessions drained.")
 
 # ---------------------------------------------------------------------------
 # Step 5: Agent is now decommissioned
@@ -125,7 +125,7 @@ print("\n=== Step 5: Decommissioned ===\n")
 agent.status = AgentLifecycleStatus.DECOMMISSIONED.value
 
 print(f"  Status: {agent.status}")
-print(f"  The agent will no longer accept new sessions or messages.")
+print("  The agent will no longer accept new sessions or messages.")
 
 # ---------------------------------------------------------------------------
 # Step 6: Registry returns gone=True
@@ -152,10 +152,10 @@ print("\n=== Client Behavior ===\n")
 
 if resolution.gone:
     print(f"  Registry returned gone=True for {resolution.agent_uri}")
-    print(f"  Client should:")
-    print(f"    1. Stop sending messages to this agent")
-    print(f"    2. Check deactivation notice for migration_endpoint")
-    print(f"    3. Re-resolve through registry if a replacement exists")
+    print("  Client should:")
+    print("    1. Stop sending messages to this agent")
+    print("    2. Check deactivation notice for migration_endpoint")
+    print("    3. Re-resolve through registry if a replacement exists")
     migration = notice.migration_endpoint
     if migration:
         print(f"    4. Redirect traffic to: {migration}")

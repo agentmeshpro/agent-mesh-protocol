@@ -15,7 +15,7 @@ Run:
 
 import asyncio
 
-from ampro.client import connect, send, AmpProtocolError
+from ampro.client import AmpProtocolError, connect, send
 from ampro.client.session import Session
 
 TARGET = "agent://planner.example.com"
@@ -53,11 +53,11 @@ async def main() -> None:
             # close() is called automatically by async with
 
     except AmpProtocolError as exc:
-        print(f"   Protocol error (expected — no server running):")
+        print("   Protocol error (expected — no server running):")
         print(f"     {exc.status_code}: {exc}")
 
     except Exception as exc:
-        print(f"   Connection error (expected — no server running):")
+        print("   Connection error (expected — no server running):")
         print(f"     {type(exc).__name__}: {exc}")
 
     # ── 2. Manual session management ────────────────────────────────

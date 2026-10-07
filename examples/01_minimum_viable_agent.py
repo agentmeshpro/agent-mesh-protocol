@@ -17,8 +17,9 @@ Test:
 
 # requires: flask  (tests/test_examples_run.py skips this example if missing)
 import os
-from flask import Flask, request, jsonify
 from uuid import uuid4
+
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 

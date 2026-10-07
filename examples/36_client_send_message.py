@@ -12,7 +12,7 @@ Run:
 import asyncio
 
 from ampro import AgentMessage
-from ampro.client import send, AmpProtocolError
+from ampro.client import AmpProtocolError, send
 
 TARGET = "agent://weather.example.com"
 SENDER = "agent://my-assistant.example.com"
@@ -43,7 +43,7 @@ async def main() -> None:
 
     except AmpProtocolError as exc:
         # RFC 7807 error — server returned a structured problem
-        print(f"   Protocol error (expected — no server running):")
+        print("   Protocol error (expected — no server running):")
         print(f"     Status:  {exc.status_code}")
         print(f"     Type:    {exc.error_type}")
         if exc.retry_after:
@@ -51,7 +51,7 @@ async def main() -> None:
 
     except Exception as exc:
         # Connection refused, DNS failure, etc.
-        print(f"   Connection error (expected — no server running):")
+        print("   Connection error (expected — no server running):")
         print(f"     {type(exc).__name__}: {exc}")
 
     # ── 2. What send() does under the hood ──────────────────────────

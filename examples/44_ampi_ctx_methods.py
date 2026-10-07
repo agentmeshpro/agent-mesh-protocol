@@ -25,7 +25,6 @@ from ampro.ampi.context import AMPContext
 from ampro.core.envelope import AgentMessage
 from ampro.trust.tiers import TrustTier
 
-
 agent = AgentApp(
     agent_id="agent://ctx-demo.example.com",
     endpoint="http://localhost:8000/agent/message",

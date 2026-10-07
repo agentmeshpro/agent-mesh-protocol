@@ -12,12 +12,12 @@ Run:
 from ampro import (
     AgentMessage,
     DataConsentRevokeBody,
+    DataResidency,
     ErasurePropagationStatus,
     ErasurePropagationStatusBody,
-    DataResidency,
-    validate_residency_region,
     check_residency_violation,
     validate_body,
+    validate_residency_region,
 )
 
 # ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ print(f"  Grant ID:     {scheduled_revoke.grant_id}")
 print(f"  Scopes:       {scheduled_revoke.scopes}")
 print(f"  Reason:       {scheduled_revoke.reason}")
 print(f"  Effective at: {scheduled_revoke.effective_at}  (scheduled)")
-print(f"  Status:       Revocation will take effect at the specified time")
+print("  Status:       Revocation will take effect at the specified time")
 
 validated3 = validate_body("data.consent_revoke", scheduled_msg.body)
 print(f"\n  Validated:    {type(validated3).__name__}")
@@ -153,7 +153,7 @@ print("\n=== Step 4: Erasure Propagation Tracking ===\n")
 ERASURE_ID = "erasure-req-001"
 
 print(f"  Erasure ID: {ERASURE_ID}")
-print(f"  Tracking propagation across 3 downstream agents...\n")
+print("  Tracking propagation across 3 downstream agents...\n")
 
 # Downstream A: completed
 status_a = ErasurePropagationStatusBody(
@@ -271,7 +271,7 @@ print(f"  Agent:            {status_chain.agent_id}")
 print(f"  Status:           {status_chain.status}")
 print(f"  Records:          {status_chain.records_affected}")
 print(f"  Downstream:       {status_chain.downstream_agents}")
-print(f"  Note:             Agent A propagated erasure to 2 sub-agents")
+print("  Note:             Agent A propagated erasure to 2 sub-agents")
 
 # ---------------------------------------------------------------------------
 # Step 6: Data residency check
@@ -366,17 +366,17 @@ for region, expected in test_regions:
 
 print("\n=== Summary ===\n")
 
-print(f"  Consent Revocation:")
-print(f"    Partial:   Revoke specific scopes (scopes=['read:analytics', ...])")
-print(f"    Full:      Revoke all scopes (scopes=[])")
-print(f"    Immediate: effective_at=None")
-print(f"    Scheduled: effective_at='2026-05-01T00:00:00Z'")
-print(f"")
-print(f"  Erasure Propagation:")
-print(f"    pending   -> Agent acknowledged the request")
-print(f"    completed -> Records erased successfully")
-print(f"    failed    -> Erasure could not be completed")
-print(f"")
-print(f"  Data Residency:")
-print(f"    strict=True  -> Data MUST stay in declared region")
-print(f"    strict=False -> Data may go to allowed_regions")
+print("  Consent Revocation:")
+print("    Partial:   Revoke specific scopes (scopes=['read:analytics', ...])")
+print("    Full:      Revoke all scopes (scopes=[])")
+print("    Immediate: effective_at=None")
+print("    Scheduled: effective_at='2026-05-01T00:00:00Z'")
+print("")
+print("  Erasure Propagation:")
+print("    pending   -> Agent acknowledged the request")
+print("    completed -> Records erased successfully")
+print("    failed    -> Erasure could not be completed")
+print("")
+print("  Data Residency:")
+print("    strict=True  -> Data MUST stay in declared region")
+print("    strict=False -> Data may go to allowed_regions")

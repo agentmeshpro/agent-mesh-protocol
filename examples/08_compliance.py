@@ -10,13 +10,14 @@ Run:
 """
 
 import asyncio
+
 from ampro import (
     AgentMessage,
-    ContentClassification,
-    ErasureRequest,
-    AuditLogger,
     AuditEntry,
+    AuditLogger,
+    ContentClassification,
     ErasureProcessor,
+    ErasureRequest,
     check_content_classification,
     requires_audit,
 )
@@ -36,13 +37,13 @@ pii_msg = AgentMessage(
     headers={"Content-Classification": "pii"},
 )
 result = check_content_classification(pii_msg, accepts_pii=False)
-print(f"  PII message to non-PII agent:")
+print("  PII message to non-PII agent:")
 print(f"    Allowed: {result.allowed}")
 print(f"    Reason: {result.reason}")
 print(f"    Detail: {result.detail}")
 
 result2 = check_content_classification(pii_msg, accepts_pii=True)
-print(f"\n  PII message to PII-accepting agent:")
+print("\n  PII message to PII-accepting agent:")
 print(f"    Allowed: {result2.allowed}")
 
 # --- Audit Requires Check ---
@@ -122,7 +123,7 @@ print("\n=== GDPR Erasure ===\n")
 
 async def demo_erasure():
     processor = ErasureProcessor()
-    
+
     req = ErasureRequest(
         subject_id="user-42",
         subject_proof="ed25519-signed-proof",
@@ -130,7 +131,7 @@ async def demo_erasure():
         reason="user_request",
         deadline="2026-05-09T00:00:00Z",
     )
-    
+
     resp = await processor.process(req)
     print(f"  Subject: {resp.subject_id}")
     print(f"  Status: {resp.status}")

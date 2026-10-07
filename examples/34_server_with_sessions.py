@@ -29,13 +29,13 @@ Test session-bound message (use Session-Id from established response):
 import os
 import secrets
 
-from ampro.server import AgentServer
 from ampro import (
     AgentMessage,
     HandshakeStateMachine,
     derive_binding_token,
     verify_message_binding,
 )
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://session.example.com",
@@ -217,7 +217,7 @@ def handle_message(msg: AgentMessage) -> dict:
 if __name__ == "__main__":
     print("=== AMP Server with Sessions ===\n")
     print(f"Agent: {server.agent_id}")
-    print(f"Handshake: 3-phase (init → established → confirm)\n")
+    print("Handshake: 3-phase (init → established → confirm)\n")
     print("Session lifecycle:")
     print("  1. POST session.init → get session_id + binding_token")
     print("  2. POST session.confirm → prove binding, activate session")

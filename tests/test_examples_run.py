@@ -32,14 +32,7 @@ TIMEOUT = 20
 
 # Examples that fail because of a library bug outside the example itself.
 # Non-strict so the entry can simply be deleted once the bug is fixed.
-KNOWN_FAILURES = {
-    "39_two_agents_talking.py": (
-        "ampro/server/core.py FastAPI adapter: `request: Request` is imported "
-        "inside _run_fastapi but the module uses `from __future__ import "
-        "annotations`, so FastAPI cannot resolve the annotation and treats "
-        "`request` as a required query param -> POST /agent/message returns 422"
-    ),
-}
+KNOWN_FAILURES: dict[str, str] = {}
 
 _REQUIRES_RE = re.compile(r"^#\s*requires:\s*([^(\n]+)", re.M)
 

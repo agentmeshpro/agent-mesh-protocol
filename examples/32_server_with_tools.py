@@ -16,8 +16,9 @@ Test:
 """
 
 import os
-from ampro.server import AgentServer
+
 from ampro import AgentMessage
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://tools.example.com",
@@ -93,10 +94,10 @@ def handle_task(msg: AgentMessage) -> dict:
 if __name__ == "__main__":
     print("=== AMP Server with Tools ===\n")
     print(f"Agent: {server.agent_id}")
-    print(f"Tools:")
+    print("Tools:")
     for name, spec in TOOLS.items():
         print(f"  - {name}: {spec['description']}")
-    print(f"\nTry:\n")
+    print("\nTry:\n")
     print("  curl -X POST http://localhost:8002/agent/message \\")
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://caller\",\"recipient\":\"agent://tools.example.com\",\"body_type\":\"task.create\",\"body\":{\"description\":\"multiply\",\"context\":{\"tool_name\":\"multiply\",\"a\":6,\"b\":7}}}'")

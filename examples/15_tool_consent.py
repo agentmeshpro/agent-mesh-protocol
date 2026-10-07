@@ -11,12 +11,12 @@ Run:
 """
 
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ampro import (
     AgentMessage,
-    ToolConsentRequestBody,
     ToolConsentGrantBody,
+    ToolConsentRequestBody,
     ToolDefinition,
     validate_body,
 )

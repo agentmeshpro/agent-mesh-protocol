@@ -29,9 +29,10 @@ Test (API key — verified tier):
 """
 
 import os
-from ampro.server import AgentServer
+
 from ampro import AgentMessage
 from ampro.identity.auth_methods import parse_authorization
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://secure.example.com",
@@ -97,7 +98,7 @@ def handle_message(msg: AgentMessage) -> dict:
 if __name__ == "__main__":
     print("=== AMP Server with Authorization ===\n")
     print(f"Agent: {server.agent_id}")
-    print(f"Auth methods supported: Bearer (JWT), ApiKey, DID\n")
+    print("Auth methods supported: Bearer (JWT), ApiKey, DID\n")
     print("Trust tier mapping:")
     print("  Bearer token → owner  (full access)")
     print("  ApiKey        → verified (full access)")

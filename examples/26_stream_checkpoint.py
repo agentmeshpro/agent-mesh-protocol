@@ -14,10 +14,10 @@ Run:
 from datetime import datetime, timezone
 
 from ampro import (
+    StreamAuthRefreshEvent,
+    StreamCheckpointEvent,
     StreamingEvent,
     StreamingEventType,
-    StreamCheckpointEvent,
-    StreamAuthRefreshEvent,
 )
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ checkpoint_1_event = StreamingEvent(
 print(f"\n  >>> CHECKPOINT at seq={checkpoint_1.seq}")
 print(f"      checkpoint_id: {checkpoint_1.checkpoint_id}")
 print(f"      state_snapshot: {checkpoint_1.state_snapshot}")
-print(f"      SSE:")
+print("      SSE:")
 for line in checkpoint_1_event.to_sse().strip().split("\n"):
     print(f"        {line}")
 
@@ -102,7 +102,7 @@ for seq, etype, data in events_6_10:
 # Step 2: Emit 10 more events, checkpoint at seq 15
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 2: Second Batch (seq 11-20, checkpoint at seq 15) ===\n")
+print("\n=== Step 2: Second Batch (seq 11-20, checkpoint at seq 15) ===\n")
 
 events_batch_2a = [
     (11, StreamingEventType.THINKING, {"thought": "Generating visualization"}),
@@ -157,28 +157,28 @@ for seq, etype, data in events_16_18:
 # Step 3: Simulate disconnect at seq 18
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 3: Disconnect at seq 18 ===\n")
+print("\n=== Step 3: Disconnect at seq 18 ===\n")
 
-print(f"  Client received up to seq=18")
-print(f"  Connection lost!")
-print(f"")
-print(f"  Last checkpoint: chk-002 at seq=15")
-print(f"  Events lost:     seq 16, 17, 18 (3 events)")
-print(f"  Recovery:        Resume from checkpoint chk-002 (seq 15)")
+print("  Client received up to seq=18")
+print("  Connection lost!")
+print("")
+print("  Last checkpoint: chk-002 at seq=15")
+print("  Events lost:     seq 16, 17, 18 (3 events)")
+print("  Recovery:        Resume from checkpoint chk-002 (seq 15)")
 
 # ---------------------------------------------------------------------------
 # Step 4: Resume from checkpoint at seq 15
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 4: Resume from Checkpoint (seq 15) ===\n")
+print("\n=== Step 4: Resume from Checkpoint (seq 15) ===\n")
 
-print(f"  Client reconnects with Last-Event-ID: evt-chk-002")
-print(f"  Server restores state from checkpoint chk-002:")
-print(f"")
+print("  Client reconnects with Last-Event-ID: evt-chk-002")
+print("  Server restores state from checkpoint chk-002:")
+print("")
 for key, value in checkpoint_2.state_snapshot.items():
     print(f"    {key}: {value}")
 
-print(f"\n  Server replays events from seq 16:")
+print("\n  Server replays events from seq 16:")
 print()
 
 for seq, etype, data in events_16_18:
@@ -200,7 +200,7 @@ for seq, etype, data in events_remaining:
 # Step 5: Mid-stream auth token refresh
 # ---------------------------------------------------------------------------
 
-print(f"\n=== Step 5: Mid-Stream Auth Token Refresh ===\n")
+print("\n=== Step 5: Mid-Stream Auth Token Refresh ===\n")
 
 auth_refresh = StreamAuthRefreshEvent(
     method="jwt",
@@ -215,11 +215,11 @@ auth_event = StreamingEvent(
     seq=12,  # Can arrive between any data events
 )
 
-print(f"  Auth refresh injected at seq=12 (between data events):")
+print("  Auth refresh injected at seq=12 (between data events):")
 print(f"    Method:     {auth_refresh.method}")
 print(f"    Token:      {auth_refresh.token[:40]}...")
 print(f"    Expires at: {auth_refresh.expires_at}")
-print(f"\n  SSE frame:")
+print("\n  SSE frame:")
 for line in auth_event.to_sse().strip().split("\n"):
     print(f"    {line}")
 
@@ -227,7 +227,7 @@ for line in auth_event.to_sse().strip().split("\n"):
 # SSE wire format: checkpoint event
 # ---------------------------------------------------------------------------
 
-print(f"\n=== SSE Wire Format: Checkpoint ===\n")
+print("\n=== SSE Wire Format: Checkpoint ===\n")
 
 for label, chk_event in [("Checkpoint 1 (seq 5)", checkpoint_1_event),
                           ("Checkpoint 2 (seq 15)", checkpoint_2_event)]:
@@ -243,9 +243,9 @@ for label, chk_event in [("Checkpoint 1 (seq 5)", checkpoint_1_event),
 print("=== Summary ===\n")
 print("  Checkpoints provide periodic state snapshots on SSE streams.")
 print("  On disconnect, clients resume from the last checkpoint:")
-print(f"    1. Client reconnects with Last-Event-ID of the checkpoint")
-print(f"    2. Server restores state_snapshot from that checkpoint")
-print(f"    3. Server replays events from checkpoint seq + 1")
-print(f"")
-print(f"  StreamAuthRefreshEvent allows mid-stream token renewal")
-print(f"  without breaking the connection.")
+print("    1. Client reconnects with Last-Event-ID of the checkpoint")
+print("    2. Server restores state_snapshot from that checkpoint")
+print("    3. Server replays events from checkpoint seq + 1")
+print("")
+print("  StreamAuthRefreshEvent allows mid-stream token renewal")
+print("  without breaking the connection.")

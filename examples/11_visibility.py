@@ -10,8 +10,11 @@ Run:
 """
 
 from ampro import (
-    VisibilityLevel, ContactPolicy, VisibilityConfig,
-    check_contact_allowed, filter_agent_json,
+    ContactPolicy,
+    VisibilityConfig,
+    VisibilityLevel,
+    check_contact_allowed,
+    filter_agent_json,
 )
 
 # Sample agent.json

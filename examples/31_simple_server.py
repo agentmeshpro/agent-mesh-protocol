@@ -17,8 +17,9 @@ Then in another terminal:
 """
 
 import os
-from ampro.server import AgentServer
+
 from ampro import AgentMessage
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://simple.example.com",

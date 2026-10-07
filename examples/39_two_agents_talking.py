@@ -11,15 +11,15 @@ Run:
 """
 
 # requires: fastapi, uvicorn  (tests/test_examples_run.py skips this example if missing)
-import json
-import time
 import asyncio
+import json
 import threading
+import time
 
 import httpx
 
-from ampro.server import AgentServer
 from ampro import AgentMessage
+from ampro.server import AgentServer
 
 # ---------------------------------------------------------------------------
 # Agent A: "Echo" server — listens on port 8001

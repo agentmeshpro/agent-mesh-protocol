@@ -13,9 +13,9 @@ Run:
 
 from ampro import (
     AgentMessage,
+    TaskCompleteBody,
     TaskCreateBody,
     TaskRedirectBody,
-    TaskCompleteBody,
     validate_body,
 )
 
@@ -105,7 +105,7 @@ print(f"  To:            {redirect_msg.recipient}")
 print(f"  Body type:     {redirect_msg.body_type}")
 print(f"  X-Load-Level:  {redirect_msg.headers['X-Load-Level']}  (Agent B is overloaded)")
 print(f"  Retry-After:   {redirect_msg.headers['Retry-After']}s")
-print(f"\n  Redirect details:")
+print("\n  Redirect details:")
 print(f"    Redirect to:   {redirect_body.redirect_to}")
 print(f"    Reason:        {redirect_body.reason}")
 print(f"    Load level:    {redirect_body.load_level}%")
@@ -188,7 +188,7 @@ print(f"  From:         {complete_msg.sender}")
 print(f"  To:           {complete_msg.recipient}")
 print(f"  Body type:    {complete_msg.body_type}")
 print(f"  X-Load-Level: {complete_msg.headers['X-Load-Level']}  (Agent C is lightly loaded)")
-print(f"\n  Result:")
+print("\n  Result:")
 print(f"    Task ID:       {complete_body.task_id}")
 print(f"    Anomalies:     {complete_body.result['anomalies_found']}")
 print(f"    Duration:      {complete_body.duration_seconds}s")

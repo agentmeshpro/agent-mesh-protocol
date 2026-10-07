@@ -12,12 +12,12 @@ Run:
 """
 
 from ampro import (
-    AgentMessage,
     AgentJson,
+    AgentMessage,
+    AuditAttestationBody,
     IdentityMigrationBody,
     RegistryFederationRequest,
     RegistryFederationResponse,
-    AuditAttestationBody,
     validate_body,
 )
 
@@ -176,7 +176,7 @@ print(f"  audit_id:  {attestation.audit_id}")
 print(f"  agents:    {attestation.agents}")
 print(f"  events_hash: {attestation.events_hash[:32]}...")
 print(f"  timestamp: {attestation.timestamp}")
-print(f"  signatures:")
+print("  signatures:")
 for agent, sig in attestation.attestation_signatures.items():
     print(f"    {agent}: {sig}")
 
