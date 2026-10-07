@@ -6,7 +6,8 @@ name: Backfill releases
 #
 # This never publishes to PyPI. Tags it creates are made with the workflow
 # token, which does not trigger other workflows, so the Release workflow
-# does not run for them.
+# does not run for them. That token cannot create a tag on a commit that
+# changes files under .github/workflows; push such a tag by hand.
 
 on:
   workflow_dispatch:

@@ -78,9 +78,31 @@ jobs:
           name: dist
           path: dist/
 
-  publish-pypi:
-    if: github.event_name == 'push' || inputs.target == 'pypi'
+  tag:
+    # A manual PyPI run creates the tag before anything is uploaded, so a
+    # refused tag stops the release instead of leaving an untagged upload.
+    # The workflow token cannot create a tag on a commit that changes files
+    # under .github/workflows, so release from a commit that doesn't.
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/v${VERSION}" -f sha="${GITHUB_SHA}"
+
+  publish-pypi:
+    if: >-
+      always() && needs.build.result == 'success'
+      && (github.event_name == 'push'
+          || (inputs.target == 'pypi' && needs.tag.result == 'success'))
+    needs: [build, tag]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -114,6 +136,7 @@ jobs:
           skip-existing: true
 
   github-release:
+    if: always() && needs.publish-pypi.result == 'success'
     needs: [build, publish-pypi]
     runs-on: ubuntu-latest
     permissions:
@@ -138,7 +161,5 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* --clobber
           else
-            # On a manual run the tag does not exist yet; --target creates it
-            # at the commit that was built and published.
-            gh release create "$tag" dist/* --title "$tag" --notes-file notes.md --target "$GITHUB_SHA"
+            gh release create "$tag" dist/* --title "$tag" --notes-file notes.md --verify-tag
           fi
