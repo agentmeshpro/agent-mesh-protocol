@@ -710,11 +710,23 @@ handlers, so one `AgentApp` serves every protocol:
   on top of A2A
 - `ampro.interop.mcp`: Model Context Protocol (exposes `@tool`s)
 
-The server offers each request to the mounted adapters, in mount order,
-before its native AMP routes. Only the message-size limit runs before
-the adapters see a request. The native-route pipeline (WIRE-BINDING
-Appendix D) does not run for adapter traffic, so each adapter has to
-authenticate requests itself, using the shared `Authenticator` contract
-in `ampro.server.auth`. Each adapter will be described in its own
-`docs/INTEROP-*.md`.
+Request flow through `AgentServer.handle`:
+
+1. **Size limit** (`WireConfig.max_message_bytes`, 413) — every request.
+2. **Adapters with their own Origin policy** (`enforces_origin = True`:
+   MCP, PACT) see the request next.
+3. **Origin guard** — a state-changing browser request whose `Origin` is
+   not loopback, the agent's own origin or in
+   `SecurityPolicy.allowed_origins` is refused (403).
+4. **Remaining adapters** (A2A) in mount order.
+5. **Native AMP routes**, where `POST /agent/message` runs the WIRE-BINDING
+   Appendix D pipeline.
+
+Adapters do not go through the native message pipeline, but they reuse
+its parts: by default each adapter takes its authenticators,
+`require_auth`, rate limiter, concurrency limiter and handler timeout
+from `server.security`, and identifies callers with the shared
+`Principal` from `ampro.server.auth`. Each adapter is described in
+[INTEROP-A2A.md](INTEROP-A2A.md), [INTEROP-PACT.md](INTEROP-PACT.md) and
+[INTEROP-MCP.md](INTEROP-MCP.md).
 
