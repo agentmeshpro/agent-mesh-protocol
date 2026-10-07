@@ -1,0 +1,65 @@
+name: Backfill releases
+
+# Creates GitHub Releases (and, where missing, tags) for versions that were
+# shipped before the Release workflow existed. Notes come from each
+# version's CHANGELOG section on the branch this runs on.
+#
+# This never publishes to PyPI. Tags it creates are made with the workflow
+# token, which does not trigger other workflows, so the Release workflow
+# does not run for them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: "Space-separated tag or tag=commit entries, e.g. 'v0.3.3 v0.4.0=23cc5ce'"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create missing tags and releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASES: ${{ inputs.releases }}
+        run: |
+          set -euo pipefail
+          for entry in $RELEASES; do
+            tag="${entry%%=*}"
+            sha=""
+            [ "$entry" != "$tag" ] && sha="${entry#*=}"
+            case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Bad tag: $tag" >&2; exit 1 ;; esac
+            version="${tag#v}"
+
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "$tag: release already exists, skipping"
+              continue
+            fi
+
+            awk -v v="$version" '
+              /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+              found { print }
+            ' CHANGELOG.md > notes.md
+            if [ ! -s notes.md ]; then
+              echo "$tag: no CHANGELOG section for $version" >&2
+              exit 1
+            fi
+
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+              gh release create "$tag" --title "$tag" --notes-file notes.md --verify-tag --latest=false
+            else
+              if [ -z "$sha" ]; then
+                echo "$tag: tag does not exist; give it as $tag=<commit>" >&2
+                exit 1
+              fi
+              full=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha)
+              gh release create "$tag" --title "$tag" --notes-file notes.md --target "$full" --latest=false
+            fi
+            echo "$tag: release created"
+          done

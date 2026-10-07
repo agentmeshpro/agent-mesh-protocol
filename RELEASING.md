@@ -34,6 +34,8 @@ repository, and no API token is stored anywhere.
 - Dry run: run the Release workflow by hand with target `testpypi` (the
   default). It uploads to TestPyPI only, through the `testpypi`
   environment.
+- Older versions: the Backfill releases workflow creates GitHub Releases
+  (and missing tags) from the CHANGELOG. It never publishes to PyPI.
 
 ## Versioning
 
