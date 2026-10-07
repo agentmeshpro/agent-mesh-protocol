@@ -403,7 +403,18 @@ from ampro.wire.config import WireConfig
 
 # --- Wire binding (HTTP transport contract) ---
 from ampro.wire.endpoints import ALL_ENDPOINTS, ConformanceLevel, EndpointSpec, endpoints_for_level
-from ampro.wire.errors import ErrorType, ProblemDetail
+from ampro.wire.errors import (
+    AuthorityConstraint,
+    AuthorityRequiredError,
+    AuthorityRequiredProblem,
+    ErrorType,
+    HumanApproval,
+    PaymentRequirement,
+    ProblemDetail,
+    authority_required,
+    insufficient_scope_challenge,
+    parse_authority_required,
+)
 
 __version__ = "0.4.0"
 
@@ -573,6 +584,9 @@ __all__ = [
     # Wire binding (HTTP transport contract)
     "ConformanceLevel", "EndpointSpec", "ALL_ENDPOINTS", "endpoints_for_level",
     "ProblemDetail", "ErrorType",
+    "AuthorityRequiredProblem", "AuthorityRequiredError", "AuthorityConstraint",
+    "PaymentRequirement", "HumanApproval", "authority_required",
+    "parse_authority_required", "insufficient_scope_challenge",
     "WireConfig", "WIRE_DEFAULTS",
     "ResponseMode", "BodyTypeBinding", "BODY_TYPE_BINDINGS", "binding_for",
     # AMPI

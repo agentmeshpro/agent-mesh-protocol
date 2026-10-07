@@ -78,6 +78,7 @@ from ampro.server.security import (
 from ampro.trust.tiers import TrustTier
 from ampro.wire.config import DEFAULTS, WireConfig
 from ampro.wire.errors import (
+    AuthorityRequiredError,
     ProblemDetail,
     forbidden,
     internal_error,
@@ -795,6 +796,12 @@ class AgentServer:
         except TimeoutError:
             logger.warning("Handler timed out for body_type '%s'", msg.body_type)
             return self._error_response(timeout("Handler did not finish in time"))
+        except AuthorityRequiredError as exc:
+            logger.info("Handler requires more authority for body_type '%s'", msg.body_type)
+            status, headers, body = self._error_response(exc.to_problem())
+            if exc.problem.missing_scopes:
+                headers["WWW-Authenticate"] = exc.www_authenticate()
+            return status, headers, body
         except AMPError as exc:
             logger.info("Handler rejected body_type '%s': %s", msg.body_type, exc)
             return self._error_response(exc.to_problem_detail(status=400))

@@ -131,7 +131,12 @@ async def cancel(msg, ctx):
   missing, they raise `AuthRequired` with the missing ids and a new login
   link. The reply is then a task in `TASK_STATE_AUTH_REQUIRED` that carries
   `pact.missingScopes` and `pact.verificationUriComplete`, and the
-  conversation stays open (§5.5 step-up).
+  conversation stays open (§5.5 step-up). This is the PACT form of AMP's
+  403 `urn:amp:error:authority-required` problem (WIRE-BINDING 7.2.14):
+  `pact.missingScopes` is its `missing_scopes` and
+  `pact.verificationUriComplete` its `human_approval.verification_uri`.
+  `AuthRequired.to_problem()` / `AuthRequired.from_problem()` convert
+  between the two without changing the PACT wire format.
 * Required scopes that were granted become the receipt's `scopesUsed`.
   `record_action` adds entries to `actions`.
 * `close_conversation()` closes the `contextId`. Later messages to it get

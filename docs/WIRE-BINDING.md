@@ -1050,6 +1050,60 @@ implemented.
 Returned when the agent is temporarily unable to process requests.
 The response SHOULD include a `Retry-After` HTTP header.
 
+#### 7.2.14 403 -- Authority Required
+
+```json
+{
+  "type": "urn:amp:error:authority-required",
+  "title": "Authority required",
+  "status": 403,
+  "detail": "Cancelling an order needs orders:write and your approval",
+  "missing_scopes": ["orders:write"],
+  "required_constraints": [{"type": "com.acme:region", "region": "eu"}],
+  "payment_required": {"amount": 1250, "currency": "EUR", "methods": ["x402"]},
+  "human_approval": {
+    "verification_uri": "https://auth.example.com/device?user_code=WDJB-MJHT",
+    "expires_in": 600
+  },
+  "audience": "agent://shop.example.com"
+}
+```
+
+Returned when the caller is authenticated but needs more authority to
+proceed. Unlike `urn:amp:error:forbidden`, it tells the caller what to
+obtain. At least one of `missing_scopes`, `required_constraints`,
+`payment_required` or `human_approval` MUST be present.
+
+| Member                 | Type            | Rules |
+|------------------------|-----------------|-------|
+| `missing_scopes`       | string[]        | OAuth scope tokens (RFC 6749 section 3.3), each 1..256 chars; at most 64; duplicates are removed |
+| `required_constraints` | object[]        | At most 16. Each has a `type` (`^[A-Za-z][A-Za-z0-9._:/+-]{0,127}$`); the other members are defined by the owner of `type`, use only plain JSON (finite numbers, nesting at most 8), and fit in 4096 bytes |
+| `payment_required`     | object \| null  | `amount`: integer minor units, 1..2^53-1; `currency`: ISO 4217 code (`^[A-Z]{3}$`); `methods`: optional, at most 16 unique lowercase tokens |
+| `human_approval`       | object \| null  | `verification_uri`: absolute `https` URI, no userinfo or fragment, at most 2048 chars; `expires_in`: optional integer seconds, 1..86400 |
+| `audience`             | string \| null  | Resource or agent the new authority must be issued for; at most 2048 chars, no whitespace or control characters |
+
+The whole problem MUST NOT exceed 65536 bytes. A client MUST treat a
+member it cannot validate as absent and MUST NOT act on a
+`verification_uri` that is not `https`. When `missing_scopes` is not
+empty the response SHOULD also carry
+`WWW-Authenticate: Bearer realm="amp", error="insufficient_scope", scope="<space-separated scopes>"`.
+The schema is `spec/schemas/problem-authority-required.json`.
+
+Mapping to other protocols:
+
+| Protocol | Equivalent | Mapping |
+|----------|------------|---------|
+| MCP (OAuth 2.1 / RFC 6750) | HTTP `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` (optionally `resource_metadata=` per RFC 9728) | `scope` = `missing_scopes` joined by spaces. Other members have no MCP equivalent and stay in the problem body. |
+| A2A / PACT | Task in `TASK_STATE_AUTH_REQUIRED` with metadata `missingScopes` / `verificationUriComplete` (PACT: `pact.missingScopes` / `pact.verificationUriComplete`) | `missing_scopes` <-> `missingScopes`; `human_approval.verification_uri` <-> `verificationUriComplete`. A problem with `required_constraints` or `payment_required` cannot be expressed as `AUTH_REQUIRED` and MUST NOT be converted with those members dropped. |
+| x402 | HTTP `402 Payment Required` with x402 payment requirements | `payment_required` carries the amount and currency. AMP always answers `403`; a gateway that bridges to x402 MAY answer `402` when payment is the only missing authority, and a `402` received from an x402 server maps to an authority-required problem with `payment_required`. |
+
+The reference implementation provides `authority_required(...)`
+(builder), `AuthorityRequiredError` (raise it from a handler; the
+server answers with this problem and the challenge header),
+`parse_authority_required(...)`, `insufficient_scope_challenge(...)`,
+and `AuthRequired.to_problem()` / `AuthRequired.from_problem()` for the
+A2A adapter.
+
 ---
 
 ## 8. Streaming

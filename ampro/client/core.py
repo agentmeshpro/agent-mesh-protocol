@@ -30,7 +30,7 @@ from ampro.interop.propagation import outbound_headers
 from ampro.security.ssrf import pinned_async_transport, validate_url_async
 from ampro.transport.limits import read_capped
 from ampro.wire.config import DEFAULTS
-from ampro.wire.errors import ProblemDetail
+from ampro.wire.errors import ErrorType, ProblemDetail, parse_authority_required
 
 logger = logging.getLogger("ampro.client")
 
@@ -120,6 +120,13 @@ def _raise_for_problem(response: httpx.Response) -> None:
     try:
         data = response.json()
         problem = ProblemDetail.model_validate(data)
+        if problem.type == ErrorType.AUTHORITY_REQUIRED and response.status_code == 403:
+            # Typed members only when they validate; otherwise keep the
+            # plain problem (the caller still sees type and status).
+            try:
+                problem = parse_authority_required(data)
+            except ValueError:
+                pass
     except Exception:
         problem = ProblemDetail(
             type="urn:amp:error:unknown",

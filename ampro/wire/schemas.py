@@ -243,6 +243,40 @@ def problem_schema() -> dict[str, Any]:
     )
 
 
+def authority_required_schema() -> dict[str, Any]:
+    from ampro.wire.errors import AuthorityRequiredProblem
+
+    schema = _model(AuthorityRequiredProblem)
+    # On the wire these are always present (the model only defaults them).
+    schema["required"] = ["type", "title", "status"]
+    schema["anyOf"] = [
+        {"required": ["missing_scopes"], "properties": {"missing_scopes": {"minItems": 1}}},
+        {"required": ["required_constraints"],
+         "properties": {"required_constraints": {"minItems": 1}}},
+        {"required": ["payment_required"],
+         "properties": {"payment_required": {"type": "object"}}},
+        {"required": ["human_approval"], "properties": {"human_approval": {"type": "object"}}},
+    ]
+    return _wrap(
+        "problem-authority-required.json",
+        schema,
+        title="AuthorityRequiredProblem",
+        description=(
+            "403 urn:amp:error:authority-required problem (WIRE-BINDING section "
+            "7.2.14): the caller needs more authority. At least one of "
+            "missing_scopes, required_constraints, payment_required or "
+            "human_approval is present."
+        ),
+        extra={"x-amp-constraints": [
+            "missing_scopes entries are unique",
+            "human_approval.verification_uri MUST be an https URI without userinfo "
+            "or fragment",
+            "each required_constraints entry is at most 4096 bytes of JSON; the "
+            "whole problem at most 65536 bytes",
+        ]},
+    )
+
+
 def encrypted_body_schema() -> dict[str, Any]:
     from ampro.security.encryption import EncryptedBody
 
@@ -362,6 +396,7 @@ def build_schemas() -> dict[str, dict[str, Any]]:
         "agent-json.json": agent_json_schema(),
         "health-response.json": health_schema(),
         "problem-details.json": problem_schema(),
+        "problem-authority-required.json": authority_required_schema(),
         "encrypted-body.json": encrypted_body_schema(),
         "delegation-link-v2.json": delegation_link_v2_schema(),
     }

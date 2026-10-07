@@ -196,6 +196,11 @@ that can act, so the adapter is strict by default.
   `WWW-Authenticate: …error="insufficient_scope", scope="…"`, or `401` for an
   anonymous caller when authenticators are configured. With no authenticators
   configured, scoped tools are unusable: the adapter fails closed.
+  This is the MCP form of AMP's `urn:amp:error:authority-required` problem
+  (WIRE-BINDING 7.2.14): `scope` carries its `missing_scopes`, and
+  `insufficient_scope_challenge(problem)` builds the header from a problem.
+  Payment, constraint and human-approval requirements have no MCP header and
+  travel only in the AMP problem body.
 * **Sessions.** Session IDs come from `secrets.token_hex(32)`. Each session is
   bound to the principal that created it, and any other caller, including an
   anonymous one, gets the same `404` as for an unknown ID. Sessions live in a

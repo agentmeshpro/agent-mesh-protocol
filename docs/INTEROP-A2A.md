@@ -99,6 +99,16 @@ is `missingScopes` / `verificationUriComplete`. The PACT profile uses
 `PACT_AUTH_KEYS`, which is `pact.missingScopes` / `pact.verificationUriComplete`.
 `AuthRequired` skips the app's `@on_error` hook.
 
+`AUTH_REQUIRED` is the A2A form of AMP's 403
+`urn:amp:error:authority-required` problem (WIRE-BINDING 7.2.14).
+`AuthRequired.to_problem()` gives the AMP problem (`missing_scopes`, and
+`human_approval.verification_uri` from the verification URI), and
+`AuthRequired.from_problem(problem)` goes the other way. `from_problem`
+raises if the problem also asks for `required_constraints` or
+`payment_required`, because `AUTH_REQUIRED` cannot carry them and they
+must not be dropped silently. Neither method changes what the adapter
+sends on the wire.
+
 ### Streaming
 
 On `message:stream`, `ctx.emit()` and `ctx.emit_event()` send events into
