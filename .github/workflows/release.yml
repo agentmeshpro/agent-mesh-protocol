@@ -4,12 +4,14 @@ name: Release
 # token is stored in the repository. PyPI trusts this exact workflow file
 # and the `pypi` environment, configured on pypi.org.
 #
-# - Publishing a GitHub Release (tag vX.Y.Z) uploads to PyPI.
+# - Pushing a tag vX.Y.Z uploads to PyPI, then creates the GitHub Release
+#   with that version's CHANGELOG section as its notes. Creating the
+#   Release in the GitHub UI with a new tag works too: it pushes the tag.
 # - Running the workflow by hand uploads to TestPyPI only, as a dry run.
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -24,7 +26,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Check the tag matches the package version
-        if: github.event_name == 'release'
+        if: github.event_name == 'push'
         run: |
           version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
@@ -49,7 +51,7 @@ jobs:
           path: dist/
 
   publish-pypi:
-    if: github.event_name == 'release'
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -82,3 +84,31 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
+
+  github-release:
+    if: github.event_name == 'push'
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The CHANGELOG section for this version, without its heading.
+          awk -v v="$version" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          fi

@@ -12,10 +12,10 @@ Run these steps in order for every release. Do not skip.
 6. Commit: `git commit -m "release: X.Y.Z — <summary>"`
 7. Tag: `git tag -a vX.Y.Z -m "<release notes summary>"`
 8. Push: `git push origin main && git push origin vX.Y.Z`
-9. Create GitHub Release: `gh release create vX.Y.Z --notes-from-tag --verify-tag`
-10. Publishing the GitHub Release runs `.github/workflows/release.yml`, which
-    builds the sdist and wheel and uploads them to PyPI. Check the run, then
-    `pip install ampro==X.Y.Z` in a clean virtualenv.
+9. Pushing the tag runs `.github/workflows/release.yml`: it builds the sdist
+   and wheel, uploads them to PyPI, then creates the GitHub Release with this
+   version's CHANGELOG section as its notes. Check the run, then
+   `pip install ampro==X.Y.Z` in a clean virtualenv.
 
 ## Publishing to PyPI
 
