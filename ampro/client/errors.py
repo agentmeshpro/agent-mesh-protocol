@@ -18,7 +18,7 @@ Usage::
 
 from __future__ import annotations
 
-from ampro.wire.errors import ProblemDetail
+from ampro.wire.errors import AuthorityRequiredProblem, ProblemDetail
 
 
 class AmpProtocolError(Exception):
@@ -37,6 +37,15 @@ class AmpProtocolError(Exception):
     def error_type(self) -> str:
         """Stable URN identifying the error (e.g. ``urn:amp:error:rate-limited``)."""
         return self.problem.type
+
+    @property
+    def authority(self) -> AuthorityRequiredProblem | None:
+        """The typed 403 authority-required problem, or ``None``.
+
+        Set only when the server answered 403 with a well-formed
+        ``urn:amp:error:authority-required`` body (WIRE-BINDING 7.2.14).
+        """
+        return self.problem if isinstance(self.problem, AuthorityRequiredProblem) else None
 
     @property
     def retry_after(self) -> int | None:

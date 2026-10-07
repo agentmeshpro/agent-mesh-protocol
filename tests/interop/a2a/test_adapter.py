@@ -669,7 +669,9 @@ async def test_amp_extension_metadata_round_trip(client):
     assert r.headers["a2a-extensions"] == AMP_EXTENSION_URI
     msg = r.json()["message"]
     data = msg["parts"][0]["data"]
-    assert data["jurisdiction"] == "EU" and data["trace_id"] == "a" * 32 and data["depth"] == 1
+    assert data["jurisdiction"] == "EU" and data["trace_id"] == "a" * 32
+    # No chain_verifier configured: the chain is not exposed as authority.
+    assert data["depth"] == 0
     assert data["sender"] == "user://alice"  # identity never taken from metadata
     ext = msg["metadata"][AMP_EXTENSION_URI]
     assert ext["agentId"] == "@demo" and ext["traceId"] == "a" * 32 and ext["jurisdiction"] == "EU"

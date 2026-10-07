@@ -1,5 +1,5 @@
 {
-  "description": "Test vectors for key.revocation body type (AMP v0.1.2). Covers all 3 revocation reasons, optional fields, and invalid payloads. Valid cases carry a real Ed25519 signature (base64url, no padding) over canonical JSON of every field except 'signature' (sorted keys, ',' ':' separators, ASCII-escaped, null for absent optionals); expected_canonical is that byte string.",
+  "description": "Test vectors for key.revocation body type (AMP v0.1.2). Covers all 3 revocation reasons, optional fields, and invalid payloads. Valid cases carry a real Ed25519 signature (base64url, no padding) over canonical JSON of every field except 'signature' (sorted keys, ',' ':' separators, raw UTF-8 without \\u escapes, null for absent optionals except compromised_at, which is omitted when absent); expected_canonical is that byte string. revoked_at / compromised_at are RFC 3339 with a UTC offset; compromised_at is informational and only allowed with key_compromise, at or before revoked_at.",
   "keys": {
     "ed25519-a": {
       "type": "Ed25519",
@@ -178,6 +178,80 @@
       },
       "signature_valid": false,
       "expected_canonical": "{\"agent_id\":\"agent://compromise-victim@registry.amp-protocol.dev\",\"jwks_url\":\"https://registry.amp-protocol.dev/.well-known/jwks.json\",\"reason\":\"key_compromise\",\"replacement_key_id\":\"kid-ed25519-2026-04-09\",\"revoked_at\":\"2026-04-09T14:30:00Z\",\"revoked_key_id\":\"kid-ed25519-2026-04-01\"}"
+    },
+    {
+      "description": "Valid revocation — key_compromise with informational compromised_at (covered by the signature when present)",
+      "body_type": "key.revocation",
+      "valid": true,
+      "body": {
+        "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+        "revoked_key_id": "kid-ed25519-2026-04-01",
+        "revoked_at": "2026-04-09T14:30:00Z",
+        "reason": "key_compromise",
+        "signature": "ZOSMqCB1r3rpyeDVXhDlLXGQ971m6d7M-YidcPJJB7yOu2BFyIIpCEDuZC4mFJAMLqlbmAeYDnQDLOt4QXWFAQ",
+        "replacement_key_id": "kid-ed25519-2026-04-09",
+        "compromised_at": "2026-04-01T00:00:00Z"
+      },
+      "sign": {
+        "kind": "key_revocation",
+        "key": "ed25519-a"
+      },
+      "note": "compromised_at is audit data only; verifiers MUST still reject every signature by the key (WIRE-BINDING 12.12.1).",
+      "expected_canonical": "{\"agent_id\":\"agent://compromise-victim@registry.amp-protocol.dev\",\"compromised_at\":\"2026-04-01T00:00:00Z\",\"jwks_url\":null,\"reason\":\"key_compromise\",\"replacement_key_id\":\"kid-ed25519-2026-04-09\",\"revoked_at\":\"2026-04-09T14:30:00Z\",\"revoked_key_id\":\"kid-ed25519-2026-04-01\"}"
+    },
+    {
+      "description": "Invalid — revoked_at without a UTC offset (naive timestamp)",
+      "body_type": "key.revocation",
+      "valid": false,
+      "expected_error": "revoked_at",
+      "body": {
+        "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+        "revoked_key_id": "kid-ed25519-2026-04-01",
+        "revoked_at": "2026-04-09T14:30:00",
+        "reason": "key_compromise",
+        "signature": "placeholder"
+      }
+    },
+    {
+      "description": "Invalid — revoked_at is a bare date, not an RFC 3339 date-time",
+      "body_type": "key.revocation",
+      "valid": false,
+      "expected_error": "revoked_at",
+      "body": {
+        "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+        "revoked_key_id": "kid-ed25519-2026-04-01",
+        "revoked_at": "2026-04-09",
+        "reason": "key_compromise",
+        "signature": "placeholder"
+      }
+    },
+    {
+      "description": "Invalid — compromised_at with reason key_rotation (only allowed for key_compromise)",
+      "body_type": "key.revocation",
+      "valid": false,
+      "expected_error": "compromised_at",
+      "body": {
+        "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+        "revoked_key_id": "kid-ed25519-2026-04-01",
+        "revoked_at": "2026-04-09T14:30:00Z",
+        "reason": "key_rotation",
+        "signature": "placeholder",
+        "compromised_at": "2026-04-01T00:00:00Z"
+      }
+    },
+    {
+      "description": "Invalid — compromised_at after revoked_at",
+      "body_type": "key.revocation",
+      "valid": false,
+      "expected_error": "compromised_at",
+      "body": {
+        "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+        "revoked_key_id": "kid-ed25519-2026-04-01",
+        "revoked_at": "2026-04-09T14:30:00Z",
+        "reason": "key_compromise",
+        "signature": "placeholder",
+        "compromised_at": "2026-04-10T00:00:00Z"
+      }
     }
   ]
 }

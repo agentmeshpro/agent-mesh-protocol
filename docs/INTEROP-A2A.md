@@ -99,6 +99,16 @@ is `missingScopes` / `verificationUriComplete`. The PACT profile uses
 `PACT_AUTH_KEYS`, which is `pact.missingScopes` / `pact.verificationUriComplete`.
 `AuthRequired` skips the app's `@on_error` hook.
 
+`AUTH_REQUIRED` is the A2A form of AMP's 403
+`urn:amp:error:authority-required` problem (WIRE-BINDING 7.2.14).
+`AuthRequired.to_problem()` gives the AMP problem (`missing_scopes`, and
+`human_approval.verification_uri` from the verification URI), and
+`AuthRequired.from_problem(problem)` goes the other way. `from_problem`
+raises if the problem also asks for `required_constraints` or
+`payment_required`, because `AUTH_REQUIRED` cannot carry them and they
+must not be dropped silently. Neither method changes what the adapter
+sends on the wire.
+
 ### Streaming
 
 On `message:stream`, `ctx.emit()` and `ctx.emit_event()` send events into
@@ -202,11 +212,11 @@ The principal fills in the `AMPContext` fields `sender_address`, `trust_tier`,
 
   | metadata key | AMPContext |
   |---|---|
-  | `delegationChain` (list of links or `{links}`) | `delegation_chain`. It is parsed but not verified; verify it before relying on it. |
+  | `delegationChain` (list of links or `{links}`, at most 50) | `delegation_chain`, **only** after the adapter's `chain_verifier` accepts it (see [Delegation chains](#delegation-chains)). Without a verifier it is `metadata["amp.unverifiedDelegationChain"]` only and `delegation_chain` stays `None`. |
   | `jurisdiction`, `dataResidency` | `jurisdiction`, `data_residency` |
-  | `traceId` | `trace_id` |
-  | `spanId` | `metadata["amp.parentSpanId"]` |
-  | `transactionId`, `correlationGroup`, `priority`, `remainingBudget`, `visitedAgents` | fields of the same name |
+  | `traceId` | `trace_id`. Must equal the `traceparent` trace-id when both are sent. |
+  | `spanId` | `metadata["amp.parentSpanId"]` and `parent_span_id`. Must equal the `traceparent` parent-id when both are sent. |
+  | `transactionId`, `correlationGroup`, `priority`, `remainingBudget`, `visitedAgents` | fields of the same name. The `visitedAgents` count is also a floor for `hop_count`. |
   | `sender` | `metadata["amp.claimedSender"]` only. Identity always comes from authentication. |
 
 * Replies carry `metadata[<uri>]` with these fields:
@@ -215,6 +225,75 @@ The principal fills in the `AMPContext` fields `sender_address`, `trust_tier`,
   * `costReceipt`, `costUsd` and `durationSeconds`, when the handler returned
     them in `task.complete`
 * The `amp_metadata_key` adapter option changes the key name.
+
+## Trace context and hop count
+
+AMP's loop detection (`Visited-Agents`) and trace ids live inside the AMP
+envelope. To keep them across protocol boundaries (AMP → A2A → MCP → AMP)
+every adapter and client also carries [W3C Trace Context](https://www.w3.org/TR/trace-context/)
+and a hop count, whether or not the AMP extension is active
+(`ampro.interop.propagation`):
+
+| A2A carrier | AMPContext | Notes |
+|---|---|---|
+| `traceparent` HTTP header, or `metadata["traceparent"]` on the request / message | `trace_id`, `parent_span_id` (+ `metadata["amp.parentSpanId"]`); a new `span_id` is minted | Strict W3C parsing: version `00` is exactly `00-<32 hex>-<16 hex>-<2 hex>`, lowercase, non-zero ids; `ff` is invalid; a higher version is read per the spec's forward-compatibility rule. Anything else is `INVALID_PARAMS`. Several sources must agree exactly. |
+| `tracestate` HTTP header / `metadata["tracestate"]` | `trace_state` | Read only with a valid `traceparent`. W3C key/value grammar, at most 32 members, no duplicate keys, otherwise `INVALID_PARAMS`; truncated to 512 characters by dropping whole members (long ones first). |
+| `AMP-Hop-Count` HTTP header, `metadata["amp.hopCount"]` | `hop_count` | 1–4 ASCII digits / a non-negative integer. The **largest** of these and the `visitedAgents` count is used; above `max_hops` the request is rejected with `INVALID_PARAMS` "Hop limit exceeded" before any state changes. |
+
+* `max_hops` (adapter option) defaults to `server.security.max_visited_agents`
+  (20), the same limit as `Visited-Agents`.
+* The handler runs inside its span: `A2AClient`, `MCPToolSource`, `PACTClient`
+  and the native AMP client called from it send `traceparent` (this hop's
+  span as parent-id), the `tracestate` received, and `AMP-Hop-Count:
+  hop_count + 1`. `A2AClient` also stamps `metadata["amp.hopCount"]` on
+  messages (never lowering a larger value the caller set).
+* A client refuses to send (`HopLimitExceeded`) when the next hop would
+  exceed the smaller of its own `max_hops` and the inbound limit. Outside any
+  handler a client starts a new trace at hop 1.
+* When `send_message(amp={"traceId": ..., "spanId": ...})` names ids, the
+  `traceparent` is built from them so the two never disagree; ids that are
+  not W3C-shaped suppress the `traceparent` (the hop count is still sent).
+
+## Delegation chains
+
+A delegation chain received in the AMP extension is a claim made by the
+caller. The adapter treats it the way it treats a claimed `sender`: it never
+becomes authority unless you verify it.
+
+```python
+from ampro.delegation.chain import validate_chain
+from ampro.interop.a2a import A2AAdapter
+
+KEYS = load_delegator_keys()   # (agent id, kid) -> VerificationKey
+
+async def verify_chain(chain, ctx):
+    # Work delegated to this agent: it is the holder, and the
+    # authenticated caller must have issued the last link.
+    if chain.links[-1].delegator != ctx.sender_address:
+        return False, "last link was not issued by the caller"
+    return validate_chain(
+        chain,
+        keys=KEYS,
+        holder=ctx.agent_address,
+        audience=ctx.agent_address,
+        is_revoked=revocation_store.is_revoked,
+    )
+
+adapter = A2AAdapter.for_server(server, chain_verifier=verify_chain)
+```
+
+* `chain_verifier` is a `ChainVerifier`:
+  `async (DelegationChain, AMPContext) -> (ok: bool, reason: str)`.
+* Accepted (`(True, ...)`): the chain becomes `ctx.delegation_chain`.
+* Rejected — `(False, ...)`, an exception, a non-`(bool, str)` result, or no
+  answer within `chain_verifier_timeout` (10 s): the request fails with
+  `INVALID_PARAMS` and the generic message "Delegation chain rejected"
+  before the handler runs. The reason is logged, never returned.
+* No verifier configured: `ctx.delegation_chain` stays `None` and the parsed
+  chain is available only as `ctx.metadata["amp.unverifiedDelegationChain"]`
+  (the copy in `ctx.metadata["amp.extension"]` has the chain removed).
+* A malformed chain, or one with more than 50 links, is `INVALID_PARAMS`
+  before the verifier is called.
 
 ## Client
 
@@ -273,4 +352,8 @@ kind = await discover_protocol("https://agent.example")   # "amp" or "a2a"
   the current task snapshot.
 * On the AMP side, cancelling a task only cancels the running handler; there
   is no `task.cancel` handler hook.
-* The delegation chain in the extension is parsed, not verified.
+* Delegation chains are verified only by the `chain_verifier` you supply; the
+  adapter ships no default key source. Without one, chains are never exposed
+  as `ctx.delegation_chain`.
+* Trace context is read on `SendMessage` / `SendStreamingMessage` only (the
+  requests that run a handler); other operations ignore it.

@@ -31,6 +31,12 @@
       "section": "7.2.2"
     },
     {
+      "type": "urn:amp:error:authority-required",
+      "status": 403,
+      "title": "Authority required",
+      "section": "7.2.14"
+    },
+    {
       "type": "urn:amp:error:capability-not-negotiated",
       "status": 403,
       "title": "Capability not negotiated",

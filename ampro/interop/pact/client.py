@@ -33,6 +33,12 @@ from ampro.interop.pact._jwt import (
     verify_signature,
 )
 from ampro.interop.pact.delegation import DEVICE_CODE_GRANT, REFRESH_GRANT
+from ampro.interop.propagation import (
+    DEFAULT_MAX_HOPS,
+    HOP_COUNT_METADATA_KEY,
+    check_max_hops,
+    outbound_propagation,
+)
 
 PACT_HEADERS = {"A2A-Version": "1.0", "Content-Type": "application/json"}
 
@@ -151,12 +157,18 @@ class PACTClient:
         audience: the ``aud`` the Provider assigned (never derived from a card).
         http: an ``httpx.AsyncClient`` (e.g. with ``ASGITransport`` in tests).
         sleep: async sleep used while polling (tests pass a fast one).
+        max_hops: refuse to send (``HopLimitExceeded``) when the outbound hop
+            count would exceed this.  ``message:send`` carries W3C
+            ``traceparent`` / ``tracestate`` and ``AMP-Hop-Count`` from the
+            calling handler, and ``amp.hopCount`` in the message metadata.
     """
 
     def __init__(self, signer: PASigner, audience: str, *, http: Any = None,
-                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+                 max_hops: int = DEFAULT_MAX_HOPS) -> None:
         import httpx
 
+        self.max_hops = check_max_hops(max_hops)
         self.signer = signer
         self.audience = audience
         self.http = http or httpx.AsyncClient(timeout=30.0, follow_redirects=False)
@@ -248,7 +260,10 @@ class BrandSession:
                                    "parts": [{"text": text}]}
         if context_id:
             message["contextId"] = context_id
-        headers = {**PACT_HEADERS, **self.client._auth(sub)}
+        prop = outbound_propagation(self.client.max_hops)
+        trace_headers = prop.outbound_headers(self.client.max_hops)
+        message["metadata"] = {HOP_COUNT_METADATA_KEY: prop.next_hop(self.client.max_hops)}
+        headers = {**PACT_HEADERS, **trace_headers, **self.client._auth(sub)}
         token = await self._valid_token(sub)
         if token is not None:
             headers["X-A2A-User-Delegation"] = f"Bearer {token.access_token}"

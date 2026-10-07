@@ -146,7 +146,8 @@ HTTP_HEADERS: list[dict[str, Any]] = [
      "description": "Digest of the request body; MUST be covered when the body is non-empty",
      "section": "12.15.2"},
     {"name": "WWW-Authenticate", "direction": "response", "format": "RFC 9110",
-     "description": "Accepted authentication schemes on a 401", "section": "7.2.2"},
+     "description": "Accepted authentication schemes on a 401; insufficient_scope "
+                    "step-up on a 403 authority-required (7.2.14)", "section": "7.2.2"},
     {"name": "Sunset", "direction": "response", "format": "HTTP-date",
      "description": "Deprecation date of the protocol version in use", "section": "18.5"},
     {"name": "Last-Event-ID", "direction": "request", "format": "SSE event id",
@@ -167,6 +168,7 @@ ERRORS: dict[str, tuple[int, str, str]] = {
     ErrorType.JURISDICTION_CONFLICT: (403, "Jurisdiction conflict", "13.5"),
     ErrorType.RESIDENCY_VIOLATION: (403, "Data residency violation", "13.6"),
     ErrorType.CONSENT_DENIED: (403, "Consent denied", "13.3"),
+    ErrorType.AUTHORITY_REQUIRED: (403, "Authority required", "7.2.14"),
     ErrorType.NOT_FOUND: (404, "Not found", "7.2.4"),
     ErrorType.VERSION_MISMATCH: (406, "Protocol version mismatch", "7.2.5"),
     ErrorType.TIMEOUT: (408, "Request timeout", "7.2.6"),
@@ -511,7 +513,9 @@ def _problem(description: str) -> dict[str, Any]:
 PROBLEM_RESPONSES = {
     "400": "Envelope or body validation failed, or recipient mismatch (urn:amp:error:invalid-message)",
     "401": "Credential missing (when required) or invalid, including any failed RFC 9421 signature",
-    "403": "Sender binding, contact policy, Origin or authorization failure",
+    "403": "Sender binding, contact policy, Origin or authorization failure; "
+           "urn:amp:error:authority-required (AuthorityRequiredProblem) when the caller "
+           "needs more authority",
     "406": "Accept-Version is malformed or names no supported MAJOR (urn:amp:error:version-mismatch)",
     "408": "Handler did not finish within the timeout",
     "409": "Loop detected, nonce replay, or a duplicate message still in flight",
@@ -550,6 +554,15 @@ def build_openapi() -> dict[str, Any]:
             resp["headers"] = {"Retry-After": {"$ref": "#/components/headers/Retry-After"}, **rl_headers}
         elif code == "401":
             resp["headers"] = {"WWW-Authenticate": {"schema": {"type": "string"}}}
+        elif code == "403":
+            resp["headers"] = {
+                "Protocol-Version": {"$ref": "#/components/headers/Protocol-Version"},
+                "WWW-Authenticate": {
+                    "description": 'Bearer error="insufficient_scope" when an '
+                                   "authority-required problem lists missing_scopes (7.2.14)",
+                    "schema": {"type": "string"},
+                },
+            }
         else:
             resp["headers"] = {"Protocol-Version": {"$ref": "#/components/headers/Protocol-Version"}}
         message_responses[code] = resp
@@ -745,6 +758,7 @@ def build_openapi() -> dict[str, Any]:
                 "AgentJson": {"$ref": "schemas/agent-json.json"},
                 "HealthResponse": {"$ref": "schemas/health-response.json"},
                 "ProblemDetails": {"$ref": "schemas/problem-details.json"},
+                "AuthorityRequiredProblem": {"$ref": "schemas/problem-authority-required.json"},
                 "StreamEvent": {"$ref": "schemas/stream/event.json"},
                 "Jwks": {
                     "type": "object",

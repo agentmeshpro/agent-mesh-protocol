@@ -43,6 +43,12 @@ SEMANTIC_CONSTRAINTS: dict[str, list[str]] = {
     ],
     "key.revocation": [
         "signature MUST verify over the canonical form (tests/vectors/key_revocation.json)",
+        "revoked_at and compromised_at MUST be valid calendar instants",
+        "replacement_key_id MUST differ from revoked_key_id",
+        "compromised_at is only allowed with reason key_compromise and MUST NOT be after revoked_at",
+        "key_compromise / agent_decommissioned invalidate every signature by the key "
+        "regardless of its timestamp; key_rotation invalidates only signatures made at "
+        "or after revoked_at (WIRE-BINDING section 12.12.1)",
     ],
     "registry.federation_request": [
         "trust proof MUST verify per WIRE-BINDING section 12.16.1",
@@ -237,6 +243,40 @@ def problem_schema() -> dict[str, Any]:
     )
 
 
+def authority_required_schema() -> dict[str, Any]:
+    from ampro.wire.errors import AuthorityRequiredProblem
+
+    schema = _model(AuthorityRequiredProblem)
+    # On the wire these are always present (the model only defaults them).
+    schema["required"] = ["type", "title", "status"]
+    schema["anyOf"] = [
+        {"required": ["missing_scopes"], "properties": {"missing_scopes": {"minItems": 1}}},
+        {"required": ["required_constraints"],
+         "properties": {"required_constraints": {"minItems": 1}}},
+        {"required": ["payment_required"],
+         "properties": {"payment_required": {"type": "object"}}},
+        {"required": ["human_approval"], "properties": {"human_approval": {"type": "object"}}},
+    ]
+    return _wrap(
+        "problem-authority-required.json",
+        schema,
+        title="AuthorityRequiredProblem",
+        description=(
+            "403 urn:amp:error:authority-required problem (WIRE-BINDING section "
+            "7.2.14): the caller needs more authority. At least one of "
+            "missing_scopes, required_constraints, payment_required or "
+            "human_approval is present."
+        ),
+        extra={"x-amp-constraints": [
+            "missing_scopes entries are unique",
+            "human_approval.verification_uri MUST be an https URI without userinfo "
+            "or fragment",
+            "each required_constraints entry is at most 4096 bytes of JSON; the "
+            "whole problem at most 65536 bytes",
+        ]},
+    )
+
+
 def encrypted_body_schema() -> dict[str, Any]:
     from ampro.security.encryption import EncryptedBody
 
@@ -247,6 +287,21 @@ def encrypted_body_schema() -> dict[str, Any]:
         description=(
             "Body of an envelope that carries the Content-Encryption header "
             "(WIRE-BINDING section 12.11)."
+        ),
+    )
+
+
+def delegation_link_v2_schema() -> dict[str, Any]:
+    from ampro.delegation.v2 import DelegationLinkV2
+
+    return _wrap(
+        "delegation-link-v2.json",
+        _model(DelegationLinkV2),
+        title="DelegationLinkV2",
+        description=(
+            "One link of a v2 delegation chain (WIRE-BINDING section 11.11.2). "
+            "Structure only: string formats, narrowing and signature rules are "
+            "normative in the specification text."
         ),
     )
 
@@ -341,7 +396,9 @@ def build_schemas() -> dict[str, dict[str, Any]]:
         "agent-json.json": agent_json_schema(),
         "health-response.json": health_schema(),
         "problem-details.json": problem_schema(),
+        "problem-authority-required.json": authority_required_schema(),
         "encrypted-body.json": encrypted_body_schema(),
+        "delegation-link-v2.json": delegation_link_v2_schema(),
     }
     docs.update(body_schemas())
     docs.update(stream_schemas())
