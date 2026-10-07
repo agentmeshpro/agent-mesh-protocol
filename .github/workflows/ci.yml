@@ -10,6 +10,29 @@ permissions:
   contents: read
 
 jobs:
+  site:
+    # Demo site (Next.js) under site/. Builds without secrets: model
+    # configuration is only read at request time.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Type-check
+        run: npm run type-check
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
   test:
     runs-on: ubuntu-latest
     strategy:
