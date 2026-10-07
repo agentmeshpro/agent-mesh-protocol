@@ -986,6 +986,7 @@ def build_delegation_v2() -> dict:
         case: dict[str, Any] = {
             "description": spec["description"],
             "now": _V2_NOW,
+            "presenter": links[-1]["delegate"],
             "audience": spec.get("audience", "agent://shop.example.com"),
             "understood_extensions": spec.get("understood_extensions", []),
             "links": links,
@@ -1005,8 +1006,9 @@ def build_delegation_v2() -> dict:
             "'signature', extension members included, absent optional members omitted, "
             "'scopes' sorted, timestamps in RFC 3339 UTC with 'Z', plus 'parent_link_id' and "
             "'parent_delegate' (null for the root). Keys are looked up by (delegator, kid); "
-            "every key here has kid 'k1'. Validate each case at 'now' with the given audience "
-            "and understood extensions."
+            "every key here has kid 'k1'. Validate each case at 'now' with the given presenter "
+            "(the authenticated agent presenting the chain), audience and understood "
+            "extensions."
         ),
         "keys_by_agent": _AGENT_KEYS,
         "vectors": cases,

@@ -81,9 +81,9 @@ def _chain(*links: DelegationLink) -> DelegationChain:
 def test_tampering_any_field_breaks_signature(field, value):
     link = _link(A, B, None, trust_tier="external", max_fan_out=2,
                  chain_budget="remaining=1.00USD;max=1.00USD")
-    assert validate_chain(_chain(link), PUBS) == (True, "valid")
+    assert validate_chain(_chain(link), PUBS, allow_v1=True) == (True, "valid")
     tampered = link.model_copy(update={field: value})
-    ok, reason = validate_chain(_chain(tampered), PUBS)
+    ok, reason = validate_chain(_chain(tampered), PUBS, allow_v1=True)
     assert ok is False
     assert "signature" in reason
 
@@ -102,7 +102,7 @@ def test_sign_with_z_timestamps_matches_wire_form():
     }
     wire["signature"] = sign_delegation(KEYS[A][0], wire)
     parsed = DelegationLink.model_validate(json.loads(json.dumps(wire)))
-    assert validate_chain(_chain(parsed), PUBS) == (True, "valid")
+    assert validate_chain(_chain(parsed), PUBS, allow_v1=True) == (True, "valid")
 
 
 def test_non_utc_offset_equivalent_instant_verifies():
@@ -114,7 +114,7 @@ def test_non_utc_offset_equivalent_instant_verifies():
         "created_at": link.created_at.astimezone(UTC),
         "expires_at": link.expires_at.astimezone(UTC),
     })
-    assert validate_chain(_chain(moved), PUBS) == (True, "valid")
+    assert validate_chain(_chain(moved), PUBS, allow_v1=True) == (True, "valid")
 
 
 def test_naive_datetime_rejected_at_model_validation():
@@ -135,23 +135,23 @@ def test_naive_datetime_rejected_at_model_validation():
 def test_child_cannot_raise_max_depth():
     l1 = _link(A, B, None, max_depth=2)
     l2 = _link(B, C, B, max_depth=5)
-    ok, reason = validate_chain(_chain(l1, l2), PUBS)
+    ok, reason = validate_chain(_chain(l1, l2), PUBS, allow_v1=True)
     assert ok is False and "max_depth" in reason
 
 
 def test_child_must_decrement_max_depth():
     l1 = _link(A, B, None, max_depth=3)
     l2 = _link(B, C, B, max_depth=3)
-    ok, reason = validate_chain(_chain(l1, l2), PUBS)
+    ok, reason = validate_chain(_chain(l1, l2), PUBS, allow_v1=True)
     assert ok is False and "max_depth" in reason
 
 
 def test_chain_length_bounded_by_root_max_depth():
     l1 = _link(A, B, None, max_depth=2)
     l2 = _link(B, C, B, max_depth=1)
-    assert validate_chain(_chain(l1, l2), PUBS) == (True, "valid")
+    assert validate_chain(_chain(l1, l2), PUBS, allow_v1=True) == (True, "valid")
     l3 = _link(C, D, C, max_depth=0)
-    ok, reason = validate_chain(_chain(l1, l2, l3), PUBS)
+    ok, reason = validate_chain(_chain(l1, l2, l3), PUBS, allow_v1=True)
     assert ok is False and "depth" in reason
 
 
@@ -159,13 +159,13 @@ def test_decrementing_chain_accepted():
     l1 = _link(A, B, None, max_depth=3, scopes=["tool:*"])
     l2 = _link(B, C, B, max_depth=2, scopes=["tool:read", "tool:write"])
     l3 = _link(C, D, C, max_depth=1, scopes=["tool:read"])
-    assert validate_chain(_chain(l1, l2, l3), PUBS) == (True, "valid")
+    assert validate_chain(_chain(l1, l2, l3), PUBS, allow_v1=True) == (True, "valid")
 
 
 def test_scope_widening_rejected():
     l1 = _link(A, B, None, scopes=["tool:read"])
     l2 = _link(B, C, B, max_depth=2, scopes=["tool:read", "admin:*"])
-    ok, reason = validate_chain(_chain(l1, l2), PUBS)
+    ok, reason = validate_chain(_chain(l1, l2), PUBS, allow_v1=True)
     assert ok is False and "scopes" in reason
 
 
@@ -178,11 +178,11 @@ def test_fan_out_enforced_with_counts():
     l1 = _link(A, B, None, max_fan_out=2)
     l2 = _link(B, C, B, max_depth=2)
     lid = delegation_link_id(l1)
-    assert validate_chain(_chain(l1, l2), PUBS, fan_out_counts={lid: 1})[0] is True
-    ok, reason = validate_chain(_chain(l1, l2), PUBS, fan_out_counts={lid: 2})
+    assert validate_chain(_chain(l1, l2), PUBS, fan_out_counts={lid: 1}, allow_v1=True)[0] is True
+    ok, reason = validate_chain(_chain(l1, l2), PUBS, fan_out_counts={lid: 2}, allow_v1=True)
     assert ok is False and "fan_out" in reason
     # Without a store the check cannot apply.
-    assert validate_chain(_chain(l1, l2), PUBS)[0] is True
+    assert validate_chain(_chain(l1, l2), PUBS, allow_v1=True)[0] is True
 
 
 @pytest.mark.parametrize(
@@ -200,21 +200,21 @@ def test_budget_trailing_junk_rejected(bad):
 
 def test_budget_remaining_cannot_exceed_max():
     link = _link(A, B, None, chain_budget="remaining=9.00USD;max=5.00USD")
-    ok, reason = validate_chain(_chain(link), PUBS)
+    ok, reason = validate_chain(_chain(link), PUBS, allow_v1=True)
     assert ok is False and "max" in reason
 
 
 def test_budget_max_cannot_increase_along_chain():
     l1 = _link(A, B, None, chain_budget="remaining=2.00USD;max=5.00USD")
     l2 = _link(B, C, B, max_depth=2, chain_budget="remaining=2.00USD;max=50.00USD")
-    ok, reason = validate_chain(_chain(l1, l2), PUBS)
+    ok, reason = validate_chain(_chain(l1, l2), PUBS, allow_v1=True)
     assert ok is False and "budget" in reason
 
 
 def test_budget_cannot_be_dropped_by_child():
     l1 = _link(A, B, None, chain_budget="remaining=2.00USD;max=5.00USD")
     l2 = _link(B, C, B, max_depth=2)
-    ok, reason = validate_chain(_chain(l1, l2), PUBS)
+    ok, reason = validate_chain(_chain(l1, l2), PUBS, allow_v1=True)
     assert ok is False and "budget" in reason
 
 

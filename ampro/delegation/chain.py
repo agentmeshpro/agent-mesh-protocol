@@ -26,17 +26,21 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from pydantic import BaseModel, Field, field_validator
 
-# Clock skew tolerance — imported from canonical constant in trust.tiers.
 from ampro.delegation.v2 import (
     DEFAULT_MAX_LIFETIME,
     DEFAULT_MAX_UNREVOCABLE_LIFETIME,
+    MAX_CHAIN_LINKS,
     DelegationLinkV2,
+    ExtensionNarrowing,
     KeyResolver,
     KeyStatusCheck,
     RevocationCheck,
     VerificationKey,
+    check_raw_link_size,
     validate_chain_v2,
 )
+
+# Clock skew tolerance — imported from canonical constant in trust.tiers.
 from ampro.trust.tiers import CLOCK_SKEW_SECONDS
 
 _SKEW = timedelta(seconds=CLOCK_SKEW_SECONDS)
@@ -131,6 +135,9 @@ class DelegationChain(BaseModel):
             if isinstance(raw, Mapping) and "v" in raw:
                 if raw["v"] != 2 or isinstance(raw["v"], bool):
                     raise ValueError("unsupported delegation link version")
+                if len(value) > MAX_CHAIN_LINKS:
+                    raise ValueError(f"a chain may have at most {MAX_CHAIN_LINKS} links")
+                check_raw_link_size(raw)
                 out.append(DelegationLinkV2.model_validate(raw))
             else:
                 out.append(DelegationLink.model_validate(raw))
@@ -354,10 +361,13 @@ def validate_chain(
     public_keys: dict[str, bytes] | None = None,
     *,
     fan_out_counts: Mapping[str, int] | None = None,
-    allow_v1: bool = True,
+    allow_v1: bool = False,
+    presenter: str | None = None,
     keys: KeyResolver | Mapping[tuple[str, str], VerificationKey] | None = None,
     audience: str | None = None,
-    understood_extensions: tuple[str, ...] | frozenset[str] = (),
+    understood_extensions: (
+        tuple[str, ...] | frozenset[str] | Mapping[str, ExtensionNarrowing]
+    ) = (),
     key_status: KeyStatusCheck | None = None,
     is_revoked: RevocationCheck | None = None,
     max_lifetime: timedelta = DEFAULT_MAX_LIFETIME,
@@ -369,10 +379,13 @@ def validate_chain(
     A v2 chain is handed to :func:`ampro.delegation.v2.validate_chain_v2`
     with *keys*, *audience*, *understood_extensions*, *key_status*,
     *is_revoked*, *fan_out_counts* and the lifetime caps; it fails if
-    *keys* is not given. A v1 chain uses *public_keys* and is refused
-    when *allow_v1* is false. Verifiers that only talk to v2 peers SHOULD
-    pass ``allow_v1=False``: v1 links cannot carry an audience, a
-    principal, typed limits or must-understand extensions.
+    *keys* or *presenter* is not given. *presenter* is the authenticated
+    agent presenting the chain and must be its final delegate.
+
+    A v1 chain uses *public_keys* and is refused unless *allow_v1* is
+    true: v1 links cannot carry an audience, a principal, typed limits or
+    must-understand extensions, and their unknown fields are unsigned.
+    When *presenter* is given it is checked against v1 chains too.
 
     Checks performed for each link (in order):
       0. No self-delegation.
@@ -416,9 +429,12 @@ def validate_chain(
     if chain.version == 2:
         if keys is None:
             return False, "v2 chain needs a key resolver (keys=...)"
+        if presenter is None:
+            return False, "v2 chain needs the presenting agent (presenter=...)"
         return validate_chain_v2(
             chain.links,  # type: ignore[arg-type]
             keys,
+            presenter=presenter,
             audience=audience,
             understood_extensions=understood_extensions,
             key_status=key_status,
@@ -429,9 +445,11 @@ def validate_chain(
         )
 
     if not allow_v1:
-        return False, "v1 delegation links are not accepted"
+        return False, "v1 delegation links are not accepted (pass allow_v1=True)"
     if public_keys is None:
         return False, "v1 chain needs public_keys"
+    if presenter is not None and chain.links[-1].delegate != presenter:
+        return False, "chain was not issued to the agent presenting it"
 
     now = datetime.now(UTC)
 

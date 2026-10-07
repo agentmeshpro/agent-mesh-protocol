@@ -112,6 +112,7 @@ _RFC3339 = re.compile(
 )
 
 _TRUST_TIERS = frozenset({"internal", "owner", "verified", "external"})
+_TIER_RANK = {"external": 0, "verified": 1, "owner": 2, "internal": 3}
 
 
 def _check_https_url(value: str, name: str) -> str:
@@ -137,10 +138,18 @@ def _check_identifier(value: str, name: str) -> str:
 
 
 def _require_aware(v: datetime | None) -> datetime | None:
-    if v is not None and (v.tzinfo is None or v.utcoffset() is None):
+    if v is None:
+        return v
+    if v.tzinfo is None or v.utcoffset() is None:
         raise ValueError(
             "timestamps must be timezone-aware (RFC 3339 with 'Z' or an offset)"
         )
+    try:
+        utc = v.astimezone(UTC)
+    except (OverflowError, ValueError):
+        raise ValueError("timestamp out of range") from None
+    if not 1970 <= utc.year <= 9998:
+        raise ValueError("timestamp year must be between 1970 and 9998")
     return v
 
 
@@ -532,7 +541,7 @@ class DelegationLinkV2(BaseModel):
                 )
             _check_json_value(value)
         for name in self.crit:
-            if name not in extras:
+            if extras.get(name) is None:
                 raise ValueError(f"crit names {name!r}, which the link does not carry")
         if self.origin != "agent":
             if self.principal is None:
@@ -647,6 +656,10 @@ def _b64url_decode(value: str) -> bytes:
 # ---------------------------------------------------------------------------
 
 
+_P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+_P256_HALF_N = _P256_N // 2
+
+
 class VerificationKey(NamedTuple):
     """A public key and the one algorithm it may be used with.
 
@@ -703,6 +716,8 @@ def sign_delegation_v2(
             raise ValueError("alg ES256 requires a P-256 private key")
         der = private_key.sign(payload, ec.ECDSA(hashes.SHA256()))
         r, s = decode_dss_signature(der)
+        if s > _P256_HALF_N:
+            s = _P256_N - s  # always emit the low-S form
         sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
     else:  # pragma: no cover - rejected by the model
         raise ValueError(f"unsupported alg {link.alg!r}")
@@ -725,6 +740,8 @@ def _verify_signature(key: VerificationKey, alg: str, payload: bytes, signature:
             pub = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), key.public_key)
             r = int.from_bytes(sig[:32], "big")
             s = int.from_bytes(sig[32:], "big")
+            if not (0 < r < _P256_N and 0 < s <= _P256_HALF_N):
+                return False  # reject high-S: one valid signature per link
             pub.verify(encode_dss_signature(r, s), payload, ec.ECDSA(hashes.SHA256()))
             return True
     except (InvalidSignature, ValueError, TypeError):
@@ -781,6 +798,7 @@ def parse_links_v2(raw_links: list[Any]) -> list[DelegationLinkV2]:
         if isinstance(raw, DelegationLinkV2):
             out.append(raw)
             continue
+        check_raw_link_size(raw)
         try:
             out.append(DelegationLinkV2.model_validate(raw))
         except ValidationError as exc:
@@ -788,12 +806,34 @@ def parse_links_v2(raw_links: list[Any]) -> list[DelegationLinkV2]:
     return out
 
 
+def check_raw_link_size(raw: Any) -> None:
+    """Refuse an oversized link before the expensive parse.
+
+    Raises ``ValueError`` when *raw* is not a JSON object or its compact
+    JSON form exceeds :data:`MAX_LINK_BYTES`.
+    """
+    if not isinstance(raw, Mapping):
+        raise ValueError("a link must be a JSON object")
+    try:
+        size = len(json.dumps(raw, separators=(",", ":"), ensure_ascii=False, default=str))
+    except (TypeError, ValueError, RecursionError):
+        raise ValueError("link is not serialisable JSON") from None
+    if size > MAX_LINK_BYTES:
+        raise ValueError(f"link exceeds {MAX_LINK_BYTES} bytes")
+
+
+#: ``(parent_value, child_value) -> bool``: True if the child's value of a
+#: critical extension is equal to or narrower than the parent's.
+ExtensionNarrowing = Callable[[Any, Any], bool]
+
+
 def validate_chain_v2(
     links: list[DelegationLinkV2],
     keys: KeyResolver | Mapping[tuple[str, str], VerificationKey],
     *,
+    presenter: str,
     audience: str | None = None,
-    understood_extensions: Collection[str] = (),
+    understood_extensions: Collection[str] | Mapping[str, ExtensionNarrowing] = (),
     key_status: KeyStatusCheck | None = None,
     is_revoked: RevocationCheck | None = None,
     fan_out_counts: Mapping[str, int] | None = None,
@@ -820,7 +860,41 @@ def validate_chain_v2(
     * Constraints narrow: every parent constraint reappears on the child,
       equal or tighter.
     * No link outlives a referenced credential, and lifetimes are capped.
+    * *presenter* (the authenticated agent presenting the chain) must be
+      the last link's ``delegate``: a chain is not a bearer token.
+    * ``trust_tier`` never rises down the chain.
+    * A critical extension keeps its value down the chain unless
+      *understood_extensions* maps its name to a narrowing function, in
+      which case that function must accept every parent/child pair.
+
+    Never raises: any unexpected error rejects the chain.
     """
+    try:
+        return _validate_chain_v2(
+            links, keys, presenter=presenter, audience=audience,
+            understood_extensions=understood_extensions, key_status=key_status,
+            is_revoked=is_revoked, fan_out_counts=fan_out_counts,
+            max_lifetime=max_lifetime, max_unrevocable_lifetime=max_unrevocable_lifetime,
+            now=now,
+        )
+    except Exception as exc:  # fail closed on anything unforeseen
+        return False, f"chain rejected ({type(exc).__name__})"
+
+
+def _validate_chain_v2(
+    links: list[DelegationLinkV2],
+    keys: KeyResolver | Mapping[tuple[str, str], VerificationKey],
+    *,
+    presenter: str,
+    audience: str | None,
+    understood_extensions: Collection[str] | Mapping[str, ExtensionNarrowing],
+    key_status: KeyStatusCheck | None,
+    is_revoked: RevocationCheck | None,
+    fan_out_counts: Mapping[str, int] | None,
+    max_lifetime: timedelta,
+    max_unrevocable_lifetime: timedelta,
+    now: datetime | None,
+) -> tuple[bool, str]:
     if not links:
         return False, "empty chain"
     if len(links) > MAX_CHAIN_LINKS:
@@ -833,6 +907,13 @@ def validate_chain_v2(
         keys if callable(keys) else (lambda agent, kid: keys.get((agent, kid)))  # type: ignore[union-attr]
     )
     understood = frozenset(understood_extensions)
+    narrowing: Mapping[str, ExtensionNarrowing] = (
+        understood_extensions if isinstance(understood_extensions, Mapping) else {}
+    )
+    if not isinstance(presenter, str) or not presenter:
+        return False, "the presenting agent must be given"
+    if links[-1].delegate != presenter:
+        return False, "chain was not issued to the agent presenting it"
     root = links[0]
     if len(links) > root.max_depth:
         return False, f"chain depth {len(links)} exceeds root max_depth {root.max_depth}"
@@ -868,8 +949,8 @@ def validate_chain_v2(
                 return False, f"link {i}: signing key {link.kid!r} is revoked or unusable"
         try:
             payload = canonical_link_v2_bytes(link, parent)
-        except ValueError as exc:
-            return False, f"link {i}: {exc}"
+        except (ValueError, OverflowError) as exc:
+            return False, f"link {i}: cannot canonicalise ({type(exc).__name__})"
         if not _verify_signature(key, link.alg, payload, link.signature):
             return False, f"link {i}: invalid signature"
 
@@ -935,10 +1016,25 @@ def validate_chain_v2(
         why = _constraints_narrow(parent.constraints, link.constraints)
         if why is not None:
             return False, f"link {i}: {why}"
+        if _TIER_RANK[link.trust_tier] > _TIER_RANK[parent.trust_tier]:
+            return False, f"link {i}: trust_tier rises above the parent's"
+        child_ext = link.extension_members
         for name in parent.crit:
-            # A critical restriction cannot be dropped further down the chain.
-            if name not in link.extension_members:
+            # A critical restriction is never dropped, blanked or widened.
+            if name not in link.crit or child_ext.get(name) is None:
                 return False, f"link {i}: drops critical extension {name!r}"
+            parent_value = parent.extension_members[name]
+            narrows = narrowing.get(name)
+            if narrows is None:
+                if child_ext[name] != parent_value:
+                    return False, f"link {i}: changes critical extension {name!r}"
+            else:
+                try:
+                    ok = narrows(parent_value, child_ext[name])
+                except Exception:
+                    ok = False
+                if ok is not True:
+                    return False, f"link {i}: widens critical extension {name!r}"
 
         # Fan-out (stateful).
         if fan_out_counts is not None:
@@ -954,23 +1050,42 @@ def validate_chain_v2(
 # ---------------------------------------------------------------------------
 
 
+#: ``link_id -> minor units already spent under that link``.
+SpentLookup = Callable[[str], int]
+
+
 def authorize_action(
     links: list[DelegationLinkV2],
     *,
+    actor: str,
     scope: str,
+    spends_money: bool = False,
     amount_minor: int | None = None,
     currency: str | None = None,
     resource_id: str | None = None,
+    spent_minor: SpentLookup | None = None,
 ) -> tuple[bool, str]:
     """Check one action against an ALREADY VALIDATED chain.
 
-    Every link's scopes and constraints must allow the action (narrowing
-    makes the last link the tightest, but all are checked). Money must be
-    given whenever any money constraint exists, in the same currency.
-    Count limits need a counter store and are left to the caller.
+    *actor* must be the last link's ``delegate``. Every link's scopes and
+    constraints must allow the action (narrowing makes the last link the
+    tightest, but all are checked).
+
+    Money: pass ``spends_money=True`` for any action that moves money, and
+    then *amount_minor* and *currency* are required. A spending action is
+    refused when no link carries an ``amount`` or ``budget`` limit. A
+    ``budget`` limit needs *spent_minor*, which returns what has already
+    been spent under a link; the caller records the spend after the
+    action succeeds. Count limits likewise need the caller's counter.
     """
     if not links:
         return False, "empty chain"
+    if links[-1].delegate != actor:
+        return False, "actor is not the chain's final delegate"
+    if amount_minor is not None or currency is not None:
+        spends_money = True
+    if spends_money and amount_minor is None:
+        return False, "a spending action needs amount_minor and currency"
     if amount_minor is not None:
         if isinstance(amount_minor, bool) or not isinstance(amount_minor, int):
             return False, "amount_minor must be an integer"
@@ -983,17 +1098,30 @@ def authorize_action(
             return False, f"link {i}: scope {scope!r} not granted"
         for c in link.constraints:
             if c.type in ("amount", "budget"):
+                if not spends_money:
+                    continue  # money limits apply to actions that move money
                 if amount_minor is None:
                     return False, f"link {i}: a {c.type} limit applies; amount required"
                 if currency != c.currency:
                     return False, f"link {i}: currency {currency} not allowed ({c.currency})"
-                limit = c.max_minor if c.type == "amount" else c.remaining_minor
-                if amount_minor > limit:
-                    return False, f"link {i}: amount exceeds the {c.type} limit"
+                if c.type == "amount":
+                    if amount_minor > c.max_minor:
+                        return False, f"link {i}: amount exceeds the amount limit"
+                else:
+                    if spent_minor is None:
+                        return False, f"link {i}: a budget limit needs spend tracking"
+                    try:
+                        spent = spent_minor(link.link_id)
+                    except Exception:
+                        return False, f"link {i}: spend lookup failed"
+                    if isinstance(spent, bool) or not isinstance(spent, int) or spent < 0:
+                        return False, f"link {i}: spend lookup returned an invalid value"
+                    if spent + amount_minor > c.remaining_minor:
+                        return False, f"link {i}: amount exceeds the budget remaining"
             elif c.type == "resource":
                 if resource_id is None or resource_id not in c.ids:
                     return False, f"link {i}: resource not permitted"
-    if amount_minor is not None and not any(
+    if spends_money and not any(
         c.type in ("amount", "budget") for link in links for c in link.constraints
     ):
         # Spending with no money limit anywhere in the chain is refused.

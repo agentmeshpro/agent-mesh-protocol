@@ -75,6 +75,7 @@ def _chain(*datas: dict) -> list[DelegationLinkV2]:
 
 
 def _ok(links, **kw):
+    kw.setdefault("presenter", links[-1].delegate)
     return validate_chain_v2(links, RESOLVER, **kw)
 
 
@@ -103,7 +104,7 @@ def test_algorithm_must_match_the_key():
         sign_delegation_v2(KEYS[C][0], _link(C, D, alg="EdDSA"))
     link = _sign(_link(A, B))
     wrong = {(A, "k1"): VerificationKey("ES256", KEYS[C][1].public_key)}
-    assert validate_chain_v2([link], wrong)[0] is False
+    assert validate_chain_v2([link], wrong, presenter=B)[0] is False
 
 
 def test_unknown_alg_rejected():
@@ -121,7 +122,8 @@ def test_resolver_exception_fails_closed():
     def boom(agent, kid):
         raise RuntimeError("network")
 
-    assert validate_chain_v2(_chain(_link(A, B)), boom) == (False, "link 0: key lookup failed")
+    assert validate_chain_v2(_chain(_link(A, B)), boom, presenter=B) == (
+        False, "link 0: key lookup failed")
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +165,7 @@ def test_stripping_version_turns_link_into_unverifiable_v1():
     raw.pop("v")
     chain = DelegationChain.model_validate({"links": [raw]})
     assert chain.version == 1
-    ok, _ = validate_chain(chain, {A: KEYS[A][1].public_key})
+    ok, _ = validate_chain(chain, {A: KEYS[A][1].public_key}, allow_v1=True)
     assert not ok
 
 
@@ -184,14 +186,16 @@ def test_validate_chain_dispatches_v2_and_needs_keys():
     )
     assert chain.version == 2
     assert validate_chain(chain) == (False, "v2 chain needs a key resolver (keys=...)")
-    assert validate_chain(chain, keys=RESOLVER) == (True, "valid")
+    assert validate_chain(chain, keys=RESOLVER)[0] is False  # no presenter
+    assert validate_chain(chain, keys=RESOLVER, presenter=B) == (True, "valid")
 
 
 def test_allow_v1_false_refuses_v1():
     v1 = DelegationChain.model_validate({"links": [{
         "delegator": A, "delegate": B, "scopes": ["x"],
         "created_at": "2026-01-01T00:00:00Z", "expires_at": "2099-01-01T00:00:00Z"}]})
-    assert validate_chain(v1, {}, allow_v1=False) == (False, "v1 delegation links are not accepted")
+    assert validate_chain(v1, {})[0] is False  # v1 refused by default
+    assert "not accepted" in validate_chain(v1, {}, allow_v1=False)[1]
 
 
 def test_link_transplanted_to_another_parent_fails():
@@ -420,26 +424,27 @@ def test_authorize_action():
     links = _chain(_link(A, B, constraints=[AMOUNT, RES]),
                    _link(B, C, max_depth=2, scopes=["orders:pay"],
                          constraints=[{**AMOUNT, "max_minor": 3000}, RES]))
-    assert authorize_action(links, scope="orders:pay", amount_minor=3000, currency="USD",
+    assert authorize_action(links, actor=links[-1].delegate, scope="orders:pay", amount_minor=3000, currency="USD",
                             resource_id="order-1") == (True, "authorized")
-    assert not authorize_action(links, scope="orders:pay", amount_minor=3001,
+    assert not authorize_action(links, actor=links[-1].delegate, scope="orders:pay", amount_minor=3001,
                                 currency="USD", resource_id="order-1")[0]
-    assert not authorize_action(links, scope="orders:pay", amount_minor=10,
+    assert not authorize_action(links, actor=links[-1].delegate, scope="orders:pay", amount_minor=10,
                                 currency="EUR", resource_id="order-1")[0]
-    assert not authorize_action(links, scope="orders:pay", resource_id="order-1")[0]
-    assert not authorize_action(links, scope="orders:pay", amount_minor=10, currency="USD",
+    assert not authorize_action(links, actor=links[-1].delegate, scope="orders:pay", spends_money=True,
+                                resource_id="order-1")[0]
+    assert not authorize_action(links, actor=links[-1].delegate, scope="orders:pay", amount_minor=10, currency="USD",
                                 resource_id="order-9")[0]
-    assert not authorize_action(links, scope="orders:refund", amount_minor=10,
+    assert not authorize_action(links, actor=links[-1].delegate, scope="orders:refund", amount_minor=10,
                                 currency="USD", resource_id="order-1")[0]
-    assert not authorize_action(links, scope="orders:pay", amount_minor=True,  # type: ignore[arg-type]
+    assert not authorize_action(links, actor=links[-1].delegate, scope="orders:pay", amount_minor=True,  # type: ignore[arg-type]
                                 currency="USD", resource_id="order-1")[0]
 
 
 def test_spending_without_any_money_limit_refused():
     links = _chain(_link(A, B))
-    ok, why = authorize_action(links, scope="orders:pay", amount_minor=1, currency="USD")
+    ok, why = authorize_action(links, actor=links[-1].delegate, scope="orders:pay", amount_minor=1, currency="USD")
     assert not ok and "no amount or budget limit" in why
-    assert authorize_action(links, scope="orders:read") == (True, "authorized")
+    assert authorize_action(links, actor=links[-1].delegate, scope="orders:read") == (True, "authorized")
 
 
 def test_minor_units():
@@ -576,7 +581,7 @@ def test_chain_length_capped():
     with pytest.raises(ValidationError):
         DelegationLinkV2.model_validate(_link(A, B, max_depth=11))
     links = _chain(_link(A, B))
-    assert validate_chain_v2(links * 11, RESOLVER)[0] is False
+    assert validate_chain_v2(links * 11, RESOLVER, presenter=B)[0] is False
 
 
 def test_expired_and_future_links_rejected():
@@ -586,3 +591,120 @@ def test_expired_and_future_links_rejected():
     future = _chain(_link(A, B, created_at=NOW + timedelta(hours=1),
                           expires_at=NOW + timedelta(hours=2)))
     assert "future" in _ok(future)[1]
+
+
+# ---------------------------------------------------------------------------
+# Hardening found in review
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"created_at": "0001-01-01T00:30:00+23:59", "expires_at": "0001-01-02T00:00:00Z"},
+        {"expires_at": "9999-12-31T23:59:59-23:59"},
+        {"created_at": "1969-12-31T00:00:00Z"},
+    ],
+)
+def test_out_of_range_timestamps_rejected_at_parse(over):
+    with pytest.raises(ValidationError):
+        DelegationLinkV2.model_validate(_link(A, B, **over))
+
+
+def test_validate_never_raises():
+    link = DelegationLinkV2.model_construct(**_link(A, B), signature="AAAA")
+    link.created_at = datetime.max.replace(tzinfo=UTC)
+    ok, why = _ok([link])
+    assert ok is False
+
+
+def test_presenter_must_be_final_delegate():
+    links = _chain(_link(A, B), _link(B, C, max_depth=2))
+    assert _ok(links, presenter=D)[0] is False
+    assert _ok(links, presenter=B)[0] is False  # B holds link 0, not this chain
+    assert _ok(links[:1], presenter=B) == (True, "valid")  # B presenting its own grant
+
+
+def _crit_chain(child_value, child_crit=True):
+    root = _link(A, B, **{"com.acme.max_items": 5, "crit": ["com.acme.max_items"]})
+    child = _link(B, C, max_depth=2)
+    if child_value is not None:
+        child["com.acme.max_items"] = child_value
+    if child_crit and child_value is not None:
+        child["crit"] = ["com.acme.max_items"]
+    return _chain(root, child)
+
+
+def test_critical_extension_cannot_be_widened_or_blanked():
+    understood = {"com.acme.max_items"}
+    assert _ok(_crit_chain(5), understood_extensions=understood) == (True, "valid")
+    assert "changes critical" in _ok(_crit_chain(10**6), understood_extensions=understood)[1]
+    assert "drops critical" in _ok(_crit_chain(None), understood_extensions=understood)[1]
+    assert "drops critical" in _ok(
+        _crit_chain(5, child_crit=False), understood_extensions=understood)[1]
+
+
+def test_critical_extension_narrowing_function():
+    def boom(p, c):
+        raise RuntimeError
+
+    rules = {"com.acme.max_items": lambda p, c: isinstance(c, int) and c <= p}
+    assert _ok(_crit_chain(3), understood_extensions=rules) == (True, "valid")
+    assert "widens critical" in _ok(_crit_chain(9), understood_extensions=rules)[1]
+    assert _ok(_crit_chain(3), understood_extensions={"com.acme.max_items": boom})[0] is False
+
+
+def test_null_critical_member_rejected_at_parse():
+    with pytest.raises(ValidationError):
+        DelegationLinkV2.model_validate(
+            _link(A, B, **{"com.acme.x": None, "crit": ["com.acme.x"]}))
+
+
+def test_trust_tier_cannot_rise():
+    links = _chain(_link(A, B, trust_tier="verified"),
+                   _link(B, C, max_depth=2, trust_tier="internal"))
+    assert "trust_tier rises" in _ok(links)[1]
+    lower = _chain(_link(A, B, trust_tier="verified"),
+                   _link(B, C, max_depth=2, trust_tier="external"))
+    assert _ok(lower) == (True, "valid")
+
+
+def test_budget_needs_spend_tracking():
+    links = _chain(_link(A, B, constraints=[BUDGET]))
+    kw = dict(actor=B, scope="orders:pay", amount_minor=6000, currency="USD")
+    assert "spend tracking" in authorize_action(links, **kw)[1]
+    assert authorize_action(links, spent_minor=lambda lid: 0, **kw) == (True, "authorized")
+    assert "budget remaining" in authorize_action(links, spent_minor=lambda lid: 4001, **kw)[1]
+    assert not authorize_action(links, spent_minor=lambda lid: -5, **kw)[0]
+
+    def boom(lid):
+        raise RuntimeError
+
+    assert not authorize_action(links, spent_minor=boom, **kw)[0]
+
+
+def test_spending_flag_requires_amount_and_actor_must_match():
+    links = _chain(_link(A, B, constraints=[AMOUNT]))
+    assert not authorize_action(links, actor=B, scope="orders:pay", spends_money=True)[0]
+    assert not authorize_action(links, actor=C, scope="orders:read")[0]
+    assert authorize_action(links, actor=B, scope="orders:read") == (True, "authorized")
+
+
+def test_oversized_link_refused_before_parsing():
+    huge = _sign(_link(A, B)).model_dump(mode="json") | {"com.acme.blob": ["x" * 100] * 500}
+    with pytest.raises(ValidationError, match="exceeds"):
+        DelegationChain.model_validate({"links": [huge]})
+
+
+def test_es256_high_s_rejected():
+    import base64
+
+    link = _sign(_link(C, D))
+    sig = base64.urlsafe_b64decode(link.signature + "==")
+    n = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+    s = int.from_bytes(sig[32:], "big")
+    high = sig[:32] + (n - s).to_bytes(32, "big")
+    flipped = link.model_copy(
+        update={"signature": base64.urlsafe_b64encode(high).rstrip(b"=").decode()})
+    assert _ok([link]) == (True, "valid")
+    assert _ok([flipped]) == (False, "link 0: invalid signature")

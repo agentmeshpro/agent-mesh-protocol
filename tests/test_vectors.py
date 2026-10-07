@@ -358,6 +358,7 @@ def _h_delegation_v2(doc, section, case, mp):
     ok, reason = validate_chain_v2(
         links,
         keys,
+        presenter=case["presenter"],
         audience=case["audience"],
         understood_extensions=case["understood_extensions"],
         now=datetime.fromisoformat(case["now"].replace("Z", "+00:00")),
@@ -399,7 +400,7 @@ def _h_delegation(doc, section, case, mp):
         }
     public_keys = {agent: _ed_pub(doc, k) for agent, k in agent_keys.items()}
     ok, reason = validate_chain(
-        DelegationChain(links=links), public_keys, fan_out_counts=fan_out
+        DelegationChain(links=links), public_keys, fan_out_counts=fan_out, allow_v1=True
     )
     assert ok is case["valid"], reason
     if not ok:
