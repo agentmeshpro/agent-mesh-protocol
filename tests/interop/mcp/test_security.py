@@ -206,3 +206,145 @@ async def test_error_responses_are_jsonrpc_shaped(wire: Wire):
     resp = await wire.http(body={"jsonrpc": "2.0", "id": 1, "method": "ping"}, headers={"origin": "https://x.io"})
     body = body_of(resp)
     assert body["jsonrpc"] == "2.0" and body["id"] is None and "error" in body
+
+
+# ---------------------------------------------------------------------------
+# Canonical server auth contract, policy inheritance, rate limiting
+# ---------------------------------------------------------------------------
+
+
+class TokenAuthenticator:
+    """Implements ampro.server.auth.Authenticator."""
+
+    async def authenticate(self, request: HTTPRequest):
+        from ampro.server.auth import Principal as CanonicalPrincipal
+        from ampro.server.auth import Unauthorized
+
+        header = request.header("authorization")
+        if header is None:
+            return None
+        if header != "Bearer ops":
+            raise Unauthorized("bad token")
+        return CanonicalPrincipal(
+            id="svc:ops", trust_tier=TrustTier.VERIFIED, scopes=frozenset({"admin"}), auth_method="bearer"
+        )
+
+
+async def test_canonical_authenticators(app: AgentApp):
+    server = AgentServer.from_app(app)
+    server.mount(MCPAdapter.for_server(server, authenticators=[TokenAuthenticator()], require_auth=True))
+    w = Wire(server)
+    resp, _ = await w.rpc("initialize", {"protocolVersion": "2025-11-25"}, headers=auth("nope"))
+    assert resp.status == 401
+    resp, _ = await w.rpc("initialize", {"protocolVersion": "2025-11-25"})
+    assert resp.status == 401
+    hdr = {"authorization": "Bearer ops"}
+    await w.initialize(headers=hdr)
+    result = (await w.call("admin_reset", headers=hdr))["result"]
+    assert result["structuredContent"] == {"reset": True}
+    await w.call("add", {"a": 1, "b": 2}, headers=hdr)
+    assert app.state["calls"][-1].sender_address == "svc:ops"
+
+
+async def test_inherits_server_security_policy(app: AgentApp):
+    from ampro.server.security import SecurityPolicy
+
+    policy = SecurityPolicy.production([TokenAuthenticator()])
+    server = AgentServer.from_app(app)
+    server.security = policy
+    adapter = MCPAdapter.for_server(server)
+    server.mount(adapter)
+    assert adapter.require_auth is True
+    assert adapter.rate_limiter is policy.rate_limiter
+    assert adapter.tool_timeout == policy.handler_timeout_seconds
+    resp, _ = await Wire(server).rpc("initialize", {"protocolVersion": "2025-11-25"})
+    assert resp.status == 401
+
+
+async def test_require_auth_without_authenticators_fails_closed(app: AgentApp):
+    server = AgentServer.from_app(app)
+    server.mount(MCPAdapter.for_server(server, authenticators=(), require_auth=True))
+    resp, _ = await Wire(server).rpc("initialize", {"protocolVersion": "2025-11-25"})
+    assert resp.status == 401
+
+
+async def test_crashing_authenticator_fails_closed(app: AgentApp):
+    class Broken:
+        async def authenticate(self, request):
+            raise RuntimeError("bug")
+
+    server = AgentServer.from_app(app)
+    server.mount(MCPAdapter.for_server(server, authenticators=[Broken()]))
+    resp, _ = await Wire(server).rpc("initialize", {"protocolVersion": "2025-11-25"})
+    assert resp.status == 401
+
+
+async def test_tools_call_rate_limited_per_caller(app: AgentApp):
+    from ampro.security.rate_limiter import RateLimiter
+
+    server = AgentServer.from_app(app)
+    server.mount(MCPAdapter.for_server(server, authenticator=bearer, rate_limiter=RateLimiter(rpm=2)))
+    w = Wire(server)
+    await w.initialize(headers=auth("alice-token"))
+    for _ in range(2):
+        await w.call("add", {"a": 1, "b": 1}, headers=auth("alice-token"))
+    resp, body = await w.rpc(
+        "tools/call", {"name": "add", "arguments": {"a": 1, "b": 1}}, auth("alice-token")
+    )
+    assert resp.status == 429
+    assert int(resp.headers["retry-after"]) >= 1
+    assert body["error"]["code"] == -32600
+    # tools/list is not metered; another principal has its own budget.
+    resp, _ = await w.rpc("tools/list", headers=auth("alice-token"))
+    assert resp.status == 200
+    other = Wire(server)
+    await other.initialize(headers=auth("bob-token"))
+    await other.call("add", {"a": 1, "b": 1}, headers=auth("bob-token"))
+
+
+async def test_anonymous_rate_limit_keyed_by_peer(app: AgentApp):
+    import json as _json
+
+    from ampro.security.rate_limiter import RateLimiter
+
+    server = AgentServer.from_app(app)
+    server.mount(MCPAdapter.for_server(server, rate_limiter=RateLimiter(rpm=1)))
+    w = Wire(server)
+    await w.initialize()
+
+    async def call_from(ip: str) -> int:
+        msg = {
+            "jsonrpc": "2.0",
+            "id": w.next_id(),
+            "method": "tools/call",
+            "params": {"name": "add", "arguments": {"a": 1, "b": 1}},
+        }
+        hdrs = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "mcp-session-id": w.session_id,
+            "mcp-protocol-version": w.version,
+        }
+        req = HTTPRequest("POST", "/mcp", hdrs, body=_json.dumps(msg).encode(), client=ip)
+        return (await server.handle(req)).status
+
+    assert await call_from("10.0.0.1") == 200
+    assert await call_from("10.0.0.1") == 429
+    assert await call_from("10.0.0.2") == 200
+
+
+async def test_timeout_defaults_to_policy_handler_timeout(app: AgentApp):
+    import asyncio
+
+    @app.tool("slow")
+    async def slow() -> str:
+        await asyncio.sleep(5)
+        return "late"
+
+    server = AgentServer.from_app(app)
+    server.security.handler_timeout_seconds = 0.05
+    server.mount(MCPAdapter.for_server(server))
+    w = Wire(server)
+    await w.initialize()
+    result = (await w.call("slow"))["result"]
+    assert result["isError"] is True and "timed out" in result["content"][0]["text"]

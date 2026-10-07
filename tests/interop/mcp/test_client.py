@@ -251,3 +251,36 @@ def test_parse_sse_multiline_and_crlf():
 def test_constructor_rejects_modern_version():
     with pytest.raises(ValueError):
         MCPToolSource(URL, protocol_version="2026-07-28")
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard (owned client only)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://169.254.169.254/mcp",
+        "https://10.1.2.3/mcp",
+        "https://127.0.0.1/mcp",
+        "https://[::1]/mcp",
+        "http://93.184.216.34/mcp",  # plain http to a public host needs allow_http
+        "https://user:pw@93.184.216.34/mcp",
+    ],
+)
+async def test_ssrf_guard_rejects(url: str):
+    source = MCPToolSource(url)
+    with pytest.raises(MCPClientError, match="not allowed"):
+        await source.connect()
+    await source.close()
+
+
+async def test_allow_private_opt_out_reaches_transport():
+    # Port 9 on loopback is closed: the guard lets it through and the
+    # failure is a transport error, not an SSRF rejection.
+    source = MCPToolSource("http://127.0.0.1:9/mcp", allow_private=True, timeout=5)
+    with pytest.raises(MCPClientError) as info:
+        await source.connect()
+    assert "not allowed" not in str(info.value)
+    await source.close()

@@ -119,6 +119,8 @@ class MCPToolSource:
         protocol_version: str = p.LATEST_HANDSHAKE_VERSION,
         timeout: float = 30.0,
         max_response_bytes: int = 4 * 1024 * 1024,
+        allow_private: bool = False,
+        allow_http: bool | None = None,
         client_name: str = "ampro",
     ) -> None:
         if protocol_version not in p.HANDSHAKE_PROTOCOL_VERSIONS:
@@ -131,6 +133,8 @@ class MCPToolSource:
         self._timeout = timeout
         self._http_timeout = httpx.Timeout(timeout, connect=min(timeout, 10.0))
         self.max_response_bytes = max_response_bytes
+        self.allow_private = allow_private
+        self.allow_http = allow_private if allow_http is None else allow_http
         self._client_name = client_name
         self._ids = itertools.count(1)
         self.session_id: str | None = None
@@ -154,9 +158,31 @@ class MCPToolSource:
     def connected(self) -> bool:
         return self.protocol_version is not None
 
-    def _http(self) -> httpx.AsyncClient:
+    async def _http(self) -> httpx.AsyncClient:
+        """The HTTP client; an owned one is SSRF-guarded and pinned.
+
+        The endpoint's host is resolved once and every address must be
+        public (unless ``allow_private``); the transport then dials only
+        those addresses, so DNS rebinding cannot redirect it.  Environment
+        proxies are ignored (they would re-resolve the name).  A caller
+        supplied ``http_client`` is used as-is — its owner is responsible
+        for its egress policy.
+        """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self._http_timeout, follow_redirects=False)
+            from ampro.security.ssrf import SSRFError, pinned_async_transport, validate_url_async
+
+            try:
+                validated = await validate_url_async(
+                    self.url, allow_http=self.allow_http, allow_private=self.allow_private
+                )
+            except SSRFError as exc:
+                raise MCPClientError(f"MCP server URL not allowed: {exc}") from exc
+            self._client = httpx.AsyncClient(
+                transport=pinned_async_transport(validated),
+                timeout=self._http_timeout,
+                follow_redirects=False,
+                trust_env=False,
+            )
         return self._client
 
     async def connect(self) -> dict[str, Any]:
@@ -232,7 +258,7 @@ class MCPToolSource:
             raise MCPClientError(f"MCP transport error: {type(exc).__name__}") from exc
 
     async def _send_once(self, method: str, content: bytes | None) -> _Reply:
-        client = self._http()
+        client = await self._http()
         url = self.url
         for _ in range(_MAX_REDIRECTS + 1):
             request = client.build_request(

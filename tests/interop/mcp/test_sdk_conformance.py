@@ -127,7 +127,7 @@ async def test_real_uvicorn_server(ampro_server: AgentServer):
         async with Client(url, mode="legacy") as client:
             result = await client.call_tool("add", {"a": 1, "b": 2})
             assert result.structured_content == {"sum": 3}
-        async with MCPToolSource(url) as source:
+        async with MCPToolSource(url, allow_private=True) as source:
             assert (await source.call_tool("add", {"a": 1, "b": 1}))["structuredContent"] == {"sum": 2}
     finally:
         srv.should_exit = True

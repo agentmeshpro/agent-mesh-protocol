@@ -38,7 +38,7 @@ import secrets
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlsplit
@@ -58,6 +58,8 @@ from ampro.interop.mcp.tools import (
     scopes_satisfied,
     to_call_result,
 )
+from ampro.security.rate_limiter import RateLimiter
+from ampro.server.auth import Authenticator, Unauthorized, authenticate
 from ampro.server.http import HTTPRequest, HTTPResponse
 from ampro.trust.tiers import TrustTier
 
@@ -68,7 +70,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-Authenticator = Callable[[HTTPRequest], Awaitable[Any]]
+AuthenticatorFn = Callable[[HTTPRequest], Awaitable[Any]]
+"""Legacy hook form: ``async (request) -> principal | None``; raise to reject."""
+
+_UNSET: Any = object()
+
+
+class _CallableAuthenticator:
+    """Adapt an ``async (request) -> principal`` function to the Authenticator protocol."""
+
+    def __init__(self, fn: AuthenticatorFn) -> None:
+        self._fn = fn
+
+    async def authenticate(self, request: HTTPRequest) -> Any:
+        try:
+            return await _maybe_await(self._fn(request))
+        except Unauthorized:
+            raise
+        except Exception as exc:
+            raise Unauthorized(f"authenticator rejected the request: {type(exc).__name__}") from exc
 
 TASK_TOOL_NAME = "amp_task"
 GENERIC_TOOL_ERROR = "Tool execution failed"
@@ -338,11 +358,13 @@ class MCPAdapter:
         *,
         agent_id: str | None = None,
         path: str = "/mcp",
-        authenticator: Authenticator | None = None,
+        authenticators: Sequence[Authenticator] = (),
+        authenticator: AuthenticatorFn | None = None,
         require_auth: bool = False,
         allowed_origins: Iterable[str] | None = None,
         expose_tasks: bool = True,
         trust_tier: TrustTier = TrustTier.EXTERNAL,
+        rate_limiter: RateLimiter | None = None,
         task_handler: Callable[..., Any] | None = None,
         server_name: str | None = None,
         server_version: str | None = None,
@@ -358,8 +380,12 @@ class MCPAdapter:
         self.app = app
         self.agent_id = agent_id or (app.agent_id if app is not None else "agent://unknown")
         self.path = "/" + path.strip("/")
-        self.authenticator = authenticator
+        chain: list[Authenticator] = list(authenticators)
+        if authenticator is not None:
+            chain.append(_CallableAuthenticator(authenticator))
+        self.authenticators: tuple[Authenticator, ...] = tuple(chain)
         self.require_auth = require_auth
+        self.rate_limiter = rate_limiter
         self.allowed_origins = None if allowed_origins is None else list(allowed_origins)
         self.expose_tasks = expose_tasks
         self.trust_tier = trust_tier
@@ -377,10 +403,10 @@ class MCPAdapter:
         self.tool_timeout = tool_timeout
         self.max_argument_bytes = max_argument_bytes
         self.run_sync_tools_in_thread = run_sync_tools_in_thread
-        if authenticator is None:
+        if not self.authenticators:
             logger.info(
                 "MCP adapter at %s has no authenticator: any local client can call its tools. "
-                "Configure authenticator=... and require_auth=True before binding beyond loopback.",
+                "Configure authenticators=... and require_auth=True before binding beyond loopback.",
                 self.path,
             )
 
@@ -390,13 +416,31 @@ class MCPAdapter:
         server: AgentServer,
         *,
         path: str = "/mcp",
-        authenticator: Authenticator | None = None,
-        require_auth: bool = False,
+        authenticators: Sequence[Authenticator] | None = None,
+        authenticator: AuthenticatorFn | None = None,
+        require_auth: bool | None = None,
         allowed_origins: Iterable[str] | None = None,
         expose_tasks: bool = True,
+        rate_limiter: RateLimiter | None = _UNSET,
+        tool_timeout: float | None = _UNSET,
         **kwargs: Any,
     ) -> MCPAdapter:
-        """Build an adapter serving *server*'s AMPI app (tools + ``task.create``)."""
+        """Build an adapter serving *server*'s AMPI app (tools + ``task.create``).
+
+        Unless overridden, the server's :class:`SecurityPolicy` supplies the
+        authenticators, ``require_auth``, the rate limiter and the
+        per-call timeout (``handler_timeout_seconds``), so MCP callers face
+        the same gate as native AMP callers.
+        """
+        policy = getattr(server, "security", None)
+        if authenticators is None:
+            authenticators = tuple(getattr(policy, "authenticators", ()) or ())
+        if require_auth is None:
+            require_auth = bool(getattr(policy, "require_auth", False))
+        if rate_limiter is _UNSET:
+            rate_limiter = getattr(policy, "rate_limiter", None)
+        if tool_timeout is _UNSET:
+            tool_timeout = getattr(policy, "handler_timeout_seconds", None) or 30.0
         app = server.app
         task_handler = None
         if app is None:
@@ -407,10 +451,13 @@ class MCPAdapter:
             app,
             agent_id=server.agent_id,
             path=path,
+            authenticators=authenticators,
             authenticator=authenticator,
             require_auth=require_auth,
             allowed_origins=allowed_origins,
             expose_tasks=expose_tasks,
+            rate_limiter=rate_limiter,
+            tool_timeout=tool_timeout,
             task_handler=task_handler,
             **kwargs,
         )
@@ -528,12 +575,18 @@ class MCPAdapter:
         )
 
     async def _authenticate(self, request: HTTPRequest) -> tuple[Any, HTTPResponse | None]:
-        if self.authenticator is None:
+        if not self.authenticators:
+            if self.require_auth:
+                return None, self._unauthorized()
             return None, None
         try:
-            principal = await _maybe_await(self.authenticator(request))
+            principal = await authenticate(request, self.authenticators)
+        except Unauthorized as exc:
+            logger.info("MCP authentication rejected: %s", exc)
+            return None, self._unauthorized("invalid_token")
         except Exception:
-            logger.info("MCP authentication rejected", exc_info=True)
+            # A crashing authenticator must fail closed, not open.
+            logger.exception("MCP authenticator raised")
             return None, self._unauthorized("invalid_token")
         if principal is None and self.require_auth:
             return None, self._unauthorized()
@@ -589,7 +642,9 @@ class MCPAdapter:
             # We never send server→client requests, so there is nothing to match.
             return HTTPResponse.empty(202, headers)
 
-        reply, status, extra = await self._answer(payload, principal, session.protocol_version, False)
+        reply, status, extra = await self._answer(
+            payload, principal, session.protocol_version, False, request
+        )
         headers.update(extra)
         return _json_response(reply, status=status, headers=headers)
 
@@ -715,7 +770,9 @@ class MCPAdapter:
                         p.error_message(item["id"], p.INVALID_REQUEST, "initialize must not be batched")
                     )
                     continue
-                reply, _status, _extra = await self._answer(item, principal, session.protocol_version, False)
+                reply, _status, _extra = await self._answer(
+                    item, principal, session.protocol_version, False, request
+                )
                 replies.append(reply)
         if not replies:
             return HTTPResponse.empty(202, headers)
@@ -758,7 +815,7 @@ class MCPAdapter:
                 status=p.MODERN_ERROR_HTTP_STATUS.get(code, 200),
             )
         version = payload["params"]["_meta"][p.META_PROTOCOL_VERSION]
-        reply, status, extra = await self._answer(payload, principal, version, True)
+        reply, status, extra = await self._answer(payload, principal, version, True, request)
         return _json_response(reply, status=status, headers=extra)
 
     def _unsupported_version(self, rid: Any, requested: Any) -> HTTPResponse:
@@ -777,12 +834,19 @@ class MCPAdapter:
     # ------------------------------------------------------------------
 
     async def _answer(
-        self, message: dict[str, Any], principal: Any, version: str, modern: bool
+        self,
+        message: dict[str, Any],
+        principal: Any,
+        version: str,
+        modern: bool,
+        request: HTTPRequest,
     ) -> tuple[dict[str, Any], int, dict[str, str]]:
         """Run one request; return ``(reply, http_status, extra_headers)``."""
         rid = message["id"]
         try:
-            result = await self._call_method(message["method"], message.get("params"), principal, version, modern)
+            result = await self._call_method(
+                message["method"], message.get("params"), principal, version, modern, request
+            )
         except RPCError as exc:
             status = exc.http_status or (p.MODERN_ERROR_HTTP_STATUS.get(exc.code, 200) if modern else 200)
             return p.error_message(rid, exc.code, exc.message, exc.data), status, exc.headers
@@ -797,7 +861,13 @@ class MCPAdapter:
         return p.result_message(rid, result), 200, {}
 
     async def _call_method(
-        self, method: str, params: Any, principal: Any, version: str, modern: bool
+        self,
+        method: str,
+        params: Any,
+        principal: Any,
+        version: str,
+        modern: bool,
+        request: HTTPRequest,
     ) -> dict[str, Any]:
         if params is not None and not isinstance(params, dict):
             raise RPCError(p.INVALID_PARAMS, "params must be an object")
@@ -821,8 +891,32 @@ class MCPAdapter:
                 result["cacheScope"] = "private"
             return result
         if method == "tools/call":
+            self._check_rate_limit(principal, request)
             return await self._call_tool(params, principal, version)
         raise RPCError(p.METHOD_NOT_FOUND, "Method not found")
+
+    def _check_rate_limit(self, principal: Any, request: HTTPRequest) -> None:
+        """Per-caller budget for ``tools/call`` (keyed like the native AMP route)."""
+        if self.rate_limiter is None:
+            return
+        pid = _principal_attr(principal, "id")
+        key = str(pid) if principal is not None and pid is not None else f"ip:{getattr(request, 'client', None)}"
+        allowed, info = self.rate_limiter.check(key)
+        if allowed:
+            return
+        retry = max(1, int(info.reset - time.time()))
+        raise RPCError(
+            p.INVALID_REQUEST,
+            "Rate limit exceeded",
+            {"retryAfter": retry},
+            http_status=429,
+            headers={
+                "Retry-After": str(retry),
+                "X-RateLimit-Limit": str(info.limit),
+                "X-RateLimit-Remaining": str(info.remaining),
+                "X-RateLimit-Reset": str(info.reset),
+            },
+        )
 
     def _capabilities(self) -> dict[str, Any]:
         return {"tools": {"listChanged": False}}
@@ -853,7 +947,7 @@ class MCPAdapter:
         if spec is None:
             raise RPCError(p.INVALID_PARAMS, f"Unknown tool: {name[:128]}")
         if not self._visible(spec, principal):
-            if principal is None and self.authenticator is not None:
+            if principal is None and self.authenticators:
                 raise RPCError(
                     p.INVALID_REQUEST,
                     "Unauthorized",
