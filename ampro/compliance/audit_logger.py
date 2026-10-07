@@ -87,10 +87,11 @@ class InMemoryAuditStorage:
         self._store = (*self._store, frozen)
 
     def tail(self) -> AuditEntry | None:
-        return self._store[-1] if self._store else None
+        return self._store[-1].model_copy(deep=True) if self._store else None
 
     def entries(self) -> list[AuditEntry]:
-        return list(self._store)
+        # Hand out copies: mutating a returned entry must never alter the log.
+        return [e.model_copy(deep=True) for e in self._store]
 
     def count(self) -> int:
         return len(self._store)

@@ -10,6 +10,7 @@ Run:
     python examples/39_two_agents_talking.py
 """
 
+# requires: fastapi, uvicorn  (tests/test_examples_run.py skips this example if missing)
 import json
 import time
 import asyncio

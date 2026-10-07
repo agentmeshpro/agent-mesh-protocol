@@ -26,6 +26,7 @@ Test session-bound message (use Session-Id from established response):
       -d '{"sender":"agent://client","recipient":"agent://session.example.com","body_type":"message","body":{"text":"hello via session"},"headers":{"Session-Id":"<SESSION_ID>"}}'
 """
 
+import os
 import secrets
 
 from ampro.server import AgentServer
@@ -226,4 +227,9 @@ if __name__ == "__main__":
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://client\",\"recipient\":\"agent://session.example.com\",\"body_type\":\"session.init\",\"body\":{\"proposed_capabilities\":[\"messaging\"],\"proposed_version\":\"1.0.0\",\"client_nonce\":\"aabbccdd\"}}'")
     print()
-    server.run(port=8004)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8004)

@@ -15,6 +15,8 @@ Test:
       -d '{"sender":"agent://tester.local","recipient":"agent://my-pi.local","body_type":"message","body":{"text":"hello"},"headers":{"Protocol-Version":"1.0.0"}}'
 """
 
+# requires: flask  (tests/test_examples_run.py skips this example if missing)
+import os
 from flask import Flask, request, jsonify
 from uuid import uuid4
 
@@ -53,4 +55,8 @@ def message():
 
 
 if __name__ == "__main__":
-    app.run(port=8000)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): don't block on a server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        app.run(port=8000)
