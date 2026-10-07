@@ -50,14 +50,15 @@ type/header/event is always a breaking change and requires a MAJOR bump.
 
 ## Installing a specific version
 
-PyPI publication is pending; install from git until 1.0.
-
 ```bash
-# Latest from main
-pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
+# Latest release from PyPI
+pip install ampro
 
-# Pinned to a tag
-pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git@vX.Y.Z
+# A specific version
+pip install ampro==X.Y.Z
+
+# Unreleased code from main
+pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
 ```
 
 Verify:

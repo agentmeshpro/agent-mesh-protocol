@@ -1,14 +1,14 @@
 # AMP — Agent Mesh Protocol
 
 [![CI](https://github.com/agentmeshpro/agent-mesh-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/agentmeshpro/agent-mesh-protocol/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
-[![Package version](https://img.shields.io/badge/package-0.4.0-green.svg)](CHANGELOG.md)
-[![Protocol version](https://img.shields.io/badge/protocol-1.0.0-blue.svg)](docs/WIRE-BINDING.md)
+[![PyPI](https://img.shields.io/pypi/v/ampro.svg)](https://pypi.org/project/ampro/)
+[![Protocol version](https://img.shields.io/badge/protocol-1.0.0-blue.svg)](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md)
 
 **An open protocol for agent-to-agent communication — trust, delegation and compliance built in, and interoperable with A2A, PACT and MCP out of the box.** `ampro` is the Python reference implementation; the protocol itself is language-agnostic.
 
-> ⚠️ **Pre-1.0.** The wire format is stabilising toward 1.0 but may still evolve between minor versions. Receivers MUST ignore unknown fields. See [RELEASING.md](RELEASING.md) for the stability contract.
+> ⚠️ **Pre-1.0.** The wire format is stabilising toward 1.0 but may still evolve between minor versions. Receivers MUST ignore unknown fields. See [RELEASING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/RELEASING.md) for the stability contract.
 
 ---
 
@@ -38,7 +38,7 @@ AMP rides **on top of** A2A rather than competing with it: AMP agents publish an
 ## Install
 
 ```bash
-pip install "ampro[all] @ git+https://github.com/agentmeshpro/agent-mesh-protocol.git"
+pip install "ampro[all]"
 ```
 
 Extras: `server` (uvicorn), `a2a` / `pact` (JWT verification), `mcp`, `flask`, `conformance` (JSON Schema validation in `ampro-conformance`), `all`. The core package depends only on pydantic, cryptography, base58 and httpx.
@@ -95,9 +95,9 @@ The server binds to `127.0.0.1` by default. Before exposing it, read [Production
 
 | Guide | What it covers |
 |---|---|
-| [docs/INTEROP-A2A.md](docs/INTEROP-A2A.md) | Serving and calling A2A 1.0 agents (HTTP+JSON, JSON-RPC, streaming), AMP ↔ A2A mapping, the AMP extension. Verified against the official `a2a-sdk` client. |
-| [docs/INTEROP-PACT.md](docs/INTEROP-PACT.md) | Hosting brands as a PACT Provider: personal-agent JWT identity, OAuth device-code delegation, scopes, step-up and signed receipts. Verified against the official PACT conformance suite. |
-| [docs/INTEROP-MCP.md](docs/INTEROP-MCP.md) | Exposing tools to MCP clients (Claude, Cursor, …) and importing tools from remote MCP servers. Verified against the official `mcp` SDK. |
+| [docs/INTEROP-A2A.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/INTEROP-A2A.md) | Serving and calling A2A 1.0 agents (HTTP+JSON, JSON-RPC, streaming), AMP ↔ A2A mapping, the AMP extension. Verified against the official `a2a-sdk` client. |
+| [docs/INTEROP-PACT.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/INTEROP-PACT.md) | Hosting brands as a PACT Provider: personal-agent JWT identity, OAuth device-code delegation, scopes, step-up and signed receipts. Verified against the official PACT conformance suite. |
+| [docs/INTEROP-MCP.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/INTEROP-MCP.md) | Exposing tools to MCP clients (Claude, Cursor, …) and importing tools from remote MCP servers. Verified against the official `mcp` SDK. |
 
 Calling other agents:
 
@@ -129,7 +129,7 @@ async with A2AClient("https://agent.example.com/.well-known/agent-card.json") as
 
 ## Production deployment
 
-The reference server runs the full request pipeline of [WIRE-BINDING Appendix D](docs/WIRE-BINDING.md): size limit → authentication → rate limit → validation → sender binding → recipient check → loop detection → caller-scoped dedup → concurrency limit → handler timeout. Exception details never reach clients.
+The reference server runs the full request pipeline of [WIRE-BINDING Appendix D](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md): size limit → authentication → rate limit → validation → sender binding → recipient check → loop detection → caller-scoped dedup → concurrency limit → handler timeout. Exception details never reach clients.
 
 ```python
 from ampro.server import AgentServer
@@ -149,21 +149,21 @@ Checklist:
 
 - **Require authentication** (`SecurityPolicy.production`, `require_auth=True` on the A2A/MCP adapters) before binding beyond loopback.
 - **Register your key infrastructure:** `register_public_key_resolver`, a `RevocationStore`, and API keys via `register_api_key`.
-- **Share state across workers:** every store (replay caches, dedup, rate limits, tasks, contexts, sessions, grants) is a small protocol with a bounded in-memory default that is correct only for one process. With more than one worker, call `ampro.stores.redis.configure(server, url="redis://...")` (or run `ampro-server --store redis://...`). See [docs/SCALING.md](docs/SCALING.md) for the full inventory, readiness and graceful shutdown, and Kubernetes / gunicorn deployment.
+- **Share state across workers:** every store (replay caches, dedup, rate limits, tasks, contexts, sessions, grants) is a small protocol with a bounded in-memory default that is correct only for one process. With more than one worker, call `ampro.stores.redis.configure(server, url="redis://...")` (or run `ampro-server --store redis://...`). See [docs/SCALING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/SCALING.md) for the full inventory, readiness and graceful shutdown, and Kubernetes / gunicorn deployment.
 - **Terminate TLS** in front of the server, and set `public_url` so signatures and Agent Cards use your external origin.
-- Read [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md): what the protocol guarantees, and what it leaves to you.
+- Read [docs/SECURITY-MODEL.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/SECURITY-MODEL.md): what the protocol guarantees, and what it leaves to you.
 
 ---
 
 ## Choose your path
 
-**Building an agent** → the tour above, then [`examples/`](examples/) (`41-45` AMPI, `46` A2A, `47` MCP, `48` PACT) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Building an agent** → the tour above, then [`examples/`](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/examples/) (`41-45` AMPI, `46` A2A, `47` MCP, `48` PACT) and [docs/ARCHITECTURE.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/ARCHITECTURE.md).
 
 **Implementing AMP in another language** → see [below](#implementing-amp-in-another-language).
 
-**Evaluating the protocol** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/WIRE-BINDING.md](docs/WIRE-BINDING.md), [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md), and the audit retrospectives [SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) / [SECURITY-AUDIT-V2.md](docs/SECURITY-AUDIT-V2.md).
+**Evaluating the protocol** → [docs/ARCHITECTURE.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/ARCHITECTURE.md), [docs/WIRE-BINDING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md), [docs/SECURITY-MODEL.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/SECURITY-MODEL.md), and the audit retrospectives [SECURITY-AUDIT.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/SECURITY-AUDIT.md) / [SECURITY-AUDIT-V2.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/SECURITY-AUDIT-V2.md).
 
-**Contributing** → [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [SECURITY.md](SECURITY.md).
+**Contributing** → [CONTRIBUTING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/CONTRIBUTING.md), [CODE_OF_CONDUCT.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/CODE_OF_CONDUCT.md), [SECURITY.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/SECURITY.md).
 
 ---
 
@@ -175,15 +175,15 @@ language-neutral form:
 
 | Artefact | What it gives you |
 |---|---|
-| [docs/WIRE-BINDING.md](docs/WIRE-BINDING.md) | The normative HTTP binding (MUST/SHOULD), with [PROTOCOL-CONTRACTS](docs/PROTOCOL-CONTRACTS.md) for semantics that span body types |
-| [`spec/schemas/`](spec/schemas/) | JSON Schema 2020-12 for the envelope, every body type, `agent.json`, health, RFC 7807 problems and stream events. Feed them to Ajv, `santhosh-tekuri/jsonschema`, `jsonschema-rs` or a code generator. |
-| [`spec/openapi.yaml`](spec/openapi.yaml) | OpenAPI 3.1 for the HTTP binding: endpoints, status codes and auth schemes. Use it for client/server stubs and API tooling. |
-| [`spec/registry/`](spec/registry/) | Machine-readable registries: body types (schema, expected response, `since`), headers, error URNs and HTTP status, extension URIs, stream events |
-| [`tests/vectors/`](tests/vectors/) ([index](tests/vectors/README.md)) | 391 portable cases, including byte-exact canonical forms and deterministic Ed25519 signatures for every signed artefact |
-| `ampro-conformance` ([docs/CONFORMANCE.md](docs/CONFORMANCE.md)) | A black-box HTTP test of your running agent. Every check cites its section and MUST/SHOULD level. |
+| [docs/WIRE-BINDING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md) | The normative HTTP binding (MUST/SHOULD), with [PROTOCOL-CONTRACTS](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/PROTOCOL-CONTRACTS.md) for semantics that span body types |
+| [`spec/schemas/`](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/spec/schemas/) | JSON Schema 2020-12 for the envelope, every body type, `agent.json`, health, RFC 7807 problems and stream events. Feed them to Ajv, `santhosh-tekuri/jsonschema`, `jsonschema-rs` or a code generator. |
+| [`spec/openapi.yaml`](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/spec/openapi.yaml) | OpenAPI 3.1 for the HTTP binding: endpoints, status codes and auth schemes. Use it for client/server stubs and API tooling. |
+| [`spec/registry/`](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/spec/registry/) | Machine-readable registries: body types (schema, expected response, `since`), headers, error URNs and HTTP status, extension URIs, stream events |
+| [`tests/vectors/`](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/tests/vectors/) ([index](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/tests/vectors/README.md)) | 391 portable cases, including byte-exact canonical forms and deterministic Ed25519 signatures for every signed artefact |
+| `ampro-conformance` ([docs/CONFORMANCE.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/CONFORMANCE.md)) | A black-box HTTP test of your running agent. Every check cites its section and MUST/SHOULD level. |
 
 ```bash
-pip install "ampro[conformance] @ git+https://github.com/agentmeshpro/agent-mesh-protocol.git"
+pip install "ampro[conformance]"
 ampro-conformance --url https://your-agent.example.com --level 1
 ampro-conformance --url https://your-agent.example.com \
     --signing-key key.pem --keyid "agent://your-agent.example.com#key-1"   # + RFC 9421 checks
@@ -192,8 +192,8 @@ ampro-conformance --url https://your-agent.example.com \
 The schemas and registries are generated from the reference
 implementation (`python scripts/generate_spec.py`), and CI fails on any
 drift. To extend AMP without forking, follow
-[docs/EXTENSIONS.md](docs/EXTENSIONS.md). Changes to the protocol itself
-follow [GOVERNANCE.md](GOVERNANCE.md).
+[docs/EXTENSIONS.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/EXTENSIONS.md). Changes to the protocol itself
+follow [GOVERNANCE.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/GOVERNANCE.md).
 
 ---
 
@@ -215,8 +215,8 @@ AMP specifies the wire contract and nothing else. How an agent *is* — how you 
 
 ## Security
 
-Report vulnerabilities to **security@amp-protocol.dev** — see [SECURITY.md](SECURITY.md).
+Report vulnerabilities to **security@amp-protocol.dev** — see [SECURITY.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/SECURITY.md).
 
 ## License
 
-[Apache License 2.0](LICENSE). Copyright 2026 AMP Contributors.
+[Apache License 2.0](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/LICENSE). Copyright 2026 AMP Contributors.
