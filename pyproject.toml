@@ -67,6 +67,7 @@ conformance = [
 
 [project.scripts]
 ampro-server = "ampro.server.cli:main"
+ampro-conformance = "ampro.conformance.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/CatlystAI/agent-mesh-protocol"

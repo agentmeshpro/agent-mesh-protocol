@@ -84,7 +84,7 @@ class TestAgentServerBasic:
         status, headers, body_str = _run(server.route("GET", "/agent/stream"))
         assert status == 200
         assert headers["Content-Type"] == "text/event-stream"
-        assert "event: ping" in body_str
+        assert "event: heartbeat" in body_str
 
 
 # ===========================================================================

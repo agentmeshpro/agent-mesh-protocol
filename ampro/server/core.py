@@ -54,7 +54,7 @@ from ampro.ampi.dispatch import build_context, dispatch
 from ampro.ampi.errors import AMPError
 from ampro.core.body_schemas import validate_body
 from ampro.core.envelope import AgentMessage
-from ampro.core.versioning import CURRENT_VERSION
+from ampro.core.versioning import CURRENT_VERSION, SUPPORTED_VERSIONS, negotiate_version
 from ampro.server.auth import ANONYMOUS, Principal, Unauthorized, authenticate
 from ampro.server.http import HTTPRequest, HTTPResponse, ProtocolAdapter
 from ampro.server.security import (
@@ -78,6 +78,7 @@ from ampro.wire.errors import (
     timeout,
     unauthorized,
     unavailable,
+    version_mismatch,
 )
 
 logger = logging.getLogger(__name__)
@@ -379,7 +380,7 @@ class AgentServer:
         return (
             200,
             {"Content-Type": "text/event-stream"},
-            "event: ping\ndata: {}\n\n",
+            'event: heartbeat\ndata: {"seq": 1}\n\n',
         )
 
     def _level_stub_response(self, level: int) -> tuple[int, dict[str, Any], str]:
@@ -417,6 +418,7 @@ class AgentServer:
         def problem(err: ProblemDetail, extra: dict[str, str] | None = None) -> HTTPResponse:
             status, headers, body = self._error_response(err)
             hdrs = _lower(headers)
+            hdrs["protocol-version"] = CURRENT_VERSION
             if extra:
                 hdrs.update({k.lower(): v for k, v in extra.items()})
             return HTTPResponse(status, hdrs, body.encode("utf-8"))
@@ -433,7 +435,9 @@ class AgentServer:
             principal = ANONYMOUS
 
         # Rate limiting — by principal, or by peer address when anonymous.
+        # The limit state is reported on every response (Section 12.4).
         rate_key = principal.id if principal is not ANONYMOUS else f"ip:{request.client}"
+        rl_headers: dict[str, str] = {}
         if policy.rate_limiter is not None:
             allowed, info = policy.rate_limiter.check(rate_key)
             rl_headers = {
@@ -443,24 +447,34 @@ class AgentServer:
             }
             if not allowed:
                 retry = max(1, info.reset - int(time.time()))
-                rl_headers["Retry-After"] = str(retry)
-                return problem(rate_limited("Rate limit exceeded", retry_after=retry), rl_headers)
+                return problem(
+                    rate_limited("Rate limit exceeded", retry_after=retry),
+                    {**rl_headers, "Retry-After": str(retry)},
+                )
 
-        content_type = (request.header("content-type") or "").split(";")[0].strip().lower()
+        # A request without Content-Type is JSON (Section 3.2).
+        content_type = request.header("content-type") or "application/json"
+        content_type = content_type.split(";")[0].strip().lower()
         if content_type != "application/json" and not content_type.endswith("+json"):
             from ampro.wire.errors import content_type_mismatch
 
-            err = content_type_mismatch("Content-Type must be application/json")
-            err = err.model_copy(update={"status": 415})
-            return problem(err)
+            return problem(
+                content_type_mismatch("Content-Type must be application/json"), rl_headers
+            )
 
         try:
             payload = request.json()
         except ValueError:
-            return problem(invalid_message("Request body is not valid JSON"))
+            return problem(invalid_message("Request body is not valid JSON"), rl_headers)
 
-        status, headers, body = await self._handle_message(payload, principal=principal)
-        return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+        status, headers, body = await self._handle_message(
+            payload,
+            principal=principal,
+            accept_version=request.header("accept-version"),
+        )
+        hdrs = _lower(headers)
+        hdrs.update({k.lower(): v for k, v in rl_headers.items()})
+        return HTTPResponse(status, hdrs, body.encode("utf-8"))
 
     def _addresses(self) -> set[str]:
         from ampro.delegation.chain import normalize_agent_uri
@@ -473,14 +487,28 @@ class AgentServer:
         body: dict[str, Any] | None,
         *,
         principal: Principal | None = None,
+        accept_version: str | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         """Validate and dispatch one AMP envelope.
 
         *principal* is the authenticated caller; ``None`` (the legacy
         :meth:`route` entry point, which has no headers) means anonymous.
+        *accept_version* is the HTTP ``Accept-Version`` header, if any; an
+        ``Accept-Version`` envelope header takes precedence.  Every
+        response carries the negotiated ``Protocol-Version`` (Section 18.4).
         """
+        status, headers, body_str = await self._handle_envelope(
+            body, principal or ANONYMOUS, accept_version
+        )
+        return status, {"Protocol-Version": CURRENT_VERSION, **headers}, body_str
+
+    async def _handle_envelope(
+        self,
+        body: dict[str, Any] | None,
+        principal: Principal,
+        accept_version: str | None,
+    ) -> tuple[int, dict[str, Any], str]:
         policy = self.security
-        principal = principal or ANONYMOUS
 
         # Step 1: Parse body as AgentMessage (Pydantic validation).
         if body is None:
@@ -535,6 +563,27 @@ class AgentServer:
                 return self._error_response(
                     invalid_message("Envelope recipient is not this agent")
                 )
+
+        # Version negotiation (Section 18.4; Appendix D places it after the
+        # recipient check).
+        requested = _header(msg.headers, "Accept-Version") or accept_version
+        try:
+            version = negotiate_version(requested) if requested else CURRENT_VERSION
+        except ValueError:
+            return self._error_response(version_mismatch(
+                f"Requested protocol version {requested[:64]!r} is not supported",
+                supported_versions=list(SUPPORTED_VERSIONS),
+            ))
+
+        status, headers, body_str = await self._dispatch_envelope(msg, principal)
+        return status, {**headers, "Protocol-Version": version}, body_str
+
+    async def _dispatch_envelope(
+        self,
+        msg: AgentMessage,
+        principal: Principal,
+    ) -> tuple[int, dict[str, Any], str]:
+        policy = self.security
 
         # Loop detection on the Visited-Agents header.
         visited = (msg.headers or {}).get("Visited-Agents")
@@ -749,6 +798,14 @@ def _conflict(detail: str) -> ProblemDetail:
 
     err = nonce_replay(detail)
     return err
+
+
+def _header(headers: dict[str, str] | None, name: str) -> str | None:
+    """Case-insensitive envelope header lookup."""
+    for key, value in (headers or {}).items():
+        if key.lower() == name.lower():
+            return value
+    return None
 
 
 def _lower(headers: dict[str, Any]) -> dict[str, str]:
