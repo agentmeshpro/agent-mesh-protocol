@@ -273,8 +273,8 @@ class TestAgentJson:
 
 
 class TestCrossVerification:
-    def test_did_key_not_verified_without_implementation(self):
-        """C9: did:key cross-verification is fail-closed until key extraction is implemented."""
+    def test_invalid_did_key_not_verified(self):
+        """C9: a malformed did:key never cross-verifies (fail-closed)."""
         import asyncio
 
         from ampro import cross_verify_identifiers
@@ -283,7 +283,7 @@ class TestCrossVerification:
             expected_endpoint="https://example.com/agent/message",
         ))
         assert results[0].verified is False
-        assert "not yet implemented" in results[0].reason
+        assert "invalid did:key" in results[0].reason.lower()
 
 
 class TestV011Imports:
