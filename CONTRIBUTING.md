@@ -71,6 +71,22 @@ pytest tests/ -v
 
 Use imperative mood (`add`, `fix`, `remove`), prefix with `feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:` where applicable. Keep first line ≤ 72 chars.
 
+### Branch names
+
+Name branches `<type>/<short-kebab-description>`, using the same types as commit messages:
+
+| Prefix | Use for | Example |
+|---|---|---|
+| `feat/` | New protocol or library features | `feat/a2a-bridge` |
+| `fix/` | Bug and security fixes | `fix/key-revocation` |
+| `docs/` | Documentation and site copy | `docs/branch-naming` |
+| `refactor/` | Internal changes with no behavior change | `refactor/state-store` |
+| `test/` | Tests and test vectors only | `test/delegation-vectors` |
+| `chore/` | Tooling, CI and dependencies | `chore/ruff-config` |
+| `release/` | Version bumps and changelog for a release | `release/0.5.1` |
+
+Keep the description to two to five lowercase words joined by hyphens. Branches opened by bots (`dependabot/`) or coding agents (`claude/`) keep the names their tools give them. Head branches are deleted automatically once a pull request is merged, so open a new branch for follow-up work.
+
 ### Formatting
 
 Code is formatted with `ruff format` and linted with `ruff check`. Type-hinted public APIs verified with `mypy`.
@@ -191,7 +207,7 @@ See [SECURITY.md](SECURITY.md) for responsible disclosure of protocol vulnerabil
 ## Submitting Changes
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
+2. Create a branch named per [Branch names](#branch-names) (`git checkout -b feat/my-feature`)
 3. Write your changes following the code standards above
 4. Write tests for your changes
 5. Ensure all tests pass (`pytest tests/ -v`)
