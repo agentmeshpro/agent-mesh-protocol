@@ -41,7 +41,7 @@ AMP rides **on top of** A2A rather than competing with it: AMP agents publish an
 pip install "ampro[all] @ git+https://github.com/CatlystAI/agent-mesh-protocol.git"
 ```
 
-Extras: `server` (uvicorn), `a2a` / `pact` (JWT verification), `mcp`, `flask`, `all`. The core package depends only on pydantic, cryptography, base58 and httpx.
+Extras: `server` (uvicorn), `a2a` / `pact` (JWT verification), `mcp`, `flask`, `conformance` (JSON Schema validation in `ampro-conformance`), `all`. The core package depends only on pydantic, cryptography, base58 and httpx.
 
 ---
 
@@ -123,7 +123,7 @@ async with A2AClient("https://agent.example.com/.well-known/agent-card.json") as
 | **Framework** — `ampro.ampi` | `AgentApp` + decorators (`@on`, `@tool`, `@middleware`, `@on_startup`, `@on_session_start`, `@on_error`), `AMPContext` |
 | **Server + Client SDK** — `ampro.server`, `ampro.client` | Framework-free ASGI server with a security pipeline, `ampro-server` CLI, outbound send/discover/stream/connect helpers |
 | **Interop** — `ampro.interop` | A2A 1.0, PACT and MCP adapters and clients |
-| **Conformance** — `tests/vectors/` | JSON vectors portable to any language implementation |
+| **Conformance** — `spec/`, `tests/vectors/`, `ampro.conformance` | JSON Schemas, OpenAPI 3.1 and registries; JSON vectors portable to any language; the `ampro-conformance` black-box HTTP suite |
 
 ---
 
@@ -159,11 +159,41 @@ Checklist:
 
 **Building an agent** → the tour above, then [`examples/`](examples/) (`41-45` AMPI, `46` A2A, `47` MCP, `48` PACT) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Implementing AMP in another language** → [docs/WIRE-BINDING.md](docs/WIRE-BINDING.md) (normative) and [`tests/vectors/`](tests/vectors/) ([index](tests/vectors/README.md)).
+**Implementing AMP in another language** → see [below](#implementing-amp-in-another-language).
 
 **Evaluating the protocol** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/WIRE-BINDING.md](docs/WIRE-BINDING.md), [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md), and the audit retrospectives [SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) / [SECURITY-AUDIT-V2.md](docs/SECURITY-AUDIT-V2.md).
 
 **Contributing** → [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [SECURITY.md](SECURITY.md).
+
+---
+
+## Implementing AMP in another language
+
+AMP is an open protocol. Nothing in it requires Python, and everything
+you need to build and verify an implementation is published here in a
+language-neutral form:
+
+| Artefact | What it gives you |
+|---|---|
+| [docs/WIRE-BINDING.md](docs/WIRE-BINDING.md) | The normative HTTP binding (MUST/SHOULD), with [PROTOCOL-CONTRACTS](docs/PROTOCOL-CONTRACTS.md) for semantics that span body types |
+| [`spec/schemas/`](spec/schemas/) | JSON Schema 2020-12 for the envelope, every body type, `agent.json`, health, RFC 7807 problems and stream events. Feed them to Ajv, `santhosh-tekuri/jsonschema`, `jsonschema-rs` or a code generator. |
+| [`spec/openapi.yaml`](spec/openapi.yaml) | OpenAPI 3.1 for the HTTP binding: endpoints, status codes and auth schemes. Use it for client/server stubs and API tooling. |
+| [`spec/registry/`](spec/registry/) | Machine-readable registries: body types (schema, expected response, `since`), headers, error URNs and HTTP status, extension URIs, stream events |
+| [`tests/vectors/`](tests/vectors/) ([index](tests/vectors/README.md)) | 391 portable cases, including byte-exact canonical forms and deterministic Ed25519 signatures for every signed artefact |
+| `ampro-conformance` ([docs/CONFORMANCE.md](docs/CONFORMANCE.md)) | A black-box HTTP test of your running agent. Every check cites its section and MUST/SHOULD level. |
+
+```bash
+pip install "ampro[conformance] @ git+https://github.com/CatlystAI/agent-mesh-protocol.git"
+ampro-conformance --url https://your-agent.example.com --level 1
+ampro-conformance --url https://your-agent.example.com \
+    --signing-key key.pem --keyid "agent://your-agent.example.com#key-1"   # + RFC 9421 checks
+```
+
+The schemas and registries are generated from the reference
+implementation (`python scripts/generate_spec.py`), and CI fails on any
+drift. To extend AMP without forking, follow
+[docs/EXTENSIONS.md](docs/EXTENSIONS.md). Changes to the protocol itself
+follow [GOVERNANCE.md](GOVERNANCE.md).
 
 ---
 

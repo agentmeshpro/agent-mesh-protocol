@@ -45,6 +45,41 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
 - `@app.tool(name, description=, input_schema=, scopes=)` metadata;
   `AMPContext.principal`, `.scopes`, `.protocol`, `.metadata`.
 - Extras: `server`, `a2a`, `pact`, `mcp`, `flask`, `all`.
+- **Machine-readable specification** in `spec/`:
+  - JSON Schema 2020-12 for the envelope, every registered body type,
+    `agent.json`, health, RFC 7807 problem details, the encrypted body and
+    streaming events, each with a stable `$id`;
+  - `spec/openapi.yaml` (OpenAPI 3.1) for the HTTP binding;
+  - registries of body types, headers, error URNs, extension URIs (including
+    the A2A extension) and stream events.
+
+  `scripts/generate_spec.py` builds all of it from the reference models and
+  the WIRE-BINDING tables, and its `--check` mode fails CI on drift. The
+  published schemas accept and reject every schema-shaped test vector
+  exactly as the reference does.
+- **Black-box conformance suite**: `ampro.conformance` and the
+  `ampro-conformance --url … [--level] [--signing-key --keyid] [--report json]`
+  CLI. It tests any AMP implementation over HTTP:
+  - discovery, health, problem details, envelope and body validation;
+  - unknown body types, headers and fields;
+  - size limits (413), content type (415), recipient check, loop detection
+    (409), duplicate ids, rate limiting (429 and headers);
+  - version negotiation (406, `Protocol-Version`);
+  - with a key, RFC 9421 replay, tamper, freshness, nonce, algorithm and
+    sender-binding checks.
+
+  Each check cites its section and MUST/SHOULD level. See
+  `docs/CONFORMANCE.md`.
+- `GOVERNANCE.md`: the proposal process, protocol versioning, compatibility
+  guarantees, deprecation windows and registration authority.
+- `docs/EXTENSIONS.md`: naming rules for third-party body types, headers,
+  problem types, stream events and extension URIs. `ampro.wire.extensions`
+  implements them. Optional registration goes through `spec/third-party.json`.
+- `conformance` extra (`jsonschema`). The `dev` extra adds `jsonschema`,
+  `openapi-spec-validator` and `pyyaml`.
+- HTTP bindings for `registry.federation_revoke`, `registry.federation_sync`,
+  `registry.federation_sync_response` and `agent.metadata_invalidate`.
+  `ProblemDetail` now carries `max_bytes` (413) and `supported_versions` (406).
 
 ### Fixed
 - `ampro-server` / `AgentServer.from_app` could not run AMPI handlers
@@ -53,6 +88,22 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
 - Examples 08, 10 and 27 crashed; every example now runs in CI.
 - `check_version` rejected same-major versions such as `1.0.1`.
 - Federation conflict resolution crashed on naive timestamps.
+- The reference server now meets the WIRE-BINDING requirements that
+  `ampro-conformance` checks:
+  - a `POST /agent/message` without `Content-Type` is treated as JSON
+    (section 3.2) instead of getting 415;
+  - `X-RateLimit-*` headers appear on every message response (12.4), not
+    only on a 429;
+  - `Accept-Version` (HTTP header or envelope header) is negotiated, with
+    406 and `supported_versions` for a malformed version or an unsupported
+    MAJOR (18.4);
+  - every message response carries `Protocol-Version`;
+  - the `/agent/stream` placeholder emits a defined `heartbeat` event with
+    `seq`.
+- WIRE-BINDING Appendix B said `additionalProperties: false` for the
+  envelope, which contradicted the forward-compatibility rule. It is now
+  `true`. Section 15.4 lists 406, 410 and 415, and section 16.1.8 lists
+  `agent.metadata_invalidate`.
 
 ### Security
 - Delegation links sign every field (previously `trust_tier`,
