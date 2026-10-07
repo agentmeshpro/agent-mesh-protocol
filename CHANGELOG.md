@@ -13,8 +13,8 @@
   string must update to the new values. Old GitHub URLs redirect, but the
   identifiers themselves are compared as strings, not fetched.
 - **Project contacts and links.** Vulnerabilities are now reported through
-  GitHub private vulnerability reporting or `security@ampro.sh`, and Code of
-  Conduct reports go to `conduct@ampro.sh`. The previous `amp-protocol.dev`
+  GitHub private vulnerability reporting or `vedant@catlyst.com`, and Code of
+  Conduct reports go to the same address. The previous `amp-protocol.dev`
   addresses were never project-controlled and must not be used. The package
   homepage is now https://ampro.sh, and SECURITY.md lists supported versions.
 - **Example domain in key revocation vectors.** The `key.revocation` example

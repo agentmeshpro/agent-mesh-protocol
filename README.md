@@ -219,7 +219,7 @@ AMP specifies the wire contract and nothing else. How an agent *is* — how you 
 
 Please do not open public issues for vulnerabilities. Report them privately through
 [GitHub private vulnerability reporting](https://github.com/agentmeshpro/agent-mesh-protocol/security/advisories/new)
-or by email to **security@ampro.sh**. See [SECURITY.md](SECURITY.md).
+or by email to **vedant@catlyst.com**. See [SECURITY.md](SECURITY.md).
 
 ## License
 

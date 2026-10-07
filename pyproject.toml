@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "AMP Contributors" },
+    { name = "AMP Contributors", email = "vedant@catlyst.com" },
 ]
 keywords = ["agent", "protocol", "a2a", "mesh", "ampro", "ampi", "rfc9421", "agent-mesh"]
 classifiers = [

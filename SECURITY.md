@@ -14,7 +14,7 @@ Instead, report them privately through one of these channels:
    [open a draft security advisory](https://github.com/agentmeshpro/agent-mesh-protocol/security/advisories/new).
    Only the maintainers can see it, and we can collaborate on a fix and
    a CVE in the same place.
-2. **Email:** **security@ampro.sh**.
+2. **Email:** **vedant@catlyst.com**.
 
 Include in your report:
 - Description of the vulnerability and its potential impact

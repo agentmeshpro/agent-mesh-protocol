@@ -13,7 +13,7 @@ good faith.
 
 ## Reporting
 
-To report a violation, email **conduct@ampro.sh**. Reports are kept
+To report a violation, email **vedant@catlyst.com**. Reports are kept
 confidential.
 
 Reports are reviewed by the project maintainers. We follow the
