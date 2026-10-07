@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.channel_open.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.channel_open.json",
   "title": "AMP stream event data: stream.channel_open",
   "description": "Event emitted when a new stream channel is opened.",
   "properties": {

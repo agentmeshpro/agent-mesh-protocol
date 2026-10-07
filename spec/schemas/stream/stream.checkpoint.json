@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.checkpoint.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.checkpoint.json",
   "title": "AMP stream event data: stream.checkpoint",
   "description": "Periodic state snapshot emitted on the SSE stream.",
   "properties": {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.pause.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/stream/stream.pause.json",
   "title": "AMP stream event data: stream.pause",
   "description": "stream.pause — server tells client it is pausing the stream.",
   "properties": {

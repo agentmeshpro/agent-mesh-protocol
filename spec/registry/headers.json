@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/headers.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/registry/headers.json",
   "registry": "headers",
   "description": "AMP envelope headers (WIRE-BINDING section 14) and the HTTP header fields the binding uses. Receivers MUST ignore headers they do not understand.",
   "protocol_version": "1.0.0",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/encrypted-body.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/encrypted-body.json",
   "title": "EncryptedBody",
   "description": "Body of an envelope that carries the Content-Encryption header (WIRE-BINDING section 12.11).",
   "properties": {

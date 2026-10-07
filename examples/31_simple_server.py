@@ -5,7 +5,7 @@ The minimum viable AMP agent. Receives messages, responds.
 Like Python's http.server — just enough to speak the protocol.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git fastapi uvicorn
     python examples/31_simple_server.py
 
 Then in another terminal:

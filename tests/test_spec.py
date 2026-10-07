@@ -118,7 +118,7 @@ def test_registries_reference_existing_schemas(docs) -> None:
         v for k, v in vars(ErrorType).items() if k.isupper()
     }
     exts = json.loads((SPEC / "registry" / "extensions.json").read_text())
-    assert "https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1" in {
+    assert "https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1" in {
         e["uri"] for e in exts["entries"]
     }
     events = json.loads((SPEC / "registry" / "stream-events.json").read_text())

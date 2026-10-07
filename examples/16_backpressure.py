@@ -6,7 +6,7 @@ the client ACKs processed batches, the server pauses when the client
 falls behind, and the client signals it is ready to resume.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/16_backpressure.py
 """
 

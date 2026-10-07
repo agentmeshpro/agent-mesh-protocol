@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/notification.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/notification.json",
   "title": "AMP body: notification",
   "description": "body.type = 'notification' — Push a notification to an agent.",
   "properties": {

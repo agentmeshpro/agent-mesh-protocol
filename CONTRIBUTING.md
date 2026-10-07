@@ -46,7 +46,7 @@ an example instead.
 
 ```bash
 # Clone the repo
-git clone https://github.com/CatlystAI/agent-mesh-protocol.git
+git clone https://github.com/agentmeshpro/agent-mesh-protocol.git
 cd agent-mesh-protocol
 
 # Install in development mode

@@ -6,7 +6,7 @@ Content-Encryption header, wrapping an EncryptedBody with ciphertext/iv/tag,
 then "decrypting" by replacing the body with a plaintext TaskCreateBody.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/29_encryption.py
 """
 

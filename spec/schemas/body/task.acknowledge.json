@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.acknowledge.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/task.acknowledge.json",
   "title": "AMP body: task.acknowledge",
   "description": "body.type = 'task.acknowledge' — Acknowledge receipt and acceptance of a task.",
   "properties": {

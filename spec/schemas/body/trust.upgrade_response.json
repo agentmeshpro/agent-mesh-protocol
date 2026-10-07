@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/trust.upgrade_response.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/trust.upgrade_response.json",
   "title": "AMP body: trust.upgrade_response",
   "description": "body.type = 'trust.upgrade_response' — Respond with identity proof.",
   "properties": {

@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
 ```
 
 ## Running

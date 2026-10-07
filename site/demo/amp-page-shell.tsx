@@ -377,7 +377,7 @@ function UserHero() {
         </code>
       </div>
       <p className="mt-3 text-center" style={{ fontSize: 13, color: '#78716C' }}>
-        Release 0.4.0 · installs from GitHub (repository access required) ·{' '}
+        Release 0.4.0 · installs from GitHub ·{' '}
         <a href="#interop" style={{ color: '#C86948' }}>
           What&apos;s new
         </a>

@@ -1,6 +1,6 @@
 # AMP — Agent Mesh Protocol
 
-[![CI](https://github.com/CatlystAI/agent-mesh-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/CatlystAI/agent-mesh-protocol/actions/workflows/ci.yml)
+[![CI](https://github.com/agentmeshpro/agent-mesh-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/agentmeshpro/agent-mesh-protocol/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![Package version](https://img.shields.io/badge/package-0.4.0-green.svg)](CHANGELOG.md)
@@ -31,14 +31,14 @@ AMP adds exactly that, and speaks the other protocols natively, so you don't hav
 | Compliance (PII, erasure, jurisdiction) | ✅ | ❌ | ❌ | ❌ |
 | Served by `ampro` | ✅ native | ✅ adapter | ✅ adapter | ✅ adapter |
 
-AMP rides **on top of** A2A rather than competing with it: AMP agents publish an A2A Agent Card, accept A2A calls, and carry AMP's delegation and compliance data through A2A's extension mechanism (`https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1`). Plain A2A clients simply ignore it.
+AMP rides **on top of** A2A rather than competing with it: AMP agents publish an A2A Agent Card, accept A2A calls, and carry AMP's delegation and compliance data through A2A's extension mechanism (`https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1`). Plain A2A clients simply ignore it.
 
 ---
 
 ## Install
 
 ```bash
-pip install "ampro[all] @ git+https://github.com/CatlystAI/agent-mesh-protocol.git"
+pip install "ampro[all] @ git+https://github.com/agentmeshpro/agent-mesh-protocol.git"
 ```
 
 Extras: `server` (uvicorn), `a2a` / `pact` (JWT verification), `mcp`, `flask`, `conformance` (JSON Schema validation in `ampro-conformance`), `all`. The core package depends only on pydantic, cryptography, base58 and httpx.
@@ -183,7 +183,7 @@ language-neutral form:
 | `ampro-conformance` ([docs/CONFORMANCE.md](docs/CONFORMANCE.md)) | A black-box HTTP test of your running agent. Every check cites its section and MUST/SHOULD level. |
 
 ```bash
-pip install "ampro[conformance] @ git+https://github.com/CatlystAI/agent-mesh-protocol.git"
+pip install "ampro[conformance] @ git+https://github.com/agentmeshpro/agent-mesh-protocol.git"
 ampro-conformance --url https://your-agent.example.com --level 1
 ampro-conformance --url https://your-agent.example.com \
     --signing-key key.pem --keyid "agent://your-agent.example.com#key-1"   # + RFC 9421 checks

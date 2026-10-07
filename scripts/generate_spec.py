@@ -59,7 +59,7 @@ SPEC_DIR = ROOT / "spec"
 WIRE_BINDING = ROOT / "docs" / "WIRE-BINDING.md"
 REGISTRY_BASE = SPEC_BASE + "registry/"
 
-A2A_EXTENSION_URI = "https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1"
+A2A_EXTENSION_URI = "https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1"
 
 # ---------------------------------------------------------------------------
 # Version history (reference-implementation release that introduced a name).
@@ -723,7 +723,7 @@ def build_openapi() -> dict[str, Any]:
         },
         "externalDocs": {
             "description": "WIRE-BINDING (normative)",
-            "url": "https://github.com/CatlystAI/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md",
+            "url": "https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md",
         },
         "servers": [{"url": "https://agent.example.com", "description": "Any AMP agent origin"}],
         "tags": [

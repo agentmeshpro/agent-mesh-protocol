@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/problem-details.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/problem-details.json",
   "title": "ProblemDetails",
   "description": "RFC 7807 problem details, served as application/problem+json (WIRE-BINDING section 7). Extension members are allowed and MUST be ignored when not understood. Standard `type` URNs are listed in spec/registry/errors.json.",
   "properties": {

@@ -24,7 +24,7 @@ hand: change the model or the spec text, then run
 | `registry/stream-events.json` | Streaming event types |
 
 All schemas are JSON Schema 2020-12. Each has a stable `$id` under
-`https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/`, and
+`https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/`, and
 cross-file `$ref`s are relative to it. Load them into one registry keyed by
 `$id` (for example with Python `referencing`, Ajv `addSchema`, or Go
 `jsonschema.Compiler.AddResource`).
