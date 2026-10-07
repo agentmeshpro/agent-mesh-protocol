@@ -15,7 +15,6 @@ from ampro.security.key_revocation import (
     KeyStatus,
     KeyStatusRecord,
     KeyStatusResolver,
-    KeyStatusStoreFullError,
     RevocationReason,
     canonical_revocation_bytes,
     delegation_key_check,
@@ -57,7 +56,7 @@ __all__ = [
     "RevocationReason", "KeyRevocationBody", "validate_revocation_signature",
     "is_revocation_authentic", "canonical_revocation_bytes", "parse_rfc3339_timestamp",
     # Key status (compromise vs rotation)
-    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord", "KeyStatusStoreFullError",
+    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord",
     "InMemoryKeyStatusResolver", "signature_allowed", "delegation_key_check", "key_status_for_reason",
     # Concurrency
     "ConcurrencyLimiter",

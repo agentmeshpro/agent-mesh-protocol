@@ -383,3 +383,27 @@ def test_agent_schema_first_import_keeps_body_registry_complete():
     )
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.parametrize("value", [
+    "https://127.0x1/x",
+    "https://10.0x1/",
+    "https://0x7f.1/",
+    "https://1.2.3/",
+    "https://example.1x/",
+])
+def test_numeric_looking_hosts_refused(value):
+    """Hosts inet_aton-style resolvers read as IPv4 addresses are not DNS names."""
+    with pytest.raises(ValueError):
+        normalize_foreign_https_id(value)
+
+
+@pytest.mark.parametrize("did", ["did:web:127.0x1", "did:web:10.0x1", "did:wba:1.2.3"])
+def test_numeric_looking_did_hosts_refused(did):
+    with pytest.raises(ValueError):
+        normalize_foreign_did(did)
+
+
+def test_did_web_default_port_dropped():
+    assert normalize_foreign_did("did:web:example.com%3A443") == "did:web:example.com"
+    assert normalize_foreign_did("did:web:example.com%3A8443") == "did:web:example.com%3A8443"

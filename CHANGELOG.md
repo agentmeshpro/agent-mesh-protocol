@@ -7,6 +7,29 @@ MCP, PACT, Personal Agent Protocol, ACP, AP2, UCP, card-network agent
 tokens, x402, Web Bot Auth, AAuth, ANP). **Breaking:** see the first two
 items under "Changed".
 
+### Security
+- `InMemoryKeyStatusResolver` keeps active keys, revocations of known
+  keys and revocations of never-seen keys in separately bounded pools,
+  so a flood of revocations from throwaway identities can no longer
+  block a real compromise revocation or new active keys. A full store
+  never raises.
+- `add_revocation` verifies the signature against a key of the revoked
+  agent itself, looked up by `signer_kid` (from `mark_active(...,
+  public_key=)` or a `key_lookup`), instead of a key the caller passes
+  in. A revoked key cannot revoke its agent's other keys.
+- Agent ids with a trailing dot, a path, a query or a fragment are
+  refused by `canonical_agent_id`, `delegation_key_check` and v2
+  delegation links, and ports are ignored, so alternate spellings
+  cannot dodge a revocation.
+- Foreign identifier and `verification_uri` hosts that resolvers read
+  as IPv4 (`127.0x1`) are refused; `verification_uri` also refuses IP
+  literals and `localhost`. `did:web` drops `%3A443`.
+- `AgentServer.route()` takes optional `headers` and enforces
+  `AMP-Hop-Count` and `traceparent` when given them. Repeated
+  `Visited-Agents` entries each count as a hop.
+- A synchronous A2A `chain_verifier` runs on a worker thread under the
+  timeout instead of blocking the event loop.
+
 ### Added
 - **Delegation link format v2** (`ampro.delegation.v2`, WIRE-BINDING
   11.11.2). The whole link is signed, extension members included, and a
