@@ -21,7 +21,7 @@ optional for servers).  There is no server-initiated stream, so ``GET``
 answers ``405``.
 
 Security: Origin validation (DNS-rebinding defence required by the MCP
-transport spec), an optional ``authenticator`` hook, per-tool scope
+transport spec), ``ampro.server.auth`` authenticators, per-tool scope
 enforcement, sessions bound to the principal that created them, and a
 bounded session store with idle expiry.
 """

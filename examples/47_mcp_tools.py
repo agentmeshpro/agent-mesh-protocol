@@ -89,7 +89,8 @@ async def plan_trip(msg: AgentMessage, ctx: AMPContext) -> dict:
 def build_server() -> AgentServer:
     server = AgentServer.from_app(agent)
     # No authenticator: fine on loopback.  Before exposing beyond
-    # 127.0.0.1, pass authenticator=... and require_auth=True.
+    # 127.0.0.1, pass authenticators=[...] and require_auth=True (or give the
+    # server a SecurityPolicy.production(...); for_server inherits it).
     server.mount(MCPAdapter.for_server(server))
     return server
 
