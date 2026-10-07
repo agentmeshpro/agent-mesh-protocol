@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from ampro.ampi.dispatch import build_context, dispatch
-from ampro.ampi.errors import AMPError
+from ampro.ampi.errors import AMPError, StreamLimitExceeded
 from ampro.core.body_schemas import validate_body
 from ampro.core.envelope import AgentMessage
 from ampro.identity.auth_methods import AuthMethod
@@ -99,7 +99,7 @@ from ampro.interop.a2a.types import (
     now_timestamp,
 )
 from ampro.server.http import HTTPRequest, HTTPResponse
-from ampro.streaming.events import StreamingEvent, StreamingEventType
+from ampro.streaming.events import MAX_SSE_EVENT_BYTES, StreamingEvent, StreamingEventType
 
 if TYPE_CHECKING:
     from ampro.ampi.context import AMPContext
@@ -1028,8 +1028,21 @@ class A2AAdapter:
 
     def _bind_emit(self, prep: _Prepared, push: Callable[..., Any],
                    streamed: list[Part], artifact_id: str) -> None:
-        """Route ``ctx.emit`` / ``ctx.emit_event`` to A2A stream events."""
+        """Route ``ctx.emit`` / ``ctx.emit_event`` to A2A stream events.
+
+        Events larger than :data:`MAX_SSE_EVENT_BYTES` raise
+        :class:`StreamLimitExceeded` in the handler.
+        """
         ctx = prep.ctx
+        raw_push = push
+
+        async def push(event: TaskStatusUpdateEvent | TaskArtifactUpdateEvent) -> None:
+            size = len(event.model_dump_json(by_alias=True, exclude_none=True))
+            if size > MAX_SSE_EVENT_BYTES:
+                raise StreamLimitExceeded("stream event too large",
+                                          limit=MAX_SSE_EVENT_BYTES, current=size)
+            await raw_push(event)
+
         task_id, context_id = prep.task_id, prep.context_id
         counter = {"chunks": 0}
 

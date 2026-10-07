@@ -748,3 +748,26 @@ async def test_defaults_come_from_server_security():
     adapter = A2AAdapter.for_server(server)
     assert adapter.require_auth is True and adapter.handler_timeout == 7.0
     assert len(adapter.authenticators) == 1
+
+
+async def test_oversized_stream_event_fails_task():
+    from ampro.ampi.app import AgentApp
+    from ampro.interop.a2a import A2AAdapter
+    from ampro.server import AgentServer
+    from ampro.streaming.events import StreamingEvent
+
+    app = AgentApp("@big", "https://big.example")
+
+    @app.on("task.create")
+    async def big(msg, ctx):
+        await ctx.emit(StreamingEvent(type="thinking", data={"n": 1}))
+        await ctx.emit(StreamingEvent(type="text_delta", data={"text": "x" * 300_000}))
+        return "unreachable"
+
+    server = AgentServer.from_app(app)
+    server.mount(A2AAdapter.for_server(server))
+    async with http_client(server) as c:
+        r = await c.post("/a2a/message:stream", json=user_message("go"))
+        events = sse_events(r.text)
+        final = events[-1][1]["statusUpdate"]["status"]
+        assert final["state"] == "TASK_STATE_FAILED"

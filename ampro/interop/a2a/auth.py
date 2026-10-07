@@ -1,16 +1,17 @@
 """Authentication hook for the A2A adapter.
 
-An :class:`Authenticator` turns an incoming :class:`HTTPRequest` into a
-:class:`Principal`::
+The contract is the server-wide one from :mod:`ampro.server.auth`
+(re-exported here): an :class:`Authenticator` turns an incoming
+:class:`HTTPRequest` into a :class:`Principal`::
 
     class BearerJWT:
         async def authenticate(self, request: HTTPRequest) -> Principal | None:
             header = request.header("authorization")
             if not header or not header.lower().startswith("bearer "):
-                return None                      # not my credential — try the next one
+                return None                      # not my credential: try the next one
             claims = verify(header[7:])          # your verification
             if claims is None:
-                raise Unauthorized()             # bad credential -> 401, stop
+                raise InvalidToken()             # bad credential -> 401, stop
             return Principal(id=f"pa:{claims['iss']}#{claims['sub']}",
                              trust_tier=TrustTier.VERIFIED,
                              scopes=frozenset(claims.get("scope", "").split()),
@@ -21,18 +22,22 @@ An :class:`Authenticator` turns an incoming :class:`HTTPRequest` into a
 Rules applied by the adapter:
 
 * Authenticators run in order; the first that returns a ``Principal`` wins.
+  Without ``authenticators=`` the adapter uses ``server.security.authenticators``.
 * ``None`` means "no credential I recognise"; raising :class:`Unauthorized`
-  means "a credential was presented and it is bad" — the request is
+  means "a credential was presented and it is bad": the request is
   rejected with ``401`` and ``WWW-Authenticate: Bearer realm="a2a"`` (plus
-  ``error="..."`` when given) and **no body**.
-* If nobody claims the request: an anonymous ``EXTERNAL`` principal, or
-  ``401`` when ``require_auth=True``.
-* Routing happens before authentication, so unknown routes are ``404``
-  regardless of credentials; the agent card is never authenticated.
+  ``error="..."`` for :class:`InvalidToken` or any ``Unauthorized`` with an
+  ``error`` attribute) and **no body**.
+* If nobody claims the request: :data:`ANONYMOUS` (``EXTERNAL`` tier), or
+  ``401`` when ``require_auth`` is set.
+* Routing happens before authentication, and authentication before the
+  body is parsed.  Unknown routes are ``404``/``405`` regardless of
+  credentials; the agent card is never authenticated.
 
-The principal is copied into the handler's ``AMPContext``: ``sender_address``
-(``principal.id``), ``trust_tier``, ``scopes``, ``auth_method`` and
-``principal`` itself.  Tasks and contexts are owned by ``principal.id``.
+The principal is copied into the handler's ``AMPContext``:
+``sender_address`` (``principal.id``; ``a2a://anonymous`` when anonymous),
+``trust_tier``, ``scopes``, ``auth_method`` and ``principal`` itself.
+Tasks and contexts are owned by ``principal.id``.
 """
 from __future__ import annotations
 

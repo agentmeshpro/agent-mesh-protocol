@@ -4,7 +4,8 @@ Each sub-package is a :class:`~ampro.server.http.ProtocolAdapter` that
 translates a foreign wire protocol to and from AMP's ``AgentMessage`` and
 dispatches through the same AMPI handlers:
 
-* ``ampro.interop.a2a``  — Google A2A 1.0 (HTTP+JSON and JSON-RPC bindings)
+* ``ampro.interop.a2a``  — Google A2A 1.0 (HTTP+JSON and JSON-RPC bindings);
+  see ``docs/INTEROP-A2A.md``
 * ``ampro.interop.pact`` — PACT personal-agent identity and delegated authority on A2A
 * ``ampro.interop.mcp``  — Model Context Protocol (expose ``@tool``s)
 
