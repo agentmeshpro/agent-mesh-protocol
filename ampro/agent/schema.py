@@ -9,13 +9,21 @@ This module is PURE — no platform-specific imports.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from pydantic import ValidationError as PydanticValidationError
 
 from ampro.errors import MigrationChainTooLongError
+
+#: Bound on agent.json ``foreign_identifiers`` (mirrors
+#: ``ampro.identity.link.MAX_FOREIGN_IDENTIFIERS``; checked at import).
+MAX_FOREIGN_IDENTIFIERS = 16
+
+logger = logging.getLogger(__name__)
 
 MAX_MIGRATION_HOPS = 5
 """Maximum depth of ``moved_to`` references that callers SHOULD follow.
@@ -31,6 +39,16 @@ class AgentJson(BaseModel):
 
     protocol_version: str = Field(description="Protocol version (e.g. '1.0.0')")
     identifiers: list[str] = Field(description="All agent:// URIs for this agent")
+    # v0.4.1 — Foreign identifiers (WIRE-BINDING Appendix E.4)
+    foreign_identifiers: list[ForeignIdentifier] = Field(
+        default_factory=list,
+        max_length=MAX_FOREIGN_IDENTIFIERS,
+        description=(
+            "Names for this agent in other ecosystems (MCP client ID metadata URL, "
+            "did:web / did:wba / did:key, Web Bot Auth key directory). Confer no "
+            "trust unless their identity-link proof verifies."
+        ),
+    )
     endpoint: str = Field(description="HTTPS endpoint for POST /agent/message")
     jwks_url: str | None = Field(default=None, description="JWKS endpoint URL")
     capabilities: dict[str, Any] = Field(
@@ -71,6 +89,34 @@ class AgentJson(BaseModel):
     )
 
     model_config = {"extra": "allow"}
+
+    @field_validator("foreign_identifiers", mode="before")
+    @classmethod
+    def _tolerant_foreign_identifiers(cls, value: Any) -> Any:
+        """Drop entries that do not parse instead of rejecting the document.
+
+        Foreign identifiers confer no trust on their own, and a future
+        ``kind`` must not make older consumers reject the whole agent.json.
+        The list itself is still bounded and must be a list.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("foreign_identifiers must be a list")
+        if len(value) > MAX_FOREIGN_IDENTIFIERS:
+            raise ValueError(
+                f"foreign_identifiers allows at most {MAX_FOREIGN_IDENTIFIERS} entries"
+            )
+        kept: list[ForeignIdentifier] = []
+        for index, item in enumerate(value):
+            try:
+                kept.append(
+                    item if isinstance(item, ForeignIdentifier)
+                    else ForeignIdentifier.model_validate(item)
+                )
+            except (PydanticValidationError, ValueError, TypeError) as exc:
+                logger.warning("agent.json foreign_identifiers[%d] ignored: %s", index, exc)
+        return kept
 
 
 def follow_migration_chain(
@@ -147,3 +193,13 @@ class AgentMetadataInvalidateBody(BaseModel):
     ] = Field(description="Why the cached record must be dropped")
 
     model_config = {"extra": "ignore"}
+
+
+# ``ForeignIdentifier`` is imported last: ``ampro.identity`` pulls in
+# ``ampro.core``, whose body-type registry imports this module back, so the
+# import must happen after every model above is defined.
+from ampro.identity.link import MAX_FOREIGN_IDENTIFIERS as _LINK_MAX  # noqa: E402
+from ampro.identity.link import ForeignIdentifier  # noqa: E402
+
+assert _LINK_MAX == MAX_FOREIGN_IDENTIFIERS
+AgentJson.model_rebuild()

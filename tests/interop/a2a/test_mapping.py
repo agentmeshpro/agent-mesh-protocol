@@ -22,6 +22,8 @@ from ampro.interop.a2a import (
 from ampro.interop.a2a.errors import A2AError
 from ampro.interop.a2a.mapping import (
     DESCRIPTION_LIMIT,
+    MAX_DELEGATION_LINKS,
+    UNVERIFIED_DELEGATION_CHAIN_KEY,
     a2a_to_amp,
     amp_shape,
     apply_amp_metadata,
@@ -252,7 +254,22 @@ def test_apply_amp_metadata():
     assert ctx.trace_id == "abc123" and ctx.metadata["amp.parentSpanId"] == "s1"
     assert ctx.visited_agents == ["@a"]
     assert ctx.sender_address == "s" and ctx.metadata["amp.claimedSender"] == "@claimed"
-    assert ctx.delegation_chain.depth == 0
+    # A chain from metadata is never exposed as ctx.delegation_chain here:
+    # only the adapter's chain_verifier can promote it.
+    assert ctx.delegation_chain is None
+    assert ctx.metadata[UNVERIFIED_DELEGATION_CHAIN_KEY].depth == 0
+    assert "delegationChain" not in ctx.metadata["amp.extension"]
+
+
+def test_apply_amp_metadata_chain_bounded():
+    link = {"delegator": "@a", "delegate": "@b", "scopes": ["x"],
+            "created_at": "2026-01-01T00:00:00Z", "expires_at": "2027-01-01T00:00:00Z"}
+    ctx = make_ctx()
+    apply_amp_metadata(ctx, {"delegationChain": [link] * MAX_DELEGATION_LINKS})
+    assert ctx.metadata[UNVERIFIED_DELEGATION_CHAIN_KEY].depth == MAX_DELEGATION_LINKS
+    for bad in ([link] * (MAX_DELEGATION_LINKS + 1), "chain", {"links": "x"}, 5):
+        with pytest.raises(A2AError):
+            apply_amp_metadata(make_ctx(), {"delegationChain": bad})
 
 
 @pytest.mark.parametrize("bad", [

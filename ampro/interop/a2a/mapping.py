@@ -383,25 +383,41 @@ def _get(amp: dict[str, Any], camel: str, snake: str) -> Any:
     return amp.get(camel, amp.get(snake))
 
 
+#: ``ctx.metadata`` key holding a delegation chain that arrived in the AMP
+#: extension but has NOT been verified (no ``chain_verifier`` configured).
+#: Treat it like ``amp.claimedSender``: a claim, never authority.
+UNVERIFIED_DELEGATION_CHAIN_KEY = "amp.unverifiedDelegationChain"
+#: Most links accepted in an inbound delegation chain.
+MAX_DELEGATION_LINKS = 50
+_CHAIN_KEYS = ("delegationChain", "delegation_chain")
+
+
 def apply_amp_metadata(ctx: Any, amp: dict[str, Any]) -> None:
     """Copy AMP extension fields into an ``AMPContext``.
 
     Identity is never taken from metadata: a claimed ``sender`` is kept in
-    ``ctx.metadata["amp.claimedSender"]`` only.  The delegation chain is
-    parsed, not verified — verify it in a handler or middleware with
-    ``ampro.delegation.chain.validate_chain`` before relying on it.
+    ``ctx.metadata["amp.claimedSender"]`` only.  Likewise a delegation
+    chain is only *parsed* here and stored, unverified, under
+    ``ctx.metadata[UNVERIFIED_DELEGATION_CHAIN_KEY]``; ``ctx.delegation_chain``
+    is left ``None``.  The A2A adapter promotes the chain to
+    ``ctx.delegation_chain`` only after its configured ``chain_verifier``
+    accepts it (see :class:`~ampro.interop.a2a.adapter.A2AAdapter`).
     Raises ``A2AError(INVALID_PARAMS)`` for malformed values.
     """
     from ampro.delegation.chain import DelegationChain
 
     chain = _get(amp, "delegationChain", "delegation_chain")
     if chain is not None:
+        links = chain if isinstance(chain, list) else (
+            chain.get("links") if isinstance(chain, dict) else None)
+        if not isinstance(links, list) or len(links) > MAX_DELEGATION_LINKS:
+            raise A2AError("INVALID_PARAMS", "Invalid AMP delegation chain")
         try:
-            ctx.delegation_chain = DelegationChain.model_validate(
-                {"links": chain} if isinstance(chain, list) else chain
-            )
+            parsed = DelegationChain.model_validate({"links": links})
         except ValidationError:
             raise A2AError("INVALID_PARAMS", "Invalid AMP delegation chain") from None
+        ctx.delegation_chain = None
+        ctx.metadata[UNVERIFIED_DELEGATION_CHAIN_KEY] = parsed
     for camel, snake, attr in (
         ("jurisdiction", "jurisdiction", "jurisdiction"),
         ("dataResidency", "data_residency", "data_residency"),
@@ -437,7 +453,9 @@ def apply_amp_metadata(ctx: Any, amp: dict[str, Any]) -> None:
     sender = amp.get("sender")
     if isinstance(sender, str):
         ctx.metadata["amp.claimedSender"] = sender[:512]
-    ctx.metadata["amp.extension"] = amp
+    # The raw extension minus the chain: the chain lives only under the
+    # clearly-named unverified key (or, once verified, ctx.delegation_chain).
+    ctx.metadata["amp.extension"] = {k: v for k, v in amp.items() if k not in _CHAIN_KEYS}
 
 
 def amp_reply_metadata(ctx: Any, agent_id: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -458,6 +476,8 @@ def amp_reply_metadata(ctx: Any, agent_id: str, extra: dict[str, Any] | None = N
 
 __all__ = [
     "DESCRIPTION_LIMIT",
+    "MAX_DELEGATION_LINKS",
+    "UNVERIFIED_DELEGATION_CHAIN_KEY",
     "Reply",
     "a2a_to_amp",
     "agent_message",

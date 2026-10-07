@@ -175,7 +175,7 @@ paths:
               schema:
                 type: string
         "403":
-          description: "Sender binding, contact policy, Origin or authorization failure"
+          description: "Sender binding, contact policy, Origin or authorization failure; urn:amp:error:authority-required (AuthorityRequiredProblem) when the caller needs more authority"
           content:
             "application/problem+json":
               schema:
@@ -183,6 +183,10 @@ paths:
           headers:
             Protocol-Version:
               "$ref": "#/components/headers/Protocol-Version"
+            WWW-Authenticate:
+              description: "Bearer error=\"insufficient_scope\" when an authority-required problem lists missing_scopes (7.2.14)"
+              schema:
+                type: string
         "406":
           description: "Accept-Version is malformed or names no supported MAJOR (urn:amp:error:version-mismatch)"
           content:
@@ -959,6 +963,8 @@ components:
       "$ref": schemas/health-response.json
     ProblemDetails:
       "$ref": schemas/problem-details.json
+    AuthorityRequiredProblem:
+      "$ref": schemas/problem-authority-required.json
     StreamEvent:
       "$ref": schemas/stream/event.json
     Jwks:

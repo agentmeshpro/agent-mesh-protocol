@@ -116,7 +116,7 @@ class TestContextBinding:
             "agent://a.example.com": pub_a,
             "agent://b.example.com": pub_b,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"Chain with correct context should verify, got: {reason}"
 
     def test_sign_with_wrong_parent_context_fails(self):
@@ -154,7 +154,7 @@ class TestContextBinding:
             "agent://a.example.com": pub_a,
             "agent://b.example.com": pub_b,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         assert "signature" in reason.lower()
 
@@ -172,7 +172,7 @@ class TestContextBinding:
 
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"Root link should verify, got: {reason}"
 
     def test_transplant_signature_between_chains_fails(self):
@@ -217,7 +217,7 @@ class TestContextBinding:
             "agent://b.example.com": pub_b,
             "agent://x.example.com": pub_x,
         }
-        valid_a, reason_a = validate_chain(chain_a, public_keys)
+        valid_a, reason_a = validate_chain(chain_a, public_keys, allow_v1=True)
         assert valid_a is True, f"Chain A should verify, got: {reason_a}"
 
         # --- Chain B (different root) ---
@@ -272,7 +272,7 @@ class TestContextBinding:
             "agent://x.example.com": pub_x,
             "agent://y.example.com": pub_b,  # y uses B's key
         }
-        valid_b, reason_b = validate_chain(chain_b, public_keys_b)
+        valid_b, reason_b = validate_chain(chain_b, public_keys_b, allow_v1=True)
         assert valid_b is False, "Transplanted signature should fail verification"
         assert "signature" in reason_b.lower()
 

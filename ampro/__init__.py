@@ -99,7 +99,15 @@ from ampro.compliance.types import (
 )
 
 # --- Addressing ---
-from ampro.core.addressing import AddressType, AgentAddress, normalize_shorthand, parse_agent_uri
+from ampro.core.addressing import (
+    FOREIGN_DID_METHODS,
+    AddressType,
+    AgentAddress,
+    normalize_foreign_did,
+    normalize_foreign_https_id,
+    normalize_shorthand,
+    parse_agent_uri,
+)
 
 # --- Body type schemas ---
 from ampro.core.body_schemas import (
@@ -175,6 +183,23 @@ from ampro.delegation.tracing import (
     generate_trace_id,
     inject_trace_headers,
 )
+from ampro.delegation.v2 import (
+    AmountConstraint,
+    BudgetConstraint,
+    CountConstraint,
+    CredentialRef,
+    DelegationLinkV2,
+    Principal,
+    ResourceConstraint,
+    VerificationKey,
+    authorize_action,
+    canonical_link_v2_bytes,
+    intent_digest,
+    minor_units,
+    new_link_id,
+    sign_delegation_v2,
+    validate_chain_v2,
+)
 from ampro.errors import (
     AmpError,
     CompliancePolicyError,
@@ -206,8 +231,13 @@ from ampro.identity.cross_verification import (
 # --- Identity link expiry ---
 from ampro.identity.link import (
     DEFAULT_LINK_PROOF_LIFETIME,
+    MAX_FOREIGN_IDENTIFIERS,
+    ForeignIdentifier,
     IdentityLinkProofBody,
+    LinkProofVerifier,
     is_link_proof_valid,
+    normalize_foreign_identifier,
+    verified_foreign_aliases,
 )
 
 # --- Identity migration ---
@@ -257,14 +287,22 @@ from ampro.security.encryption import (
 
 # --- Key revocation ---
 from ampro.security.key_revocation import (
+    InMemoryKeyStatusResolver,
     KeyRevocationBody,
     KeyRevocationBroadcastBody,
+    KeyStatus,
+    KeyStatusRecord,
+    KeyStatusResolver,
+    KeyStatusStoreFullError,
     RevocationReason,
     RevocationStore,
+    canonical_revocation_bytes,
     is_revocation_authentic,
+    key_status_for_reason,
     register_revocation_store,
     revocation_verify_cached_key,
     should_reject_cached_key,
+    signature_allowed,
 )
 from ampro.security.nonce_tracker import NonceTracker
 from ampro.security.rate_limit import RateLimitInfo, format_rate_limit_headers
@@ -365,7 +403,18 @@ from ampro.wire.config import WireConfig
 
 # --- Wire binding (HTTP transport contract) ---
 from ampro.wire.endpoints import ALL_ENDPOINTS, ConformanceLevel, EndpointSpec, endpoints_for_level
-from ampro.wire.errors import ErrorType, ProblemDetail
+from ampro.wire.errors import (
+    AuthorityConstraint,
+    AuthorityRequiredError,
+    AuthorityRequiredProblem,
+    ErrorType,
+    HumanApproval,
+    PaymentRequirement,
+    ProblemDetail,
+    authority_required,
+    insufficient_scope_challenge,
+    parse_authority_required,
+)
 
 __version__ = "0.4.0"
 
@@ -377,6 +426,7 @@ __all__ = [
     "TrustTier", "TrustConfig", "CLOCK_SKEW_SECONDS",
     # Addressing
     "AgentAddress", "AddressType", "parse_agent_uri", "normalize_shorthand",
+    "normalize_foreign_https_id", "normalize_foreign_did", "FOREIGN_DID_METHODS",
     # Identity & auth
     "IdentityProof", "ConsentScope", "ConsentRequest", "ConsentGrant",
     "AuthMethod", "ParsedAuth", "parse_authorization",
@@ -393,6 +443,9 @@ __all__ = [
     "validate_chain", "validate_scope_narrowing", "sign_delegation",
     "parse_chain_budget", "parse_visited_agents", "normalize_agent_uri",
     "check_visited_agents_loop", "check_visited_agents_limit",
+    # Delegation v2
+    "DelegationLinkV2", "Principal", "CredentialRef", "VerificationKey", "AmountConstraint", "BudgetConstraint",
+    "CountConstraint", "ResourceConstraint", "validate_chain_v2", "sign_delegation_v2", "authorize_action", "intent_digest", "minor_units", "new_link_id", "canonical_link_v2_bytes",
     # Events & sessions
     "EventType", "EventSubscription", "EventNotification",
     "SessionState", "SessionConfig", "SessionContext",
@@ -455,6 +508,10 @@ __all__ = [
     "KeyRevocationBroadcastBody", "RevocationStore",
     "register_revocation_store", "should_reject_cached_key",
     "revocation_verify_cached_key",
+    # Key status (compromise vs rotation)
+    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord", "KeyStatusStoreFullError",
+    "InMemoryKeyStatusResolver", "signature_allowed", "key_status_for_reason",
+    "canonical_revocation_bytes",
     # Tool consent
     "ToolConsentRequestBody", "ToolConsentGrantBody", "ToolDefinition",
     # Backpressure
@@ -489,6 +546,9 @@ __all__ = [
     "StreamAuthRefreshEvent",
     # Identity linking
     "IdentityLinkProofBody",
+    # Foreign identifiers (agent.json foreign_identifiers)
+    "ForeignIdentifier", "LinkProofVerifier", "verified_foreign_aliases",
+    "normalize_foreign_identifier", "MAX_FOREIGN_IDENTIFIERS",
     # Registry federation
     "RegistryFederationRequest", "RegistryFederationResponse",
     "RegistryFederationRevokeBody",
@@ -524,6 +584,9 @@ __all__ = [
     # Wire binding (HTTP transport contract)
     "ConformanceLevel", "EndpointSpec", "ALL_ENDPOINTS", "endpoints_for_level",
     "ProblemDetail", "ErrorType",
+    "AuthorityRequiredProblem", "AuthorityRequiredError", "AuthorityConstraint",
+    "PaymentRequirement", "HumanApproval", "authority_required",
+    "parse_authority_required", "insufficient_scope_challenge",
     "WireConfig", "WIRE_DEFAULTS",
     "ResponseMode", "BodyTypeBinding", "BODY_TYPE_BINDINGS", "binding_for",
     # AMPI

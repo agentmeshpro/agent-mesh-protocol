@@ -3,6 +3,103 @@
   "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/agent-json.json",
   "title": "AgentJson",
   "description": "Agent identity document served at GET /.well-known/agent.json (WIRE-BINDING section 4.1). Unknown fields MUST be ignored.",
+  "$defs": {
+    "ForeignIdentifier": {
+      "description": "One agent.json ``foreign_identifiers`` entry.\n\nNames the same agent in another ecosystem: an MCP client ID metadata\ndocument URL (``oauth-client-id``), an ANP / did:web DID (``did``), or\na Web Bot Auth ``Signature-Agent`` key directory\n(``http-signature-directory``).\n\nA foreign identifier confers NO trust by itself.  It is treated as the\nsame entity only when ``proof`` (an identity link between one of the\nagent's ``agent://`` identifiers and this ``id``) verifies; see\n:func:`verified_foreign_aliases`.  ``id`` is stored in canonical form.",
+      "properties": {
+        "scheme": {
+          "description": "Identifier scheme",
+          "enum": [
+            "https",
+            "did"
+          ],
+          "title": "Scheme",
+          "type": "string"
+        },
+        "id": {
+          "description": "The foreign identifier (https URL or DID), canonicalised per WIRE-BINDING Appendix E.4",
+          "maxLength": 2048,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What the identifier is: oauth-client-id, did or http-signature-directory",
+          "enum": [
+            "oauth-client-id",
+            "did",
+            "http-signature-directory"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "proof": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentityLinkProofBody"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identity link proof binding one of the agent's agent:// identifiers to this id. Without a verifying proof the entry MUST be ignored."
+        }
+      },
+      "required": [
+        "scheme",
+        "id",
+        "kind"
+      ],
+      "title": "ForeignIdentifier",
+      "type": "object"
+    },
+    "IdentityLinkProofBody": {
+      "description": "Payload proving two agent addresses share the same controlling entity.",
+      "properties": {
+        "source_id": {
+          "description": "First agent:// URI",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "target_id": {
+          "description": "Second agent:// URI to link",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "proof_type": {
+          "description": "Proof method (e.g. ed25519_cross_sign)",
+          "title": "Proof Type",
+          "type": "string"
+        },
+        "proof": {
+          "description": "Cryptographic proof of shared control",
+          "title": "Proof",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "ISO-8601 timestamp when proof was generated",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "expires_at": {
+          "description": "When the link proof is no longer valid",
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "target_id",
+        "proof_type",
+        "proof",
+        "timestamp",
+        "expires_at"
+      ],
+      "title": "IdentityLinkProofBody",
+      "type": "object"
+    }
+  },
   "additionalProperties": true,
   "properties": {
     "protocol_version": {
@@ -16,6 +113,15 @@
         "type": "string"
       },
       "title": "Identifiers",
+      "type": "array"
+    },
+    "foreign_identifiers": {
+      "description": "Names for this agent in other ecosystems (MCP client ID metadata URL, did:web / did:wba / did:key, Web Bot Auth key directory). Confer no trust unless their identity-link proof verifies.",
+      "items": {
+        "$ref": "#/$defs/ForeignIdentifier"
+      },
+      "maxItems": 16,
+      "title": "Foreign Identifiers",
       "type": "array"
     },
     "endpoint": {

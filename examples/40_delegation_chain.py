@@ -130,7 +130,7 @@ print(f"    Budget: {link2.chain_budget}")
 print("\n--- Step 2: Validate Chain ---\n")
 
 chain = DelegationChain(links=[link1, link2])
-valid, reason = validate_chain(chain, pub_keys)
+valid, reason = validate_chain(chain, pub_keys, allow_v1=True)
 print(f"  Valid: {valid}")
 print(f"  Reason: {reason}")
 print(f"  Depth: {chain.depth} hops")

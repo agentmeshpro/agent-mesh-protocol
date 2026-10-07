@@ -7,7 +7,14 @@ from ampro.identity.cross_verification import (
     cross_verify_identifiers,
     get_failed_identifiers,
 )
-from ampro.identity.link import IdentityLinkProofBody
+from ampro.identity.link import (
+    MAX_FOREIGN_IDENTIFIERS,
+    ForeignIdentifier,
+    IdentityLinkProofBody,
+    LinkProofVerifier,
+    normalize_foreign_identifier,
+    verified_foreign_aliases,
+)
 from ampro.identity.migration import IdentityMigrationBody
 from ampro.identity.types import (
     ConsentGrant,
@@ -23,6 +30,9 @@ __all__ = [
     "AuthMethod", "ParsedAuth", "parse_authorization",
     # Linking
     "IdentityLinkProofBody",
+    # Foreign identifiers
+    "ForeignIdentifier", "LinkProofVerifier", "verified_foreign_aliases",
+    "normalize_foreign_identifier", "MAX_FOREIGN_IDENTIFIERS",
     # Migration
     "IdentityMigrationBody",
     # Cross-verification
