@@ -2362,9 +2362,13 @@ serialised the same way and their absent optional members omitted. The
 canonical form MUST NOT exceed 16 KiB.
 
 **Validation.** A receiver MUST reject an empty chain, a chain longer
-than 10 links, and a chain longer than the root's `max_depth`. It MUST
-reject a chain whose last `delegate` is not the authenticated agent
-presenting it: a chain is not a bearer token. It SHOULD refuse a link
+than 10 links, and a chain longer than the root's `max_depth`. A chain is
+not a bearer token: the receiver MUST reject it unless its last
+`delegate` is the agent that will exercise the authority. When the chain
+arrives with a task delegated to the receiver, that is the receiver
+itself, and the authenticated sender MUST be the last link's
+`delegator`. When a caller presents authority it holds, that is the
+authenticated caller. It SHOULD refuse a link
 whose JSON form exceeds 16 KiB before parsing it. For each link in order
 it MUST check, rejecting at the first failure:
 

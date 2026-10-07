@@ -362,7 +362,7 @@ def validate_chain(
     *,
     fan_out_counts: Mapping[str, int] | None = None,
     allow_v1: bool = False,
-    presenter: str | None = None,
+    holder: str | None = None,
     keys: KeyResolver | Mapping[tuple[str, str], VerificationKey] | None = None,
     audience: str | None = None,
     understood_extensions: (
@@ -379,13 +379,14 @@ def validate_chain(
     A v2 chain is handed to :func:`ampro.delegation.v2.validate_chain_v2`
     with *keys*, *audience*, *understood_extensions*, *key_status*,
     *is_revoked*, *fan_out_counts* and the lifetime caps; it fails if
-    *keys* or *presenter* is not given. *presenter* is the authenticated
-    agent presenting the chain and must be its final delegate.
+    *keys* or *holder* is not given. *holder* is the agent that
+    exercises the authority and must be the chain's final delegate (see
+    :func:`ampro.delegation.v2.validate_chain_v2`).
 
     A v1 chain uses *public_keys* and is refused unless *allow_v1* is
     true: v1 links cannot carry an audience, a principal, typed limits or
     must-understand extensions, and their unknown fields are unsigned.
-    When *presenter* is given it is checked against v1 chains too.
+    When *holder* is given it is checked against v1 chains too.
 
     Checks performed for each link (in order):
       0. No self-delegation.
@@ -429,12 +430,12 @@ def validate_chain(
     if chain.version == 2:
         if keys is None:
             return False, "v2 chain needs a key resolver (keys=...)"
-        if presenter is None:
-            return False, "v2 chain needs the presenting agent (presenter=...)"
+        if holder is None:
+            return False, "v2 chain needs the holder (holder=...)"
         return validate_chain_v2(
             chain.links,  # type: ignore[arg-type]
             keys,
-            presenter=presenter,
+            holder=holder,
             audience=audience,
             understood_extensions=understood_extensions,
             key_status=key_status,
@@ -448,8 +449,8 @@ def validate_chain(
         return False, "v1 delegation links are not accepted (pass allow_v1=True)"
     if public_keys is None:
         return False, "v1 chain needs public_keys"
-    if presenter is not None and chain.links[-1].delegate != presenter:
-        return False, "chain was not issued to the agent presenting it"
+    if holder is not None and chain.links[-1].delegate != holder:
+        return False, "chain was not issued to the holder"
 
     now = datetime.now(UTC)
 

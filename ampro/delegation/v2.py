@@ -831,7 +831,7 @@ def validate_chain_v2(
     links: list[DelegationLinkV2],
     keys: KeyResolver | Mapping[tuple[str, str], VerificationKey],
     *,
-    presenter: str,
+    holder: str,
     audience: str | None = None,
     understood_extensions: Collection[str] | Mapping[str, ExtensionNarrowing] = (),
     key_status: KeyStatusCheck | None = None,
@@ -860,8 +860,12 @@ def validate_chain_v2(
     * Constraints narrow: every parent constraint reappears on the child,
       equal or tighter.
     * No link outlives a referenced credential, and lifetimes are capped.
-    * *presenter* (the authenticated agent presenting the chain) must be
-      the last link's ``delegate``: a chain is not a bearer token.
+    * *holder* must be the last link's ``delegate``: the agent that
+      exercises the authority. A chain is not a bearer token. When a chain
+      arrives with a task delegated to this agent, pass this agent's own
+      identifier and also check that the authenticated sender is the last
+      link's ``delegator``; when a caller presents authority it holds,
+      pass the caller's authenticated identifier.
     * ``trust_tier`` never rises down the chain.
     * A critical extension keeps its value down the chain unless
       *understood_extensions* maps its name to a narrowing function, in
@@ -871,7 +875,7 @@ def validate_chain_v2(
     """
     try:
         return _validate_chain_v2(
-            links, keys, presenter=presenter, audience=audience,
+            links, keys, holder=holder, audience=audience,
             understood_extensions=understood_extensions, key_status=key_status,
             is_revoked=is_revoked, fan_out_counts=fan_out_counts,
             max_lifetime=max_lifetime, max_unrevocable_lifetime=max_unrevocable_lifetime,
@@ -885,7 +889,7 @@ def _validate_chain_v2(
     links: list[DelegationLinkV2],
     keys: KeyResolver | Mapping[tuple[str, str], VerificationKey],
     *,
-    presenter: str,
+    holder: str,
     audience: str | None,
     understood_extensions: Collection[str] | Mapping[str, ExtensionNarrowing],
     key_status: KeyStatusCheck | None,
@@ -910,10 +914,10 @@ def _validate_chain_v2(
     narrowing: Mapping[str, ExtensionNarrowing] = (
         understood_extensions if isinstance(understood_extensions, Mapping) else {}
     )
-    if not isinstance(presenter, str) or not presenter:
-        return False, "the presenting agent must be given"
-    if links[-1].delegate != presenter:
-        return False, "chain was not issued to the agent presenting it"
+    if not isinstance(holder, str) or not holder:
+        return False, "the holder (the agent exercising the authority) must be given"
+    if links[-1].delegate != holder:
+        return False, "chain was not issued to the holder"
     root = links[0]
     if len(links) > root.max_depth:
         return False, f"chain depth {len(links)} exceeds root max_depth {root.max_depth}"

@@ -358,7 +358,7 @@ def _h_delegation_v2(doc, section, case, mp):
     ok, reason = validate_chain_v2(
         links,
         keys,
-        presenter=case["presenter"],
+        holder=case["holder"],
         audience=case["audience"],
         understood_extensions=case["understood_extensions"],
         now=datetime.fromisoformat(case["now"].replace("Z", "+00:00")),

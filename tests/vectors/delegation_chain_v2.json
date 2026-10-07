@@ -1,5 +1,5 @@
 {
-  "description": "Delegation link format v2 (WIRE-BINDING section 11.11.2). Each link is signed (EdDSA, base64url without padding) over canonical JSON (sorted keys, ',' ':' separators, UTF-8, no ASCII escaping, integers only) of every member except 'signature', extension members included, absent optional members omitted, 'scopes' sorted, timestamps in RFC 3339 UTC with 'Z', plus 'parent_link_id' and 'parent_delegate' (null for the root). Keys are looked up by (delegator, kid); every key here has kid 'k1'. Validate each case at 'now' with the given presenter (the authenticated agent presenting the chain), audience and understood extensions.",
+  "description": "Delegation link format v2 (WIRE-BINDING section 11.11.2). Each link is signed (EdDSA, base64url without padding) over canonical JSON (sorted keys, ',' ':' separators, UTF-8, no ASCII escaping, integers only) of every member except 'signature', extension members included, absent optional members omitted, 'scopes' sorted, timestamps in RFC 3339 UTC with 'Z', plus 'parent_link_id' and 'parent_delegate' (null for the root). Keys are looked up by (delegator, kid); every key here has kid 'k1'. Validate each case at 'now' with the given holder (the agent exercising the authority, the last delegate), audience and understood extensions.",
   "keys": {
     "ed25519-a": {
       "type": "Ed25519",
@@ -29,7 +29,7 @@
     {
       "description": "Valid single hop: principal, audience, amount cap, credential reference",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -82,7 +82,7 @@
     {
       "description": "Valid two hops: scopes and amount cap narrow; root-bound members repeat",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://worker.example.com",
+      "holder": "agent://worker.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -176,7 +176,7 @@
     {
       "description": "Valid: understood critical extension member is signed and accepted",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [
         "com.example.region"
@@ -235,7 +235,7 @@
     {
       "description": "Invalid: critical extension the verifier does not understand",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -293,7 +293,7 @@
     {
       "description": "Invalid: extension member altered after signing",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -349,7 +349,7 @@
     {
       "description": "Invalid: verifier is not in the audience",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://other.example.com",
       "understood_extensions": [],
       "links": [
@@ -403,7 +403,7 @@
     {
       "description": "Invalid: child raises the amount cap",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://worker.example.com",
+      "holder": "agent://worker.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -498,7 +498,7 @@
     {
       "description": "Invalid: child changes the principal",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://worker.example.com",
+      "holder": "agent://worker.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -593,7 +593,7 @@
     {
       "description": "Invalid: link without status_url lives longer than 24 h",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -634,7 +634,7 @@
     {
       "description": "Invalid: link signed under a different parent link (parent_link_id binding)",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://worker.example.com",
+      "holder": "agent://worker.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [
@@ -730,7 +730,7 @@
     {
       "description": "Invalid: link outlives the credential it references",
       "now": "2026-01-01T00:30:00Z",
-      "presenter": "agent://manager.example.com",
+      "holder": "agent://manager.example.com",
       "audience": "agent://shop.example.com",
       "understood_extensions": [],
       "links": [

@@ -75,7 +75,7 @@ def _chain(*datas: dict) -> list[DelegationLinkV2]:
 
 
 def _ok(links, **kw):
-    kw.setdefault("presenter", links[-1].delegate)
+    kw.setdefault("holder", links[-1].delegate)
     return validate_chain_v2(links, RESOLVER, **kw)
 
 
@@ -104,7 +104,7 @@ def test_algorithm_must_match_the_key():
         sign_delegation_v2(KEYS[C][0], _link(C, D, alg="EdDSA"))
     link = _sign(_link(A, B))
     wrong = {(A, "k1"): VerificationKey("ES256", KEYS[C][1].public_key)}
-    assert validate_chain_v2([link], wrong, presenter=B)[0] is False
+    assert validate_chain_v2([link], wrong, holder=B)[0] is False
 
 
 def test_unknown_alg_rejected():
@@ -122,7 +122,7 @@ def test_resolver_exception_fails_closed():
     def boom(agent, kid):
         raise RuntimeError("network")
 
-    assert validate_chain_v2(_chain(_link(A, B)), boom, presenter=B) == (
+    assert validate_chain_v2(_chain(_link(A, B)), boom, holder=B) == (
         False, "link 0: key lookup failed")
 
 
@@ -186,8 +186,8 @@ def test_validate_chain_dispatches_v2_and_needs_keys():
     )
     assert chain.version == 2
     assert validate_chain(chain) == (False, "v2 chain needs a key resolver (keys=...)")
-    assert validate_chain(chain, keys=RESOLVER)[0] is False  # no presenter
-    assert validate_chain(chain, keys=RESOLVER, presenter=B) == (True, "valid")
+    assert validate_chain(chain, keys=RESOLVER)[0] is False  # no holder
+    assert validate_chain(chain, keys=RESOLVER, holder=B) == (True, "valid")
 
 
 def test_allow_v1_false_refuses_v1():
@@ -581,7 +581,7 @@ def test_chain_length_capped():
     with pytest.raises(ValidationError):
         DelegationLinkV2.model_validate(_link(A, B, max_depth=11))
     links = _chain(_link(A, B))
-    assert validate_chain_v2(links * 11, RESOLVER, presenter=B)[0] is False
+    assert validate_chain_v2(links * 11, RESOLVER, holder=B)[0] is False
 
 
 def test_expired_and_future_links_rejected():
@@ -620,9 +620,9 @@ def test_validate_never_raises():
 
 def test_presenter_must_be_final_delegate():
     links = _chain(_link(A, B), _link(B, C, max_depth=2))
-    assert _ok(links, presenter=D)[0] is False
-    assert _ok(links, presenter=B)[0] is False  # B holds link 0, not this chain
-    assert _ok(links[:1], presenter=B) == (True, "valid")  # B presenting its own grant
+    assert _ok(links, holder=D)[0] is False
+    assert _ok(links, holder=B)[0] is False  # B holds link 0, not this chain
+    assert _ok(links[:1], holder=B) == (True, "valid")  # B presenting its own grant
 
 
 def _crit_chain(child_value, child_crit=True):

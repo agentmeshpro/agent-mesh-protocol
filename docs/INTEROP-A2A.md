@@ -254,13 +254,20 @@ becomes authority unless you verify it.
 from ampro.delegation.chain import validate_chain
 from ampro.interop.a2a import A2AAdapter
 
-PUBLIC_KEYS: dict[str, bytes] = load_delegator_keys()   # agent id -> Ed25519 key
+KEYS = load_delegator_keys()   # (agent id, kid) -> VerificationKey
 
 async def verify_chain(chain, ctx):
-    ok, reason = validate_chain(chain, PUBLIC_KEYS)
-    if ok and chain.links[-1].delegate != ctx.agent_address:
-        return False, "chain is not delegated to this agent"
-    return ok, reason
+    # Work delegated to this agent: it is the holder, and the
+    # authenticated caller must have issued the last link.
+    if chain.links[-1].delegator != ctx.sender_address:
+        return False, "last link was not issued by the caller"
+    return validate_chain(
+        chain,
+        keys=KEYS,
+        holder=ctx.agent_address,
+        audience=ctx.agent_address,
+        is_revoked=revocation_store.is_revoked,
+    )
 
 adapter = A2AAdapter.for_server(server, chain_verifier=verify_chain)
 ```
