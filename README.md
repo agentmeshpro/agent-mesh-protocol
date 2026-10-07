@@ -8,6 +8,8 @@
 
 **An open protocol for agent-to-agent communication — trust, delegation and compliance built in, and interoperable with A2A, PACT and MCP out of the box.** `ampro` is the Python reference implementation; the protocol itself is language-agnostic.
 
+**Website:** [ampro.sh](https://ampro.sh) · **Spec:** [WIRE-BINDING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md) · **Changelog:** [CHANGELOG.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/CHANGELOG.md)
+
 > ⚠️ **Pre-1.0.** The wire format is stabilising toward 1.0 but may still evolve between minor versions. Receivers MUST ignore unknown fields. See [RELEASING.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/RELEASING.md) for the stability contract.
 
 ---
@@ -215,7 +217,9 @@ AMP specifies the wire contract and nothing else. How an agent *is* — how you 
 
 ## Security
 
-Report vulnerabilities to **security@amp-protocol.dev** — see [SECURITY.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/SECURITY.md).
+Please do not open public issues for vulnerabilities. Report them privately through
+[GitHub private vulnerability reporting](https://github.com/agentmeshpro/agent-mesh-protocol/security/advisories/new)
+or by email to **vedant@catlyst.com**. See [SECURITY.md](https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/SECURITY.md).
 
 ## License
 

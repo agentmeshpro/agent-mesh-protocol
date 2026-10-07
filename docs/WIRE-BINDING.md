@@ -4,7 +4,8 @@
     Status: Normative
     Date: 2026-10-07 (security revision for ampro 0.4.0)
     Authors: AMP Contributors
-    Specification URI: https://amp-protocol.dev/spec/wire-binding/1.0
+    Specification URI: https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md
+    Website: https://ampro.sh
 
 ## Abstract
 
@@ -1084,7 +1085,11 @@ obtain. At least one of `missing_scopes`, `required_constraints`,
 
 The whole problem MUST NOT exceed 65536 bytes. A client MUST treat a
 member it cannot validate as absent and MUST NOT act on a
-`verification_uri` that is not `https`. When `missing_scopes` is not
+`verification_uri` that is not `https`. Its host MUST be a DNS name
+(the host rules of E.4: no IP literals, no single-label or
+numeric-looking hosts) and MUST NOT be `localhost` or end in
+`.localhost`. The URI is chosen by the peer, so a client MUST NOT open
+it without a person's action and MUST show its host when it does. When `missing_scopes` is not
 empty the response SHOULD also carry
 `WWW-Authenticate: Bearer realm="amp", error="insufficient_scope", scope="<space-separated scopes>"`.
 The schema is `spec/schemas/problem-authority-required.json`.
@@ -2832,13 +2837,13 @@ message:
 {
   "body_type": "key.revocation",
   "body": {
-    "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+    "agent_id": "agent://compromise-victim@registry.example.com",
     "revoked_key_id": "kid-ed25519-2026-04-01",
     "revoked_at": "2026-04-09T14:30:00Z",
     "reason": "key_compromise",
     "replacement_key_id": "kid-ed25519-2026-04-09",
-    "jwks_url": "https://registry.amp-protocol.dev/.well-known/jwks.json",
-    "signature": "W8kMAdUC98k2Tq44G_DjAIMvU_iWMjzQlo7FRCV-V5JuIHGYq5hvoaUI3UlUY8LQR5OfnYfyOATxlzM55hM1BQ"
+    "jwks_url": "https://registry.example.com/.well-known/jwks.json",
+    "signature": "yI8EFO_2YxHboCol-niRlXivTwEueblFvnbZsesdUgt9MvkJWEwwXoPXid5bpAsHht1CcR3PvlW3jzdsuqxJBw"
   }
 }
 ```
@@ -2873,7 +2878,7 @@ object with these properties:
 For the example above, the signed string is:
 
 ```
-{"agent_id":"agent://compromise-victim@registry.amp-protocol.dev","jwks_url":"https://registry.amp-protocol.dev/.well-known/jwks.json","reason":"key_compromise","replacement_key_id":"kid-ed25519-2026-04-09","revoked_at":"2026-04-09T14:30:00Z","revoked_key_id":"kid-ed25519-2026-04-01"}
+{"agent_id":"agent://compromise-victim@registry.example.com","jwks_url":"https://registry.example.com/.well-known/jwks.json","reason":"key_compromise","replacement_key_id":"kid-ed25519-2026-04-09","revoked_at":"2026-04-09T14:30:00Z","revoked_key_id":"kid-ed25519-2026-04-01"}
 ```
 
 This example is signed with the RFC 8032 TEST 1 key (see
@@ -2909,19 +2914,30 @@ Rules for verifiers:
   `rotated` key; of two `key_rotation` notices the earlier
   `revoked_at` wins.
 - A verifier MUST only record a revocation after its signature
-  verifies (Section 12.12).
+  verifies (Section 12.12) against a key of the agent named in
+  `agent_id`, taken from that agent's own key set (its JWKS or
+  `agent.json`), never against a key supplied with the message. A key
+  that is itself revoked MAY revoke itself again (to upgrade the
+  reason) but MUST NOT revoke the agent's other keys.
 - Agent ids are compared after the normalisation of Appendix E
-  (NFKC + IDNA host, case-insensitive), so one agent cannot have two
-  spellings with different statuses. Key ids are compared exactly.
+  (NFKC + IDNA host, case-insensitive, port ignored, since keys are
+  published per host), so one agent cannot have two spellings with
+  different statuses. An `agent://` id with a trailing dot, a path, a
+  query or a fragment has no canonical form and MUST be rejected, here
+  and as a delegation `delegator` or `delegate`. Key ids are compared
+  exactly.
 
 The reference implementation exposes this as `KeyStatus`
 (`active`, `rotated`, `compromised`, `decommissioned`, `unknown`), the
 `KeyStatusResolver` protocol (`key_status(agent_id, kid)`), the
 `signature_allowed(status, signed_at=..., revoked_at=...)` decision
-function and a bounded `InMemoryKeyStatusResolver` (LRU eviction of
-`active` entries only; revocation records are never evicted, and an
-agent that revokes more than 1000 keys is treated as wholly
-compromised).
+function and a bounded `InMemoryKeyStatusResolver`. Its memory is split
+so that no pool can be flooded to block another: active keys (LRU),
+revocations of keys it knew as active (oldest `rotated` evicted first,
+then `decommissioned`, then `compromised`), and best-effort revocations
+of keys it never saw active. An agent that revokes more than 64 known
+keys is treated as wholly compromised. A full store never refuses a
+revocation or an active key.
 
 ### 12.13 Anti-Abuse Challenges
 
@@ -3007,7 +3023,8 @@ every outbound client therefore also carries these **HTTP request headers**
   is propagated.
 - **Hop count.** The effective hop count is the **maximum** of
   `AMP-Hop-Count`, any protocol-specific copy (A2A `metadata["amp.hopCount"]`)
-  and the number of `Visited-Agents` entries; a lower value never lowers it.
+  and the number of `Visited-Agents` entries (every entry counts, repeated
+  ones included); a lower value never lowers it.
   If it exceeds the limit (`SecurityPolicy.max_visited_agents`, default 20)
   the request is rejected: 409 `loop-detected` on `POST /agent/message`,
   400 on A2A / PACT / MCP. Every outbound call sends `hop count + 1`, and a
@@ -4492,7 +4509,10 @@ entries is invalid.
   backslashes, whitespace or control characters.
 - The host is a DNS name with at least two labels, normalised as in
   E.2 (NFKC, then IDNA to its A-label form, lowercased). IP literals,
-  a trailing dot and percent-encoded hosts are rejected. A
+  a trailing dot and percent-encoded hosts are rejected, and so is a
+  host whose last label does not start with a letter or that an
+  `inet_aton`-style parser reads as an IPv4 address (`127.0x1`,
+  `10.1`). A
   look-alike Unicode host therefore never equals the ASCII name it
   imitates.
 - The port is 1..65535; `:443` is dropped.

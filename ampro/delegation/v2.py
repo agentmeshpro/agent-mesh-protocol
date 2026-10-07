@@ -435,7 +435,15 @@ class DelegationLinkV2(BaseModel):
     @field_validator("delegator", "delegate")
     @classmethod
     def _agent(cls, v: str) -> str:
-        return _check_identifier(v, "delegator/delegate")
+        v = _check_identifier(v, "delegator/delegate")
+        if v[:8].lower() == "agent://":
+            # Refuse spellings with no canonical form (trailing dot, path,
+            # query, fragment): they could dodge a key revocation recorded
+            # under the canonical spelling.
+            from ampro.security.key_revocation import canonical_agent_id
+
+            canonical_agent_id(v)
+        return v
 
     @field_validator("scopes")
     @classmethod

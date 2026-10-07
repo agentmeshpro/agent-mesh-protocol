@@ -441,6 +441,15 @@ def _https_uri(value: str, what: str) -> str:
         raise ValueError(f"{what} has an invalid port")
     if "#" in value:
         raise ValueError(f"{what} must not have a fragment")
+    # A peer controls this value, and clients may show or open it: refuse
+    # IP literals, localhost, single-label and numeric-looking hosts, which
+    # would point a user or a fetcher at their own machine or network.
+    from ampro.core.addressing import _canonical_dns_host
+
+    host = parts.hostname
+    if host == "localhost" or host.endswith(".localhost"):
+        raise ValueError(f"{what} must not point at localhost")
+    _canonical_dns_host(host, what)
     return value
 
 

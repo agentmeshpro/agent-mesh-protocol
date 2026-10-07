@@ -40,7 +40,7 @@ import inspect
 import json
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -351,8 +351,14 @@ class AgentServer:
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         """Route an HTTP-like request to the appropriate handler.
+
+        Pass the request *headers* so that ``traceparent`` and
+        ``AMP-Hop-Count`` are honoured; without them the hop count starts
+        again at the ``Visited-Agents`` count.  Prefer :meth:`handle`,
+        which also authenticates and rate-limits.
 
         Returns:
             ``(status_code, headers, json_body_string)``
@@ -374,7 +380,15 @@ class AgentServer:
 
         # 3. POST /agent/message
         if method == "POST" and path == "/agent/message":
-            return await self._handle_message(body)
+            inbound = None
+            if headers is not None:
+                try:
+                    inbound = read_inbound(headers, max_hops=self._max_hops())
+                except HopLimitExceeded:
+                    return self._error_response(loop_detected("Hop limit exceeded"))
+                except TracePropagationError as exc:
+                    return self._error_response(invalid_message(str(exc)))
+            return await self._handle_message(body, inbound=inbound)
 
         # 4. GET /agent/stream (placeholder SSE)
         if method == "GET" and path == "/agent/stream":
@@ -691,14 +705,15 @@ class AgentServer:
             from ampro.delegation.chain import (
                 check_visited_agents_limit,
                 check_visited_agents_loop,
-                parse_visited_agents,
             )
 
             if not check_visited_agents_limit(visited, policy.max_visited_agents):
                 return self._error_response(loop_detected("Visited-Agents limit exceeded"))
             if any(check_visited_agents_loop(visited, a) for a in self._addresses()):
                 return self._error_response(loop_detected("Message has already visited this agent"))
-            visited_count = len(parse_visited_agents(visited))
+            # Every entry is a hop, repeated ones included: a duplicate means
+            # the message already went round, so it must not count as one.
+            visited_count = sum(1 for entry in visited.split(",") if entry.strip())
 
         # Hop count across protocol boundaries: the larger of AMP-Hop-Count
         # and the Visited-Agents count (never lowered by either).

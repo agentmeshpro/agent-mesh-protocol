@@ -556,11 +556,15 @@ def delegation_key_check(
     ``mark_active`` keys as they fetch them. Pass
     ``unknown_is_active=True`` only when the key itself comes from a source
     you already trust to drop revoked keys; a revoked key is still
-    rejected either way.
+    rejected either way, and so is an agent id with no canonical form.
     """
 
     def check(agent_id: str, kid: str, signed_at: datetime) -> bool:
         try:
+            # A spelling with no canonical form could dodge a revocation
+            # stored under the canonical one: refuse it outright.
+            canonical_agent_id(agent_id)
+            _check_token(kid, "kid", MAX_KEY_ID_LENGTH)
             revoked_at = None
             record_fn = getattr(resolver, "record", None)
             if callable(record_fn):
@@ -593,14 +597,6 @@ class KeyStatusResolver(Protocol):
         ...
 
 
-class KeyStatusStoreFullError(RuntimeError):
-    """The resolver cannot record a revocation without evicting another one.
-
-    Raised instead of silently dropping a revocation.  Revocation records
-    are never evicted; only ``ACTIVE`` records are.
-    """
-
-
 @dataclass(frozen=True)
 class KeyStatusRecord:
     """One entry of :class:`InMemoryKeyStatusResolver`."""
@@ -617,18 +613,35 @@ def canonical_agent_id(agent_id: str) -> str:
     so ``agent://Bücher.example`` and ``agent://xn--bcher-kva.example``
     share one record.  Otherwise a revocation stored under one spelling
     could be sidestepped by asking about another.
+
+    Spellings that DNS or URL parsers fold together but a string compare
+    would not are refused rather than guessed at: a trailing ``.`` on the
+    host or registry, and any path, query or fragment.  A port is dropped,
+    because an agent's keys are published per host (``agent.json`` lives
+    at ``https://<host>/.well-known/``), so ``agent://h:8443`` and
+    ``agent://h`` are the same signer for revocation purposes.
     """
     if not isinstance(agent_id, str):
         raise ValueError("agent_id must be a string")
     _check_token(agent_id, "agent_id", MAX_REVOCATION_AGENT_ID_LENGTH)
+    from urllib.parse import unquote
+
     from ampro.core.addressing import AddressType, _normalize_host, parse_agent_uri
 
     if agent_id[:8].lower() == "agent://":
-        address = parse_agent_uri("agent://" + agent_id[8:])
+        authority = agent_id[8:]
+        if any(ch in unquote(authority) for ch in "/?#\\"):
+            raise ValueError("agent_id must not carry a path, query or fragment")
+        address = parse_agent_uri("agent://" + authority)
         if address.address_type is AddressType.SLUG:
-            address = address.model_copy(
-                update={"registry": _normalize_host(address.registry or "")}
-            )
+            registry = address.registry or ""
+            if registry.endswith(".") or (address.slug or "").endswith("."):
+                raise ValueError("agent_id must not end with '.'")
+            address = address.model_copy(update={"registry": _normalize_host(registry)})
+        elif address.address_type is AddressType.HOST:
+            if (address.host or "").endswith("."):
+                raise ValueError("agent_id host must not end with '.'")
+            address = address.model_copy(update={"port": None})
         return address.to_uri().lower()
     return unicodedata.normalize("NFKC", agent_id).lower()
 
@@ -636,45 +649,81 @@ def canonical_agent_id(agent_id: str) -> str:
 class InMemoryKeyStatusResolver:
     """Bounded, thread-safe :class:`KeyStatusResolver` reference implementation.
 
-    * :meth:`add_revocation` records an authenticated ``key.revocation``.
     * :meth:`mark_active` records a key seen in the agent's current key set
-      (for example its JWKS).  It never downgrades a revoked key.
+      (for example its JWKS), optionally with its raw public key.  It never
+      downgrades a revoked key.
+    * :meth:`add_revocation` records a ``key.revocation`` only after its
+      signature verifies against a key *of the agent being revoked*,
+      looked up by ``signer_kid`` (never a key the caller merely hands in).
     * Unknown or malformed keys resolve to :attr:`KeyStatus.UNKNOWN`.
 
-    Bounds: at most ``max_entries`` records.  When full, the least recently
-    used ``ACTIVE`` record is evicted (it then reads as ``UNKNOWN``, which
-    fails closed).  Revocation records are never evicted; if the store is
-    full of them, :class:`KeyStatusStoreFullError` is raised rather than a
-    revocation being dropped.  An agent that accumulates more than
-    ``max_revocations_per_agent`` revoked keys is collapsed into a single
-    agent-wide ``COMPROMISED`` tombstone (every key of that agent is then
-    refused), so one signer cannot exhaust the store.
+    Memory is split into three independently bounded pools, so no one of
+    them can be flooded to block another:
+
+    ``max_entries`` ACTIVE keys
+        Least recently used first out.  An evicted key reads as
+        ``UNKNOWN`` (fails closed) until it is seen again.
+    ``max_revocations`` revocations of keys this store knew as ACTIVE
+        These are the revocations that matter: they stop a key the
+        verifier was relying on.  Revoking an ACTIVE key moves it here.
+        When full, the oldest ``ROTATED`` record goes first, then
+        ``DECOMMISSIONED``, then ``COMPROMISED``; every eviction is logged
+        at ERROR.  An evicted record reads as ``UNKNOWN`` (refused), and
+        only the agent's own live key set can make it ACTIVE again.
+    ``max_unsolicited`` revocations of keys this store never saw ACTIVE
+        Best effort, least recently used first out.  Such keys are already
+        ``UNKNOWN`` and refused unless a caller opts into
+        ``unknown_is_active``, so anyone able to mint identities can only
+        churn this pool, never the other two.
+
+    An agent with more than ``max_revocations_per_agent`` revocations in the
+    second pool is collapsed into one agent-wide ``COMPROMISED`` record
+    (every key of that agent is then refused).  Nothing ever raises because
+    the store is full.
     """
 
     DEFAULT_MAX_ENTRIES = 100_000
-    DEFAULT_MAX_REVOCATIONS_PER_AGENT = 1_000
+    DEFAULT_MAX_REVOCATIONS = 25_000
+    DEFAULT_MAX_UNSOLICITED = 10_000
+    DEFAULT_MAX_REVOCATIONS_PER_AGENT = 64
+
+    #: Eviction order for the revocation pool: weakest status first.
+    _EVICTION_ORDER = (KeyStatus.ROTATED, KeyStatus.DECOMMISSIONED, KeyStatus.COMPROMISED)
 
     def __init__(
         self,
         max_entries: int = DEFAULT_MAX_ENTRIES,
         *,
+        max_revocations: int = DEFAULT_MAX_REVOCATIONS,
+        max_unsolicited: int = DEFAULT_MAX_UNSOLICITED,
         max_revocations_per_agent: int = DEFAULT_MAX_REVOCATIONS_PER_AGENT,
     ) -> None:
         for name, value in (
             ("max_entries", max_entries),
+            ("max_revocations", max_revocations),
+            ("max_unsolicited", max_unsolicited),
             ("max_revocations_per_agent", max_revocations_per_agent),
         ):
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
-        self._max_entries = max_entries
+        self._max_active = max_entries
+        self._max_revoked = max_revocations
+        self._max_unsolicited = max_unsolicited
         self._max_per_agent = max_revocations_per_agent
-        #: ACTIVE keys in LRU order (oldest first); the only evictable records.
-        self._active: OrderedDict[tuple[str, str], None] = OrderedDict()
-        #: Revocation records; never evicted.
-        self._revoked: dict[tuple[str, str], KeyStatusRecord] = {}
+        #: ACTIVE keys in LRU order (oldest first) -> raw public key or None.
+        self._active: OrderedDict[tuple[str, str], bytes | None] = OrderedDict()
+        #: Revocations of known keys, one insertion-ordered dict per status.
+        self._revoked: dict[KeyStatus, OrderedDict[tuple[str, str], KeyStatusRecord]] = {
+            status: OrderedDict() for status in self._EVICTION_ORDER
+        }
+        #: Raw public keys of revoked keys, kept so a key can still sign its
+        #: own (repeated or upgraded) revocation.
+        self._revoked_keys: dict[tuple[str, str], bytes] = {}
         self._revoked_per_agent: dict[str, int] = {}
-        #: Agents collapsed to an agent-wide COMPROMISED record; never evicted.
-        self._agent_tombstones: set[str] = set()
+        #: Agent-wide COMPROMISED records, oldest first; share the revocation budget.
+        self._agent_tombstones: OrderedDict[str, None] = OrderedDict()
+        #: Revocations of keys never seen ACTIVE; LRU, best effort.
+        self._unsolicited: OrderedDict[tuple[str, str], KeyStatusRecord] = OrderedDict()
         self._lock = threading.Lock()
 
     # -- queries -------------------------------------------------------
@@ -687,17 +736,19 @@ class InMemoryKeyStatusResolver:
     def record(self, agent_id: str, kid: str) -> KeyStatusRecord | None:
         """The full record (status and ``revoked_at``), or ``None`` when unknown."""
         try:
-            agent = canonical_agent_id(agent_id)
-            _check_token(kid, "kid", MAX_KEY_ID_LENGTH)
+            key = self._key(agent_id, kid)
         except (ValueError, TypeError):
             return None
-        key = (agent, kid)
         with self._lock:
-            if agent in self._agent_tombstones:
+            if key[0] in self._agent_tombstones:
                 return KeyStatusRecord(KeyStatus.COMPROMISED)
-            revoked = self._revoked.get(key)
+            revoked = self._find_revoked(key)
             if revoked is not None:
                 return revoked
+            unsolicited = self._unsolicited.get(key)
+            if unsolicited is not None:
+                self._unsolicited.move_to_end(key)
+                return unsolicited
             if key in self._active:
                 self._active.move_to_end(key)
                 return KeyStatusRecord(KeyStatus.ACTIVE)
@@ -705,30 +756,88 @@ class InMemoryKeyStatusResolver:
 
     def __len__(self) -> int:
         with self._lock:
-            return self._size()
+            return (
+                len(self._active)
+                + sum(len(pool) for pool in self._revoked.values())
+                + len(self._agent_tombstones)
+                + len(self._unsolicited)
+            )
 
     # -- updates -------------------------------------------------------
+
+    def mark_active(
+        self, agent_id: str, kid: str, *, public_key: bytes | None = None,
+    ) -> bool:
+        """Record ``(agent_id, kid)`` as a key in the agent's current key set.
+
+        Pass the raw 32-byte Ed25519 *public_key* when you have it: it is
+        what :meth:`add_revocation` later verifies that agent's revocations
+        against.  Only call this with keys fetched from the agent's own
+        key set (its JWKS or ``agent.json``), never with a key a message
+        carried.
+
+        Returns ``True`` when the key is (now) ``ACTIVE`` and ``False``
+        (store unchanged) when it is already revoked or the agent is
+        tombstoned.  Raises ``ValueError`` for malformed input.
+        """
+        key = self._key(agent_id, kid)
+        if public_key is not None:
+            public_key = _raw_ed25519(public_key)
+        with self._lock:
+            if (
+                key[0] in self._agent_tombstones
+                or self._find_revoked(key) is not None
+                or key in self._unsolicited
+            ):
+                logger.warning(
+                    "key_revocation: refusing to mark revoked key %s/%s active", *key,
+                )
+                return False
+            if key in self._active:
+                self._active.move_to_end(key)
+                known = self._active[key]
+                if public_key is not None and known != public_key:
+                    if known is not None:
+                        logger.warning(
+                            "key_revocation: key material for %s/%s changed", *key,
+                        )
+                    self._active[key] = public_key
+                return True
+            if len(self._active) >= self._max_active:
+                self._active.popitem(last=False)
+            self._active[key] = public_key
+            return True
 
     def add_revocation(
         self,
         body: KeyRevocationBody,
         revoked_at_dt: datetime,
         *,
-        public_key_bytes: bytes,
+        signer_kid: str,
+        key_lookup: Callable[[str, str], bytes | None] | None = None,
     ) -> KeyStatus:
         """Record an authenticated revocation and return the resulting status.
 
-        ``public_key_bytes`` is the revoking agent's raw Ed25519 key: the
-        signature is checked here with :func:`is_revocation_authentic`, so
-        an unauthenticated body can never be ingested.  ``revoked_at_dt``
-        MUST be timezone-aware and equal ``body.revoked_at``.
+        The signature is checked here, against a key that belongs to
+        ``body.agent_id``: the key with id *signer_kid* of that same agent.
+        That key comes from *key_lookup* (``(agent_id, kid) -> raw Ed25519
+        public key or None``, which MUST resolve from the agent's own key
+        set) when given, else from the key recorded by :meth:`mark_active`.
+        So a revocation can never be ingested on the strength of a key that
+        is not the revoked agent's own.
 
+        The signing key must itself be usable: ACTIVE here (or, with
+        *key_lookup*, at least not revoked here), unless it is the key being
+        revoked (a key may always revoke itself).  A compromised key cannot
+        revoke its agent's other keys.
+
+        ``revoked_at_dt`` MUST be timezone-aware and equal ``body.revoked_at``.
         A stronger status is never replaced by a weaker one (``COMPROMISED``
         beats ``DECOMMISSIONED`` beats ``ROTATED`` beats ``ACTIVE``); of two
         ``ROTATED`` records the earlier ``revoked_at`` wins.
 
-        Raises ``ValueError`` (bad input or signature) or
-        :class:`KeyStatusStoreFullError`.
+        Raises ``ValueError`` for bad input, an unknown or unusable signing
+        key, or a signature that does not verify.
         """
         if not isinstance(body, KeyRevocationBody):
             raise ValueError("body must be a KeyRevocationBody")
@@ -736,23 +845,62 @@ class InMemoryKeyStatusResolver:
             raise ValueError("revoked_at_dt must be a timezone-aware datetime")
         if revoked_at_dt != body.revoked_at_datetime():
             raise ValueError("revoked_at_dt does not match body.revoked_at")
-        if not isinstance(public_key_bytes, (bytes, bytearray)) or len(public_key_bytes) != 32:
-            raise ValueError("public_key_bytes must be a 32-byte Ed25519 public key")
-        if not is_revocation_authentic(body, bytes(public_key_bytes)):
+        target = self._key(body.agent_id, body.revoked_key_id)
+        signer = self._key(body.agent_id, signer_kid)
+        self_revocation = signer == target
+
+        if key_lookup is not None:
+            try:
+                looked_up = key_lookup(body.agent_id, signer_kid)
+            except Exception:
+                looked_up = None
+            if looked_up is None:
+                raise ValueError("signing key not found in the agent's key set")
+            public_key = _raw_ed25519(looked_up)
+            with self._lock:
+                if not self_revocation and self._is_revoked(signer):
+                    raise ValueError("signing key is itself revoked")
+        else:
+            with self._lock:
+                if signer in self._active:
+                    public_key = self._active[signer]
+                elif self_revocation:
+                    public_key = self._revoked_keys.get(signer)
+                else:
+                    public_key = None
+            if public_key is None:
+                raise ValueError(
+                    "no recorded public key for the signing key; mark_active() it "
+                    "from the agent's key set or pass key_lookup"
+                )
+
+        if not is_revocation_authentic(body, public_key):
             raise ValueError("key.revocation signature does not verify; refusing to ingest")
 
         status = key_status_for_reason(body.reason)
-        agent = canonical_agent_id(body.agent_id)
-        key = (agent, body.revoked_key_id)
         new = KeyStatusRecord(status, revoked_at_dt.astimezone(UTC))
+        agent = target[0]
 
         with self._lock:
             if agent in self._agent_tombstones:
+                self._agent_tombstones.move_to_end(agent)
                 return KeyStatus.COMPROMISED
-            current = self._revoked.get(key)
+            current = self._find_revoked(target)
             if current is not None:
                 merged = self._merge(current, new)
-                self._revoked[key] = merged
+                if merged is not current:
+                    del self._revoked[current.status][target]
+                    self._revoked[merged.status][target] = merged
+                return merged.status
+
+            if target not in self._active:
+                # Never seen ACTIVE here: best-effort pool only.
+                current = self._unsolicited.get(target)
+                merged = new if current is None else self._merge(current, new)
+                self._unsolicited[target] = merged
+                self._unsolicited.move_to_end(target)
+                while len(self._unsolicited) > self._max_unsolicited:
+                    self._unsolicited.popitem(last=False)
                 return merged.status
 
             if self._revoked_per_agent.get(agent, 0) >= self._max_per_agent:
@@ -763,44 +911,38 @@ class InMemoryKeyStatusResolver:
                     agent, self._max_per_agent,
                 )
                 return KeyStatus.COMPROMISED
-            # An ACTIVE record for this key is replaced in place (no growth).
-            if self._active.pop(key, _MISSING) is _MISSING:
-                self._make_room()
-            self._revoked[key] = new
+            key_bytes = self._active.pop(target)
+            if key_bytes is not None:
+                self._revoked_keys[target] = key_bytes
+            self._revoked[status][target] = new
             self._revoked_per_agent[agent] = self._revoked_per_agent.get(agent, 0) + 1
+            self._enforce_revocation_budget()
             return status
 
-    def mark_active(self, agent_id: str, kid: str) -> bool:
-        """Record ``(agent_id, kid)`` as a currently valid key.
+    # -- internals (caller holds the lock unless noted) ----------------
 
-        Returns ``True`` when the key is (now) ``ACTIVE``.  Returns ``False``
-        and leaves the store unchanged when the key is already revoked (no
-        downgrade), the agent is tombstoned, or the store is full of
-        revocation records.  Raises ``ValueError`` for malformed ids.
-        """
+    @staticmethod
+    def _key(agent_id: str, kid: str) -> tuple[str, str]:
+        """Canonical ``(agent, kid)``; lock not needed.  Raises ``ValueError``."""
         agent = canonical_agent_id(agent_id)
+        if not isinstance(kid, str):
+            raise ValueError("kid must be a string")
         _check_token(kid, "kid", MAX_KEY_ID_LENGTH)
-        key = (agent, kid)
-        with self._lock:
-            if agent in self._agent_tombstones or key in self._revoked:
-                logger.warning(
-                    "key_revocation: refusing to mark revoked key %s/%s active", agent, kid,
-                )
-                return False
-            if key in self._active:
-                self._active.move_to_end(key)
-                return True
-            try:
-                self._make_room()
-            except KeyStatusStoreFullError:
-                return False
-            self._active[key] = None
-            return True
+        return agent, kid
 
-    # -- internals (caller holds the lock) -----------------------------
+    def _find_revoked(self, key: tuple[str, str]) -> KeyStatusRecord | None:
+        for pool in self._revoked.values():
+            record = pool.get(key)
+            if record is not None:
+                return record
+        return None
 
-    def _size(self) -> int:
-        return len(self._active) + len(self._revoked) + len(self._agent_tombstones)
+    def _is_revoked(self, key: tuple[str, str]) -> bool:
+        return (
+            key[0] in self._agent_tombstones
+            or self._find_revoked(key) is not None
+            or key in self._unsolicited
+        )
 
     @staticmethod
     def _merge(current: KeyStatusRecord, new: KeyStatusRecord) -> KeyStatusRecord:
@@ -812,25 +954,52 @@ class InMemoryKeyStatusResolver:
             return new
         return current
 
-    def _make_room(self) -> None:
-        """Ensure one free slot by evicting the LRU ACTIVE record, else raise."""
-        if self._size() < self._max_entries:
-            return
-        if not self._active:
-            raise KeyStatusStoreFullError(
-                f"key status store holds {self._size()} revocation records "
-                "and cannot evict any of them"
-            )
-        self._active.popitem(last=False)
+    def _revocation_count(self) -> int:
+        return sum(len(pool) for pool in self._revoked.values()) + len(self._agent_tombstones)
+
+    def _enforce_revocation_budget(self) -> None:
+        while self._revocation_count() > self._max_revoked:
+            for status in self._EVICTION_ORDER:
+                pool = self._revoked[status]
+                if pool:
+                    key, _ = pool.popitem(last=False)
+                    self._revoked_keys.pop(key, None)
+                    self._decrement(key[0])
+                    logger.error(
+                        "key_revocation: revocation store full; evicted %s record "
+                        "for %s/%s (it now reads as unknown)", status.value, *key,
+                    )
+                    break
+            else:
+                agent, _ = self._agent_tombstones.popitem(last=False)
+                logger.error(
+                    "key_revocation: revocation store full; evicted agent-wide "
+                    "compromise record for %s (its keys now read as unknown)", agent,
+                )
+
+    def _decrement(self, agent: str) -> None:
+        left = self._revoked_per_agent.get(agent, 0) - 1
+        if left > 0:
+            self._revoked_per_agent[agent] = left
+        else:
+            self._revoked_per_agent.pop(agent, None)
 
     def _tombstone(self, agent: str) -> None:
-        for key in [k for k in self._revoked if k[0] == agent]:
-            del self._revoked[key]
+        for pool in self._revoked.values():
+            for key in [k for k in pool if k[0] == agent]:
+                del pool[key]
+        for key in [k for k in self._revoked_keys if k[0] == agent]:
+            del self._revoked_keys[key]
         for key in [k for k in self._active if k[0] == agent]:
             del self._active[key]
+        for key in [k for k in self._unsolicited if k[0] == agent]:
+            del self._unsolicited[key]
         self._revoked_per_agent.pop(agent, None)
-        # The tombstone takes the place of the (>= 1) records just dropped.
-        self._agent_tombstones.add(agent)
+        self._agent_tombstones[agent] = None
+        self._enforce_revocation_budget()
 
 
-_MISSING = object()
+def _raw_ed25519(value: object) -> bytes:
+    if not isinstance(value, (bytes, bytearray)) or len(value) != 32:
+        raise ValueError("public key must be a raw 32-byte Ed25519 public key")
+    return bytes(value)

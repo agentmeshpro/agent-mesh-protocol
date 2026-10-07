@@ -293,7 +293,6 @@ from ampro.security.key_revocation import (
     KeyStatus,
     KeyStatusRecord,
     KeyStatusResolver,
-    KeyStatusStoreFullError,
     RevocationReason,
     RevocationStore,
     canonical_revocation_bytes,
@@ -509,7 +508,7 @@ __all__ = [
     "register_revocation_store", "should_reject_cached_key",
     "revocation_verify_cached_key",
     # Key status (compromise vs rotation)
-    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord", "KeyStatusStoreFullError",
+    "KeyStatus", "KeyStatusResolver", "KeyStatusRecord",
     "InMemoryKeyStatusResolver", "signature_allowed", "key_status_for_reason",
     "canonical_revocation_bytes",
     # Tool consent
