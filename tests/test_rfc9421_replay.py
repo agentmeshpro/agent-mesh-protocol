@@ -253,6 +253,8 @@ class TestRevocationWiredIntoResolver:
     def _reset(self) -> Generator[None, None, None]:
         from ampro.security.key_revocation import (
             AllowAllRevocationStore as _NoOpRevocationStore,
+        )
+        from ampro.security.key_revocation import (
             register_revocation_store,
         )
         from ampro.trust.resolver import (
