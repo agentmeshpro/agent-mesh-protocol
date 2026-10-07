@@ -95,7 +95,7 @@ class TestBudgetFailClosed:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"Expected valid chain, got: {reason}"
 
     def test_malformed_budget_string_rejects(self):
@@ -110,7 +110,7 @@ class TestBudgetFailClosed:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         assert "invalid chain_budget" in reason.lower()
 
@@ -147,7 +147,7 @@ class TestBudgetFailClosed:
             "agent://a.example.com": pub_a,
             "agent://b.example.com": pub_b,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         assert "child budget" in reason.lower() or "exceeds parent" in reason.lower()
 
@@ -163,7 +163,7 @@ class TestBudgetFailClosed:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"No budget should be fine, got: {reason}"
 
     def test_negative_budget_rejects(self):
@@ -181,7 +181,7 @@ class TestBudgetFailClosed:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         # Should fail as malformed (negative not parseable by regex)
         assert "invalid chain_budget" in reason.lower() or "negative" in reason.lower()
@@ -198,7 +198,7 @@ class TestBudgetFailClosed:
         )
         chain = DelegationChain(links=[link])
         public_keys = {"agent://a.example.com": pub_a}
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is False
         assert "exhausted" in reason.lower() or "budget" in reason.lower()
 
@@ -235,7 +235,7 @@ class TestBudgetFailClosed:
             "agent://a.example.com": pub_a,
             "agent://b.example.com": pub_b,
         }
-        valid, reason = validate_chain(chain, public_keys)
+        valid, reason = validate_chain(chain, public_keys, allow_v1=True)
         assert valid is True, f"Child within parent budget should pass, got: {reason}"
 
     def test_parse_chain_budget_valid(self):

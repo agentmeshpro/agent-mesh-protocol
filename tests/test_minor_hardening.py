@@ -74,5 +74,6 @@ def test_delegation_link_without_scopes_is_rejected():
     ok, reason = validate_chain(
         DelegationChain(links=[DelegationLink(**data)]),
         public_keys={"agent://a.example.com": sk.public_key().public_bytes_raw()},
+        allow_v1=True,
     )
     assert not ok and "scope" in reason

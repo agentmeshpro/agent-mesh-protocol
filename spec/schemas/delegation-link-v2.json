@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/delegation-link-v2.json",
+  "title": "DelegationLinkV2",
+  "description": "One link of a v2 delegation chain (WIRE-BINDING section 11.11.2). Structure only: string formats, narrowing and signature rules are normative in the specification text.",
+  "$defs": {
+    "AmountConstraint": {
+      "additionalProperties": false,
+      "description": "Per-action spending cap, in integer minor units of ``currency``.",
+      "properties": {
+        "type": {
+          "const": "amount",
+          "title": "Type",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "max_minor": {
+          "maximum": 1000000000000000,
+          "minimum": 0,
+          "title": "Max Minor",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "currency",
+        "max_minor"
+      ],
+      "title": "AmountConstraint",
+      "type": "object"
+    },
+    "BudgetConstraint": {
+      "additionalProperties": false,
+      "description": "Total spend left for the chain, in integer minor units.",
+      "properties": {
+        "type": {
+          "const": "budget",
+          "title": "Type",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "remaining_minor": {
+          "maximum": 1000000000000000,
+          "minimum": 0,
+          "title": "Remaining Minor",
+          "type": "integer"
+        },
+        "max_minor": {
+          "maximum": 1000000000000000,
+          "minimum": 0,
+          "title": "Max Minor",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "currency",
+        "remaining_minor",
+        "max_minor"
+      ],
+      "title": "BudgetConstraint",
+      "type": "object"
+    },
+    "CountConstraint": {
+      "additionalProperties": false,
+      "description": "Maximum number of actions the delegate may take under this link.",
+      "properties": {
+        "type": {
+          "const": "count",
+          "title": "Type",
+          "type": "string"
+        },
+        "max": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "max"
+      ],
+      "title": "CountConstraint",
+      "type": "object"
+    },
+    "CredentialRef": {
+      "additionalProperties": false,
+      "description": "A foreign credential the root authority rests on, by reference only.\n\n``ref`` is an opaque identifier (a grant id, mandate id, token\nreference). It MUST NOT be the credential itself: compact JWS/JWT\nvalues and bearer strings are rejected.",
+      "properties": {
+        "type": {
+          "description": "Credential type, e.g. 'oauth-grant', 'ap2-mandate'",
+          "title": "Type",
+          "type": "string"
+        },
+        "ref": {
+          "description": "Opaque reference; never the secret",
+          "title": "Ref",
+          "type": "string"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'sha-256:' + base64url digest of the credential, for audit",
+          "title": "Digest"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the referenced credential expires",
+          "title": "Expires At"
+        }
+      },
+      "required": [
+        "type",
+        "ref"
+      ],
+      "title": "CredentialRef",
+      "type": "object"
+    },
+    "Principal": {
+      "additionalProperties": false,
+      "description": "The human (or organisation) whose authority a chain carries.\n\n``sub`` SHOULD be pairwise: a different subject value for each\ncounterparty, so that merchants cannot correlate one person across\nsites.",
+      "properties": {
+        "iss": {
+          "description": "Who authenticated the principal (https URL or agent:// URI)",
+          "title": "Iss",
+          "type": "string"
+        },
+        "sub": {
+          "description": "Subject identifier at the issuer; SHOULD be pairwise",
+          "title": "Sub",
+          "type": "string"
+        },
+        "acr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authentication context class",
+          "title": "Acr"
+        },
+        "present": {
+          "description": "True if the principal approved this delegation interactively",
+          "title": "Present",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "iss",
+        "sub",
+        "present"
+      ],
+      "title": "Principal",
+      "type": "object"
+    },
+    "ResourceConstraint": {
+      "additionalProperties": false,
+      "description": "Authority applies only to these resource ids (orders, accounts, ...).",
+      "properties": {
+        "type": {
+          "const": "resource",
+          "title": "Type",
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "ids"
+      ],
+      "title": "ResourceConstraint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "v": {
+      "const": 2,
+      "title": "V",
+      "type": "integer"
+    },
+    "link_id": {
+      "description": "Unique id, >= 128 bits of base64url randomness",
+      "title": "Link Id",
+      "type": "string"
+    },
+    "delegator": {
+      "title": "Delegator",
+      "type": "string"
+    },
+    "delegate": {
+      "title": "Delegate",
+      "type": "string"
+    },
+    "scopes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Scopes",
+      "type": "array"
+    },
+    "max_depth": {
+      "default": 3,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Depth",
+      "type": "integer"
+    },
+    "max_fan_out": {
+      "default": 3,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Fan Out",
+      "type": "integer"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "trust_tier": {
+      "default": "external",
+      "title": "Trust Tier",
+      "type": "string"
+    },
+    "alg": {
+      "title": "Alg",
+      "type": "string"
+    },
+    "kid": {
+      "title": "Kid",
+      "type": "string"
+    },
+    "jwks_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Jwks Url"
+    },
+    "aud": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Aud"
+    },
+    "principal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Principal"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "origin": {
+      "default": "agent",
+      "enum": [
+        "agent",
+        "oauth",
+        "pact",
+        "pap",
+        "ap2",
+        "acp",
+        "ucp",
+        "network-token",
+        "other"
+      ],
+      "title": "Origin",
+      "type": "string"
+    },
+    "intent_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Intent Hash"
+    },
+    "credential_refs": {
+      "items": {
+        "$ref": "#/$defs/CredentialRef"
+      },
+      "maxItems": 10,
+      "title": "Credential Refs",
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "amount": "#/$defs/AmountConstraint",
+            "budget": "#/$defs/BudgetConstraint",
+            "count": "#/$defs/CountConstraint",
+            "resource": "#/$defs/ResourceConstraint"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/AmountConstraint"
+          },
+          {
+            "$ref": "#/$defs/BudgetConstraint"
+          },
+          {
+            "$ref": "#/$defs/CountConstraint"
+          },
+          {
+            "$ref": "#/$defs/ResourceConstraint"
+          }
+        ]
+      },
+      "maxItems": 20,
+      "title": "Constraints",
+      "type": "array"
+    },
+    "status_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status Url"
+    },
+    "crit": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Crit",
+      "type": "array"
+    },
+    "signature": {
+      "default": "",
+      "title": "Signature",
+      "type": "string"
+    }
+  },
+  "required": [
+    "v",
+    "link_id",
+    "delegator",
+    "delegate",
+    "scopes",
+    "created_at",
+    "expires_at",
+    "alg",
+    "kid"
+  ],
+  "type": "object"
+}

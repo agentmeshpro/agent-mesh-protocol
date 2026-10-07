@@ -65,7 +65,7 @@ print(f"  Link 2: bob → charlie (scopes: {link2.scopes})")
 
 # --- Validate chain ---
 chain = DelegationChain(links=[link1, link2])
-valid, reason = validate_chain(chain, pub_keys)
+valid, reason = validate_chain(chain, pub_keys, allow_v1=True)
 print(f"\n  Chain valid: {valid}")
 print(f"  Reason: {reason}")
 

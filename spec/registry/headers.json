@@ -751,7 +751,7 @@
       "group": "HTTP binding",
       "direction": "response",
       "format": "RFC 9110",
-      "description": "Accepted authentication schemes on a 401",
+      "description": "Accepted authentication schemes on a 401; insufficient_scope step-up on a 403 authority-required (7.2.14)",
       "section": "7.2.2",
       "since": null,
       "status": "stable"

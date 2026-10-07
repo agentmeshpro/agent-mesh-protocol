@@ -181,7 +181,7 @@ language-neutral form:
 | [`spec/schemas/`](spec/schemas/) | JSON Schema 2020-12 for the envelope, every body type, `agent.json`, health, RFC 7807 problems and stream events. Feed them to Ajv, `santhosh-tekuri/jsonschema`, `jsonschema-rs` or a code generator. |
 | [`spec/openapi.yaml`](spec/openapi.yaml) | OpenAPI 3.1 for the HTTP binding: endpoints, status codes and auth schemes. Use it for client/server stubs and API tooling. |
 | [`spec/registry/`](spec/registry/) | Machine-readable registries: body types (schema, expected response, `since`), headers, error URNs and HTTP status, extension URIs, stream events |
-| [`tests/vectors/`](tests/vectors/) ([index](tests/vectors/README.md)) | 391 portable cases, including byte-exact canonical forms and deterministic Ed25519 signatures for every signed artefact |
+| [`tests/vectors/`](tests/vectors/) ([index](tests/vectors/README.md)) | 407 portable cases, including byte-exact canonical forms and deterministic Ed25519 signatures for every signed artefact |
 | `ampro-conformance` ([docs/CONFORMANCE.md](docs/CONFORMANCE.md)) | A black-box HTTP test of your running agent. Every check cites its section and MUST/SHOULD level. |
 
 ```bash

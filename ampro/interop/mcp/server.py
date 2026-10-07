@@ -58,6 +58,17 @@ from ampro.interop.mcp.tools import (
     scopes_satisfied,
     to_call_result,
 )
+from ampro.interop.propagation import (
+    DEFAULT_MAX_HOPS,
+    TracePropagationError,
+    apply_to_context,
+    begin_span,
+    check_max_hops,
+    current_propagation,
+    hop_limit_from_policy,
+    read_inbound,
+    use_propagation,
+)
 from ampro.security.concurrency_limiter import ConcurrencyLimiter
 from ampro.security.rate_limiter import RateLimiter
 from ampro.server.auth import Authenticator, Unauthorized, authenticate
@@ -430,8 +441,11 @@ class MCPAdapter:
         tool_timeout: float | None = 30.0,
         max_argument_bytes: int = 256 * 1024,
         run_sync_tools_in_thread: bool = True,
+        max_hops: int = DEFAULT_MAX_HOPS,
     ) -> None:
         self.app = app
+        #: Highest inbound ``AMP-Hop-Count`` accepted (see ampro.interop.propagation).
+        self.max_hops = check_max_hops(max_hops)
         self.agent_id = agent_id or (app.agent_id if app is not None else "agent://unknown")
         self.path = "/" + path.strip("/")
         chain: list[Authenticator] = list(authenticators)
@@ -509,6 +523,7 @@ class MCPAdapter:
             # Plain AgentServer: ``@server.on`` handlers take ``(msg)``.
             task_handler = getattr(server, "_handlers", {}).get("task.create")
         kwargs.setdefault("trust_tier", getattr(server, "trust_tier", TrustTier.EXTERNAL))
+        kwargs.setdefault("max_hops", hop_limit_from_policy(policy))
         return cls(
             app,
             agent_id=server.agent_id,
@@ -584,12 +599,22 @@ class MCPAdapter:
         if auth_error is not None:
             return auth_error
 
-        version_header = request.header(p.PROTOCOL_VERSION_HEADER)
-        if version_header is not None and version_header not in p.HANDSHAKE_PROTOCOL_VERSIONS:
-            # Modern era, or a version we do not speak (the modern ladder
-            # answers that with -32022 naming what we support).
-            return await self._handle_modern(request, principal, version_header)
-        return await self._handle_handshake_era(request, principal, version_header)
+        # W3C trace context + hop count: validated before the body is read;
+        # tools (and the outbound clients they call) run inside this span.
+        try:
+            inbound = read_inbound(request.headers, max_hops=self.max_hops)
+        except TracePropagationError as exc:
+            logger.info("MCP request rejected: %s", exc)
+            return _json_response(
+                p.error_message(None, p.INVALID_REQUEST, f"Bad Request: {exc}"), status=400
+            )
+        with use_propagation(begin_span(inbound, max_hops=self.max_hops)):
+            version_header = request.header(p.PROTOCOL_VERSION_HEADER)
+            if version_header is not None and version_header not in p.HANDSHAKE_PROTOCOL_VERSIONS:
+                # Modern era, or a version we do not speak (the modern ladder
+                # answers that with -32022 naming what we support).
+                return await self._handle_modern(request, principal, version_header)
+            return await self._handle_handshake_era(request, principal, version_header)
 
     # ------------------------------------------------------------------
     # Security
@@ -1076,6 +1101,9 @@ class MCPAdapter:
     def _context(self, principal: Any, message: AgentMessage) -> AMPContext:
         tier = _resolve_tier(_principal_attr(principal, "trust_tier"), self.trust_tier)
         ctx = build_context(self.agent_id, message, trust_tier=tier)
+        prop = current_propagation()
+        if prop is not None:
+            apply_to_context(ctx, prop)
         try:
             ctx.protocol = "mcp"  # type: ignore[attr-defined]
         except Exception:  # pragma: no cover - frozen/slotted contexts

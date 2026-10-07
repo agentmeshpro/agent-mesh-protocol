@@ -1,0 +1,785 @@
+{
+  "description": "Delegation link format v2 (WIRE-BINDING section 11.11.2). Each link is signed (EdDSA, base64url without padding) over canonical JSON (sorted keys, ',' ':' separators, UTF-8, no ASCII escaping, integers only) of every member except 'signature', extension members included, absent optional members omitted, 'scopes' sorted, timestamps in RFC 3339 UTC with 'Z', plus 'parent_link_id' and 'parent_delegate' (null for the root). Keys are looked up by (delegator, kid); every key here has kid 'k1'. Validate each case at 'now' with the given holder (the agent exercising the authority, the last delegate), audience and understood extensions.",
+  "keys": {
+    "ed25519-a": {
+      "type": "Ed25519",
+      "private_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "source": "RFC 8032 section 7.1 TEST 1 secret key"
+    },
+    "ed25519-b": {
+      "type": "Ed25519",
+      "private_seed_hex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "public_hex": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+      "source": "RFC 8032 section 7.1 TEST 2 secret key"
+    },
+    "ed25519-c": {
+      "type": "Ed25519",
+      "private_seed_hex": "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+      "public_hex": "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+      "source": "RFC 8032 section 7.1 TEST 3 secret key"
+    }
+  },
+  "keys_by_agent": {
+    "agent://owner.example.com": "ed25519-a",
+    "agent://manager.example.com": "ed25519-b",
+    "agent://worker.example.com": "ed25519-c"
+  },
+  "vectors": [
+    {
+      "description": "Valid single hop: principal, audience, amount cap, credential reference",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "NOasn_4dxohr6zKIHJ_DvAwHt52DXhNWzJKyp9rHZMtZ48Li8kwqYUzhEEDs5MeO0JVjwSnjE84Z6aUk6RENBQ"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": true
+    },
+    {
+      "description": "Valid two hops: scopes and amount cap narrow; root-bound members repeat",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://worker.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "NOasn_4dxohr6zKIHJ_DvAwHt52DXhNWzJKyp9rHZMtZ48Li8kwqYUzhEEDs5MeO0JVjwSnjE84Z6aUk6RENBQ"
+        },
+        {
+          "v": 2,
+          "link_id": "vector-link-02-0123456789abcdef",
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "orders:pay"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:01:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 4200
+            }
+          ],
+          "signature": "GHn6Wqdi2ckguEG6hW00k7YGWo9vwwXCG7x_Xmo8Y9Be37tkgimsqfUNjH8-XNkQNjE9Rk7BxNynpOp8mCA6Cw"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}",
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":4200,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:01:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-02-0123456789abcdef\",\"max_depth\":2,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":\"agent://manager.example.com\",\"parent_link_id\":\"vector-link-01-0123456789abcdef\",\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:pay\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": true
+    },
+    {
+      "description": "Valid: understood critical extension member is signed and accepted",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [
+        "com.example.region"
+      ],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "com.example.region": "eu",
+          "crit": [
+            "com.example.region"
+          ],
+          "signature": "w7JhPSA1wlYhQsjuRSbwtjV7UD0fXpc_JlBjTfyxgH2sOVHdBGILh083GXWkHtjPHEKmJ6OVAIKIXgm_SvMqDA"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"com.example.region\":\"eu\",\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[\"com.example.region\"],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": true
+    },
+    {
+      "description": "Invalid: critical extension the verifier does not understand",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "com.example.region": "eu",
+          "crit": [
+            "com.example.region"
+          ],
+          "signature": "w7JhPSA1wlYhQsjuRSbwtjV7UD0fXpc_JlBjTfyxgH2sOVHdBGILh083GXWkHtjPHEKmJ6OVAIKIXgm_SvMqDA"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"com.example.region\":\"eu\",\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[\"com.example.region\"],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "error_contains": "not understood"
+    },
+    {
+      "description": "Invalid: extension member altered after signing",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "com.example.note": "b",
+          "signature": "3DyJGfRkF2tn4QwaAW7CnndlXBfUqXyeah3FgAag76CR1OK4KoE8jJO61YM4PJsFAvn7Xo8tJBMSAn717CgoDw"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"com.example.note\":\"a\",\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "canonical_matches_signed": false,
+      "error_contains": "invalid signature"
+    },
+    {
+      "description": "Invalid: verifier is not in the audience",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://other.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "NOasn_4dxohr6zKIHJ_DvAwHt52DXhNWzJKyp9rHZMtZ48Li8kwqYUzhEEDs5MeO0JVjwSnjE84Z6aUk6RENBQ"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "error_contains": "not permitted"
+    },
+    {
+      "description": "Invalid: child raises the amount cap",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://worker.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "NOasn_4dxohr6zKIHJ_DvAwHt52DXhNWzJKyp9rHZMtZ48Li8kwqYUzhEEDs5MeO0JVjwSnjE84Z6aUk6RENBQ"
+        },
+        {
+          "v": 2,
+          "link_id": "vector-link-02-0123456789abcdef",
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "orders:pay"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:01:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 6000
+            }
+          ],
+          "signature": "q9_glofO4ttsNf_HgsRZWijjCq8Pqapd4lQpviKWzxk4z0By7JeubNahSOBxLkvWtn5UbClE8y_Wvu1bQsOpBw"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}",
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":6000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:01:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-02-0123456789abcdef\",\"max_depth\":2,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":\"agent://manager.example.com\",\"parent_link_id\":\"vector-link-01-0123456789abcdef\",\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:pay\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "error_contains": "raises the amount cap"
+    },
+    {
+      "description": "Invalid: child changes the principal",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://worker.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "NOasn_4dxohr6zKIHJ_DvAwHt52DXhNWzJKyp9rHZMtZ48Li8kwqYUzhEEDs5MeO0JVjwSnjE84Z6aUk6RENBQ"
+        },
+        {
+          "v": 2,
+          "link_id": "vector-link-02-0123456789abcdef",
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "orders:pay"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:01:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "someone-else",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 4200
+            }
+          ],
+          "signature": "7MIBrsMavAiUfqaWr8SHa2ijhaBCBXpUb2jEC2ox27lY3ipj2SZntbTxhmjOH1xIhjZeUb5DGaYEbrCOxhA8AQ"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}",
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":4200,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:01:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-02-0123456789abcdef\",\"max_depth\":2,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":\"agent://manager.example.com\",\"parent_link_id\":\"vector-link-01-0123456789abcdef\",\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"someone-else\"},\"scopes\":[\"orders:pay\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "error_contains": "principal differs from the root"
+    },
+    {
+      "description": "Invalid: link without status_url lives longer than 24 h",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-03T00:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "origin": "agent",
+          "credential_refs": [],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "oMNugKz2TXYkyawxbHr_u6u1xQ_Yxjp8oQfrtaYjn5gS2ETuieEygU0TQs5ELJUvS5nM3-ZWmV2pc77PoYP2CQ"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-03T00:00:00Z\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"agent\",\"parent_delegate\":null,\"parent_link_id\":null,\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "error_contains": "cannot be revoked"
+    },
+    {
+      "description": "Invalid: link signed under a different parent link (parent_link_id binding)",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://worker.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "NOasn_4dxohr6zKIHJ_DvAwHt52DXhNWzJKyp9rHZMtZ48Li8kwqYUzhEEDs5MeO0JVjwSnjE84Z6aUk6RENBQ"
+        },
+        {
+          "v": 2,
+          "link_id": "vector-link-02-0123456789abcdef",
+          "delegator": "agent://manager.example.com",
+          "delegate": "agent://worker.example.com",
+          "scopes": [
+            "orders:pay"
+          ],
+          "max_depth": 2,
+          "created_at": "2026-01-01T00:01:00Z",
+          "expires_at": "2026-01-01T01:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 4200
+            }
+          ],
+          "signature": "Hq7buS8KHrHpbPCye_2fnVPCZpSI0-krwfYM6nyg_9IIaKP_rEmp6EruQZWo3WALentIwobLvNMD_DklQsGxDA"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}",
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":4200,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:01:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://worker.example.com\",\"delegator\":\"agent://manager.example.com\",\"expires_at\":\"2026-01-01T01:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-02-0123456789abcdef\",\"max_depth\":2,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":\"agent://manager.example.com\",\"parent_link_id\":\"vector-link-99-0123456789abcdef\",\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:pay\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "canonical_matches_signed": false,
+      "error_contains": "link 1: invalid signature"
+    },
+    {
+      "description": "Invalid: link outlives the credential it references",
+      "now": "2026-01-01T00:30:00Z",
+      "holder": "agent://manager.example.com",
+      "audience": "agent://shop.example.com",
+      "understood_extensions": [],
+      "links": [
+        {
+          "v": 2,
+          "link_id": "vector-link-01-0123456789abcdef",
+          "delegator": "agent://owner.example.com",
+          "delegate": "agent://manager.example.com",
+          "scopes": [
+            "orders:*"
+          ],
+          "max_depth": 3,
+          "created_at": "2026-01-01T00:00:00Z",
+          "expires_at": "2026-01-01T03:00:00Z",
+          "alg": "EdDSA",
+          "kid": "k1",
+          "aud": [
+            "agent://shop.example.com"
+          ],
+          "principal": {
+            "iss": "https://id.example.com",
+            "sub": "pairwise-7f3c",
+            "acr": "phr",
+            "present": true
+          },
+          "origin": "oauth",
+          "intent_hash": "sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I",
+          "credential_refs": [
+            {
+              "type": "oauth-grant",
+              "ref": "grant_8Hq2",
+              "expires_at": "2026-01-01T02:00:00Z"
+            }
+          ],
+          "constraints": [
+            {
+              "type": "amount",
+              "currency": "USD",
+              "max_minor": 5000
+            }
+          ],
+          "signature": "uK4rjIQUNvvP6BFD7IeO0piKPH8dulAl4qFdGLU_fUydeut76u8-5bLiGBbNFei-D0l0T9IvUYfe1-sNC7K-Cw"
+        }
+      ],
+      "signed_canonical": [
+        "{\"alg\":\"EdDSA\",\"aud\":[\"agent://shop.example.com\"],\"constraints\":[{\"currency\":\"USD\",\"max_minor\":5000,\"type\":\"amount\"}],\"created_at\":\"2026-01-01T00:00:00Z\",\"credential_refs\":[{\"expires_at\":\"2026-01-01T02:00:00Z\",\"ref\":\"grant_8Hq2\",\"type\":\"oauth-grant\"}],\"crit\":[],\"delegate\":\"agent://manager.example.com\",\"delegator\":\"agent://owner.example.com\",\"expires_at\":\"2026-01-01T03:00:00Z\",\"intent_hash\":\"sha-256:oHgvAJ2UiGUsw8S4xD22STs3Svcg6k-9C0z0GcIdd8I\",\"kid\":\"k1\",\"link_id\":\"vector-link-01-0123456789abcdef\",\"max_depth\":3,\"max_fan_out\":3,\"origin\":\"oauth\",\"parent_delegate\":null,\"parent_link_id\":null,\"principal\":{\"acr\":\"phr\",\"iss\":\"https://id.example.com\",\"present\":true,\"sub\":\"pairwise-7f3c\"},\"scopes\":[\"orders:*\"],\"trust_tier\":\"external\",\"v\":2}"
+      ],
+      "valid": false,
+      "error_contains": "outlives referenced credential"
+    }
+  ]
+}

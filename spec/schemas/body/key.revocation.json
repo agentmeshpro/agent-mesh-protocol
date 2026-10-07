@@ -6,16 +6,20 @@
   "properties": {
     "agent_id": {
       "description": "agent:// URI of the agent whose key is revoked",
+      "maxLength": 2048,
       "title": "Agent Id",
       "type": "string"
     },
     "revoked_key_id": {
       "description": "Key ID being revoked",
+      "maxLength": 256,
       "title": "Revoked Key Id",
       "type": "string"
     },
     "revoked_at": {
-      "description": "ISO-8601 timestamp of revocation",
+      "description": "RFC 3339 timestamp (with UTC offset) from which the key is revoked. key_rotation: the key may not sign anything at or after this instant. key_compromise / agent_decommissioned: every signature by the key is invalid regardless of this value.",
+      "maxLength": 64,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$",
       "title": "Revoked At",
       "type": "string"
     },
@@ -27,6 +31,7 @@
     "replacement_key_id": {
       "anyOf": [
         {
+          "maxLength": 256,
           "type": "string"
         },
         {
@@ -40,6 +45,7 @@
     "jwks_url": {
       "anyOf": [
         {
+          "maxLength": 2048,
           "type": "string"
         },
         {
@@ -50,8 +56,24 @@
       "description": "URL to fetch updated JWKS",
       "title": "Jwks Url"
     },
+    "compromised_at": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "key_compromise only: informational RFC 3339 estimate of when the key was compromised, for audit. Verifiers MUST NOT use it to keep any signature valid. Omitted from the signed canonical form when absent.",
+      "title": "Compromised At"
+    },
     "signature": {
       "description": "Ed25519 signature proving authenticity of this revocation",
+      "maxLength": 256,
       "title": "Signature",
       "type": "string"
     }
@@ -66,6 +88,10 @@
   "type": "object",
   "x-amp-body-type": "key.revocation",
   "x-amp-constraints": [
-    "signature MUST verify over the canonical form (tests/vectors/key_revocation.json)"
+    "signature MUST verify over the canonical form (tests/vectors/key_revocation.json)",
+    "revoked_at and compromised_at MUST be valid calendar instants",
+    "replacement_key_id MUST differ from revoked_key_id",
+    "compromised_at is only allowed with reason key_compromise and MUST NOT be after revoked_at",
+    "key_compromise / agent_decommissioned invalidate every signature by the key regardless of its timestamp; key_rotation invalidates only signatures made at or after revoked_at (WIRE-BINDING section 12.12.1)"
   ]
 }

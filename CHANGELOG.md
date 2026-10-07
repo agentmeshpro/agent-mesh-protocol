@@ -2,7 +2,57 @@
 
 ## [Unreleased]
 
+Foundational safeguards for bridging AMP to other agent protocols (A2A,
+MCP, PACT, Personal Agent Protocol, ACP, AP2, UCP, card-network agent
+tokens, x402, Web Bot Auth, AAuth, ANP). **Breaking:** see the first two
+items under "Changed".
+
+### Added
+- **Delegation link format v2** (`ampro.delegation.v2`, WIRE-BINDING
+  11.11.2). The whole link is signed, extension members included, and a
+  `crit` list names extensions a verifier must understand or reject.
+  `alg` (`EdDSA`, `ES256`) and `kid` name the key, whose algorithm is
+  pinned. New members: `principal` (pairwise subject, `acr`, `present`),
+  `origin`, `aud`, typed `constraints` (money in integer minor units plus
+  ISO 4217 currency), `link_id`, `status_url`, `intent_hash` and
+  `credential_refs` (references only; bearer secrets are refused). Every
+  limit narrows down the chain, `trust_tier` never rises, lifetimes are
+  capped (24 h without `status_url`, 90 days with), and a chain is bound
+  to its holder. `authorize_action` checks an action against a validated
+  chain, including spend tracking for budgets. JSON Schema
+  `spec/schemas/delegation-link-v2.json` and conformance vectors
+  `tests/vectors/delegation_chain_v2.json`.
+- **Key compromise semantics** for `key.revocation` (WIRE-BINDING 12.12).
+  A key revoked for compromise or decommissioning invalidates every
+  signature it made, whatever timestamp the signature claims; a rotated
+  key keeps signatures made before rotation. Optional `compromised_at`
+  is informational only. `KeyStatus`, `InMemoryKeyStatusResolver`,
+  `signature_allowed` and `delegation_key_check` (for
+  `validate_chain_v2(key_status=...)`).
+- **Foreign identifiers** in `agent.json` (`foreign_identifiers`): MCP
+  client ID URLs, `did:key` / `did:web` / `did:wba`, and HTTP message
+  signature key directories. They confer no trust unless an identity
+  link proof verifies (`verified_foreign_aliases`).
+- **`urn:amp:error:authority-required`** (403, WIRE-BINDING 7.2.14) with
+  typed `missing_scopes`, `required_constraints`, `payment_required`,
+  `human_approval` and `audience`, mapped to MCP `insufficient_scope`,
+  A2A/PACT `AUTH_REQUIRED` and HTTP 402.
+- **Trace context and hop count across every adapter.** Strict W3C
+  `traceparent` / `tracestate` parsing, carried inbound and outbound on
+  A2A, MCP, PACT and native AMP, plus an `AMP-Hop-Count` header and
+  `amp.hopCount` metadata enforced against `max_visited_agents`, so loops
+  that cross protocols are stopped (WIRE-BINDING 12.14.1).
+
 ### Changed
+- **Breaking: `validate_chain` refuses v1 delegation chains unless
+  `allow_v1=True`.** v1 links sign a fixed field list and ignore unknown
+  fields, so they cannot carry restrictions an older verifier must honour.
+  v2 chains need `keys=` and `holder=`.
+- **Breaking: the A2A adapter no longer exposes an unverified delegation
+  chain.** Configure `chain_verifier=`; without one the chain is kept
+  only under `ctx.metadata["amp.unverifiedDelegationChain"]` and
+  `ctx.delegation_chain` stays `None`. A rejected chain fails the request
+  with a generic message.
 - **Spec identifiers moved with the repository.** The repository moved from
   `github.com/CatlystAI/agent-mesh-protocol` to
   `github.com/agentmeshpro/agent-mesh-protocol`. Every schema `$id` and

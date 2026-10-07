@@ -27,6 +27,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from ampro.interop.mcp import protocol as p
+from ampro.interop.propagation import DEFAULT_MAX_HOPS, check_max_hops, outbound_headers
 
 if TYPE_CHECKING:
     from ampro.ampi.app import AgentApp
@@ -122,7 +123,12 @@ class MCPToolSource:
         allow_private: bool = False,
         allow_http: bool | None = None,
         client_name: str = "ampro",
+        max_hops: int = DEFAULT_MAX_HOPS,
     ) -> None:
+        #: Every request carries W3C ``traceparent`` / ``tracestate`` and
+        #: ``AMP-Hop-Count`` from the calling handler; a call whose hop count
+        #: would exceed this raises ``HopLimitExceeded`` instead of being sent.
+        self.max_hops = check_max_hops(max_hops)
         if protocol_version not in p.HANDSHAKE_PROTOCOL_VERSIONS:
             raise ValueError(f"protocol_version must be one of {p.HANDSHAKE_PROTOCOL_VERSIONS}")
         self.url = url
@@ -231,6 +237,7 @@ class MCPToolSource:
     def _headers(self) -> dict[str, str]:
         headers = {
             **self.headers,
+            **outbound_headers(self.max_hops),
             "accept": "application/json, text/event-stream",
             "content-type": "application/json",
         }

@@ -48,6 +48,7 @@ from typing import Any
 
 # The canonical auth contract shared by every protocol the server speaks.
 from ampro.server.auth import ANONYMOUS, Authenticator, Principal, Unauthorized, authenticate
+from ampro.wire.errors import AuthorityRequiredProblem, authority_required
 
 ANONYMOUS_ID = ANONYMOUS.id
 #: AMP ``sender`` address used for anonymous A2A callers.
@@ -94,6 +95,41 @@ class AuthRequired(Exception):
         self.message = message
         self.metadata = dict(metadata or {})
         super().__init__(message)
+
+    def to_problem(self) -> AuthorityRequiredProblem:
+        """The equivalent AMP 403 ``urn:amp:error:authority-required`` problem.
+
+        ``missing_scopes`` map one-to-one; ``verification_uri`` becomes
+        ``human_approval.verification_uri``.  Does not change what the A2A
+        adapter puts on the wire.  Raises ``ValueError`` if a scope or the
+        URI is not acceptable in the AMP problem (for example a non-https
+        URI); the caller must not fall back to a weaker problem silently.
+        """
+        return authority_required(
+            self.message,
+            missing_scopes=self.missing_scopes,
+            human_approval=(
+                {"verification_uri": self.verification_uri} if self.verification_uri else None
+            ),
+        )
+
+    @classmethod
+    def from_problem(cls, problem: AuthorityRequiredProblem) -> AuthRequired:
+        """Build an ``AuthRequired`` from an AMP authority-required problem.
+
+        Raises ``ValueError`` when the problem asks for something an A2A
+        ``AUTH_REQUIRED`` task cannot express (constraints or payment): the
+        requirement must not be silently dropped.
+        """
+        if not isinstance(problem, AuthorityRequiredProblem):
+            raise ValueError("problem must be an AuthorityRequiredProblem")
+        if problem.required_constraints or problem.payment_required is not None:
+            raise ValueError(
+                "required_constraints / payment_required have no A2A AUTH_REQUIRED mapping"
+            )
+        uri = problem.human_approval.verification_uri if problem.human_approval else None
+        return cls(problem.missing_scopes, uri,
+                   message=problem.detail or "Additional authorization is required.")
 
 
 @dataclass(frozen=True)

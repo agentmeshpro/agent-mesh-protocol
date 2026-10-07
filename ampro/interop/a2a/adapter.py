@@ -33,8 +33,8 @@ import json
 import logging
 import re
 import time
-from collections.abc import AsyncIterator, Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +60,7 @@ from ampro.interop.a2a.auth import (
 from ampro.interop.a2a.card import AMP_EXTENSION_URI, build_agent_card
 from ampro.interop.a2a.errors import A2AError
 from ampro.interop.a2a.mapping import (
+    UNVERIFIED_DELEGATION_CHAIN_KEY,
     Reply,
     a2a_to_amp,
     agent_message,
@@ -102,14 +103,37 @@ from ampro.interop.a2a.types import (
     dump,
     now_timestamp,
 )
+from ampro.interop.propagation import (
+    InboundTrace,
+    TracePropagationError,
+    apply_to_context,
+    begin_span,
+    check_max_hops,
+    hop_limit_from_policy,
+    propagation_from_context,
+    read_inbound,
+    use_propagation,
+)
 from ampro.server.http import HTTPRequest, HTTPResponse
 from ampro.streaming.events import MAX_SSE_EVENT_BYTES, StreamingEvent, StreamingEventType
 
 if TYPE_CHECKING:
     from ampro.ampi.context import AMPContext
+    from ampro.delegation.chain import DelegationChain
     from ampro.server.core import AgentServer
 
 logger = logging.getLogger(__name__)
+
+ChainVerifier = Callable[["DelegationChain", "AMPContext"], Awaitable[tuple[bool, str]]]
+"""``async (chain, ctx) -> (ok, reason)`` — verifies an inbound delegation chain.
+
+Only ``(True, ...)`` accepts the chain; any other return value, an
+exception or a timeout rejects the request.  ``reason`` is logged, never
+returned to the caller.
+"""
+
+#: Generic, caller-facing message for a rejected delegation chain.
+CHAIN_REJECTED_MESSAGE = "Delegation chain rejected"
 
 _TASK_ROUTE = re.compile(r"^/tasks/([^/:]+)(:cancel|:subscribe)?$")
 _PUSH_ROUTE = re.compile(r"^/tasks/([^/:]+)/pushNotificationConfigs(/[^/]+)?$")
@@ -260,6 +284,19 @@ class A2AAdapter:
         handler_timeout: seconds a handler may run per request (``None`` =
             unbounded; default: ``server.security.handler_timeout_seconds``);
             on expiry the task fails with a generic message.
+        chain_verifier: a :data:`ChainVerifier` run on every delegation chain
+            received in the AMP extension.  A chain it accepts becomes
+            ``ctx.delegation_chain``; a rejection (or an exception, a
+            timeout, or a malformed return value) fails the request with
+            ``INVALID_PARAMS`` "Delegation chain rejected".  Without a
+            verifier a received chain is never exposed as
+            ``ctx.delegation_chain``: it is kept, unverified, under
+            ``ctx.metadata["amp.unverifiedDelegationChain"]``.
+        chain_verifier_timeout: seconds the verifier may run (default 10).
+        max_hops: highest inbound hop count accepted (``AMP-Hop-Count``
+            header, ``amp.hopCount`` metadata, ``visitedAgents``); default:
+            ``server.security.max_visited_agents`` (20).  See
+            :mod:`ampro.interop.propagation`.
 
     The server's ``security.rate_limiter`` and ``security.concurrency`` apply
     to every A2A request (keyed by principal id, or ``ip:<peer>`` when
@@ -301,6 +338,9 @@ class A2AAdapter:
         max_metadata_bytes: int = 16_384,
         handler_timeout: float | None | _Unset = _UNSET,
         realm: str = "a2a",
+        chain_verifier: ChainVerifier | None = None,
+        chain_verifier_timeout: float = 10.0,
+        max_hops: int | None = None,
     ) -> None:
         self.server = server
         self.base_path = "/" + base_path.strip("/") if base_path.strip("/") else ""
@@ -342,6 +382,15 @@ class A2AAdapter:
         self.max_metadata_bytes = max_metadata_bytes
         self.handler_timeout = handler_timeout
         self.realm = realm
+        if chain_verifier is not None and not callable(chain_verifier):
+            raise TypeError("chain_verifier must be an async callable (chain, ctx) -> (ok, reason)")
+        if not chain_verifier_timeout > 0:
+            raise ValueError("chain_verifier_timeout must be positive")
+        self.chain_verifier = chain_verifier
+        self.chain_verifier_timeout = float(chain_verifier_timeout)
+        if max_hops is None:
+            max_hops = hop_limit_from_policy(policy)
+        self.max_hops = check_max_hops(max_hops)
         self._live: dict[str, _Live] = {}
         self._background: set[asyncio.Task[Any]] = set()
 
@@ -1039,6 +1088,14 @@ class A2AAdapter:
         for meta in (req.metadata, msg.metadata):
             if meta and len(json.dumps(meta)) > self.max_metadata_bytes:
                 raise A2AError("INVALID_PARAMS", "metadata is too large")
+        # W3C trace context + hop count (headers and metadata), validated
+        # before any state is touched.
+        try:
+            inbound = read_inbound(call.request.headers, metadata=(req.metadata, msg.metadata),
+                                   max_hops=self.max_hops)
+        except TracePropagationError as exc:
+            logger.info("A2A request rejected: %s (request_id=%s)", exc, call.request_id)
+            raise A2AError("INVALID_PARAMS", str(exc)) from None
         owner = call.principal.id
         cfg = req.configuration
         history_length = cfg.history_length if cfg else None
@@ -1083,7 +1140,9 @@ class A2AAdapter:
                 await self.replies.finish_message(context_id, msg.message_id, None)
                 raise A2AError("UNSUPPORTED_OPERATION", "Task is busy")
         try:
-            amp_message, ctx = self._build_amp(msg, req, call, context_id, task_id, continuing)
+            amp_message, ctx = self._build_amp(msg, req, call, context_id, task_id, continuing,
+                                               inbound)
+            await self._verify_chain(ctx, call)
         except BaseException:
             if continuing is not None:
                 await self.broker.unlock(task_id)
@@ -1136,7 +1195,8 @@ class A2AAdapter:
 
     def _build_amp(self, msg: Message, req: SendMessageRequest, call: _Call,
                    context_id: str, task_id: str,
-                   continuing: Task | None) -> tuple[AgentMessage, AMPContext]:
+                   continuing: Task | None,
+                   inbound: InboundTrace | None = None) -> tuple[AgentMessage, AMPContext]:
         principal = call.principal
         amp_message = a2a_to_amp(
             msg, agent_id=self.server.agent_id,
@@ -1171,11 +1231,14 @@ class A2AAdapter:
                 "a2a.extensions": call.extensions,
             },
         )
+        generated_trace = ctx.trace_id
         if call.amp_active:
             amp = read_amp_metadata(req.metadata, msg.metadata,
                                     keys=(self.amp_metadata_key, "amp"))
             if amp:
                 apply_amp_metadata(ctx, amp)
+        self._apply_trace(ctx, inbound or InboundTrace(),
+                          ext_trace=ctx.trace_id if ctx.trace_id != generated_trace else None)
 
         contexts = self.contexts
 
@@ -1186,6 +1249,57 @@ class A2AAdapter:
         # Non-streaming default: events are accepted and dropped.
         self._bind_emit_noop(ctx)
         return amp_message, ctx
+
+    def _apply_trace(self, ctx: AMPContext, inbound: InboundTrace,
+                     ext_trace: str | None) -> None:
+        """Merge W3C trace context, hop count and the AMP extension's ids."""
+        hops = max(inbound.hop_count, len(ctx.visited_agents))
+        if hops > self.max_hops:
+            raise A2AError("INVALID_PARAMS", "Hop limit exceeded")
+        ext_parent = ctx.metadata.get("amp.parentSpanId")
+        tp = inbound.traceparent
+        if tp is None:
+            ctx.hop_count = hops
+            if isinstance(ext_parent, str):
+                ctx.parent_span_id = ext_parent
+            return
+        if (ext_trace is not None and ext_trace != tp.trace_id) or (
+                ext_parent is not None and ext_parent != tp.parent_id):
+            raise A2AError("INVALID_PARAMS", "Conflicting trace context")
+        prop = begin_span(replace(inbound, hop_count=hops), max_hops=self.max_hops,
+                          span_id=ctx.span_id)
+        apply_to_context(ctx, prop)
+
+    async def _verify_chain(self, ctx: AMPContext, call: _Call) -> None:
+        """Run the ``chain_verifier`` on a received delegation chain (fail closed)."""
+        chain = ctx.metadata.get(UNVERIFIED_DELEGATION_CHAIN_KEY)
+        if chain is None or self.chain_verifier is None:
+            return
+        reason = "verifier returned a malformed result"
+        ok = False
+        try:
+            result: Any = self.chain_verifier(chain, ctx)
+            if inspect.isawaitable(result):
+                result = await asyncio.wait_for(result, self.chain_verifier_timeout)
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            reason = "verifier timed out"
+        except Exception as exc:
+            reason = f"verifier raised {type(exc).__name__}"
+            logger.warning("A2A chain_verifier raised (request_id=%s)", call.request_id,
+                           exc_info=True)
+        else:
+            if (isinstance(result, tuple) and len(result) == 2
+                    and isinstance(result[0], bool)):
+                ok = result[0] is True
+                reason = str(result[1])[:512]
+        if not ok:
+            logger.warning("A2A delegation chain rejected (request_id=%s): %s",
+                           call.request_id, reason)
+            raise A2AError("INVALID_PARAMS", CHAIN_REJECTED_MESSAGE)
+        ctx.delegation_chain = chain
+        del ctx.metadata[UNVERIFIED_DELEGATION_CHAIN_KEY]
 
     @staticmethod
     def _bind_emit_noop(ctx: AMPContext) -> None:
@@ -1258,6 +1372,12 @@ class A2AAdapter:
         ctx.emit_event = emit_event  # type: ignore[method-assign]
 
     async def _invoke(self, prep: _Prepared) -> Any:
+        # Outbound clients called by the handler read this (traceparent,
+        # tracestate, AMP-Hop-Count = hop_count + 1).
+        with use_propagation(propagation_from_context(prep.ctx, max_hops=self.max_hops)):
+            return await self._invoke_handler(prep)
+
+    async def _invoke_handler(self, prep: _Prepared) -> Any:
         msg, ctx = prep.amp_message, prep.ctx
         app = self.server.app
         if app is not None:

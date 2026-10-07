@@ -4,7 +4,7 @@ Portable conformance vectors for the Agent Mesh Protocol. A Go, Rust or
 TypeScript implementation can load these JSON files and check that it
 accepts, rejects and signs exactly what the Python reference does.
 
-All 36 files (391 cases) are executed by
+All 37 files (407 cases) are executed by
 [`tests/test_vectors.py`](../test_vectors.py) on every test run. Use that
 runner as the reference for how to interpret each file.
 
@@ -78,7 +78,7 @@ python tests/vectors/_generate.py --check  # exit 1 if anything is stale
 ```
 
 The generator fully writes `rfc9421.json`, `session_binding.json` and
-`delegation_chain.json`. In every other file it recomputes the cases that
+`delegation_chain.json` and `delegation_chain_v2.json`. In every other file it recomputes the cases that
 carry a `sign` directive. It produces the bytes with ampro's own
 canonicalisation helpers, so a diff after a code change means the wire
 format changed. `test_generator_is_up_to_date` fails if the committed
@@ -100,6 +100,7 @@ vectors are stale.
 | cost_receipt.json | 13 | `CostReceipt`, `CostReceiptChain` (signature check, nonce replay, Decimal totals), `task.complete.cost_receipt` | yes |
 | data_residency.json | 13 | `DataResidency`, region validation, violation checks, `Data-Residency` header | |
 | delegation_chain.json | 17 | Signed delegation chains: canonical form, `parent_delegate` binding, depth, scope narrowing, fan-out, budgets, expiry, naive timestamps | yes |
+| delegation_chain_v2.json | 11 | Delegation format v2: whole-link signing, `crit`, audience, principal, typed amount limits, lifetime caps, `parent_link_id` binding, credential references | yes |
 | encryption.json | 10 | `EncryptedBody` and `Content-Encryption`. A256GCM cases decrypt with the `a256gcm` key | yes |
 | envelope.json | 3 | `AgentMessage` envelope | |
 | erasure_propagation.json | 12 | `erasure.propagation_status` | |
@@ -108,7 +109,7 @@ vectors are stale.
 | identity_link.json | 11 | `identity.link_proof`, including the required `expires_at` | |
 | identity_migration.json | 10 | `identity.migration`, `AgentJson.moved_to` | |
 | jurisdiction.json | 15 | `JurisdictionInfo`, code validation, conflict checks | |
-| key_revocation.json | 10 | `key.revocation`: Ed25519 signature over all fields except `signature` | yes |
+| key_revocation.json | 15 | `key.revocation`: Ed25519 signature over all fields except `signature`, `compromised_at` | yes |
 | priority.json | 10 | `Priority` enum | |
 | registry_federation.json | 14 | Federation request/response schemas, signed trust proofs (audience, `issued_at`, single-use nonce), signed revokes | yes |
 | registry_search.json | 12 | Registry search request/match/result (`limit`; `max_results` is a deprecated alias) | |

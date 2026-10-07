@@ -26,10 +26,11 @@ from ampro import __version__ as _AMPRO_VERSION
 from ampro.client.errors import AmpProtocolError
 from ampro.core.addressing import AddressType, parse_agent_uri
 from ampro.core.envelope import AgentMessage
+from ampro.interop.propagation import outbound_headers
 from ampro.security.ssrf import pinned_async_transport, validate_url_async
 from ampro.transport.limits import read_capped
 from ampro.wire.config import DEFAULTS
-from ampro.wire.errors import ProblemDetail
+from ampro.wire.errors import ErrorType, ProblemDetail, parse_authority_required
 
 logger = logging.getLogger("ampro.client")
 
@@ -119,6 +120,13 @@ def _raise_for_problem(response: httpx.Response) -> None:
     try:
         data = response.json()
         problem = ProblemDetail.model_validate(data)
+        if problem.type == ErrorType.AUTHORITY_REQUIRED and response.status_code == 403:
+            # Typed members only when they validate; otherwise keep the
+            # plain problem (the caller still sees type and status).
+            try:
+                problem = parse_authority_required(data)
+            except ValueError:
+                pass
     except Exception:
         problem = ProblemDetail(
             type="urn:amp:error:unknown",
@@ -145,6 +153,10 @@ async def _post_message(
         msg: The message envelope to send.
         timeout: Request timeout in seconds.
         extra_headers: Additional HTTP headers (e.g. Session-Binding).
+            W3C ``traceparent`` / ``tracestate`` and ``AMP-Hop-Count`` from
+            the calling handler are always sent (see
+            :mod:`ampro.interop.propagation`); a send whose hop count would
+            exceed the limit raises ``HopLimitExceeded`` instead.
         allow_private: Permit loopback/private targets (local development).
         max_response_bytes: Response body cap (default
             ``WireConfig.max_response_bytes``); the read is aborted beyond it.
@@ -161,6 +173,7 @@ async def _post_message(
     headers = {
         "Content-Type": "application/json",
         "User-Agent": _USER_AGENT,
+        **outbound_headers(),
     }
     if extra_headers:
         headers.update(extra_headers)
