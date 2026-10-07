@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.consent_revoke.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/data.consent_revoke.json",
   "title": "AMP body: data.consent_revoke",
   "description": "body.type = 'data.consent.revoke' — Revoke a consent grant.",
   "properties": {

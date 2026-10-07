@@ -112,7 +112,7 @@ Within one protocol MAJOR version:
 - Registry names (body types, headers, error URNs, extension URIs, event
   types) are never reassigned to a different meaning. A removed name
   stays reserved.
-- `$id`s under `https://github.com/CatlystAI/agent-mesh-protocol/spec/`
+- `$id`s under `https://github.com/agentmeshpro/agent-mesh-protocol/spec/`
   are permanent. A schema can gain optional properties within a MAJOR,
   but it never loses accepted inputs.
 
@@ -157,7 +157,7 @@ review only the naming rules, completeness and clashes, not merit, and
 SHOULD respond within 14 days. Only maintainers may assign names in the
 reserved AMP namespaces (the AMP body-type namespaces, `urn:amp:`, the
 `X-AMP-` header prefix and URIs under
-`https://github.com/CatlystAI/agent-mesh-protocol/`), and only through the
+`https://github.com/agentmeshpro/agent-mesh-protocol/`), and only through the
 proposal process above.
 
 ## Changing this document

@@ -6,7 +6,7 @@ entity using IdentityLinkProofBody. Creates link proofs with different
 proof types, wraps them in AgentMessage, and validates with validate_body.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/27_identity_linking.py
 """
 

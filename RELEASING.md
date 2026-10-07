@@ -54,10 +54,10 @@ PyPI publication is pending; install from git until 1.0.
 
 ```bash
 # Latest from main
-pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
 
 # Pinned to a tag
-pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git@vX.Y.Z
+pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git@vX.Y.Z
 ```
 
 Verify:

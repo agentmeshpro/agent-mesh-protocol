@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/identity.link_proof.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/identity.link_proof.json",
   "title": "AMP body: identity.link_proof",
   "description": "Payload proving two agent addresses share the same controlling entity.",
   "properties": {

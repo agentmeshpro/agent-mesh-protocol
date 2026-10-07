@@ -77,7 +77,7 @@ carried through another protocol.
   version segment, for example `https://acme.example/amp-ext/v1`.
 - The URI SHOULD resolve to the extension's specification.
 - AMP's own extension for A2A is
-  `https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1`
+  `https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1`
   ([INTEROP-A2A.md](INTEROP-A2A.md#amp-extension)).
 
 ### `agent.json` and capabilities

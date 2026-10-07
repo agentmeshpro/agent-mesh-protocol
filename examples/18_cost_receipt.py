@@ -10,7 +10,7 @@ This example generates ephemeral keypairs for demonstration purposes.
 In production, agents use their registered keypairs.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/18_cost_receipt.py
 """
 

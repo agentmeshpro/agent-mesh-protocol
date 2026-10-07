@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.close.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/session.close.json",
   "title": "AMP body: session.close",
   "description": "body.type = 'session.close' — Gracefully close the session.",
   "properties": {

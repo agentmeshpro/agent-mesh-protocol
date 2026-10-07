@@ -12,7 +12,7 @@ This example shows the event emission pattern and prints the SSE output
 that would be sent over the wire.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git fastapi uvicorn
     python examples/35_server_with_streaming.py
 
 Test:

@@ -6,7 +6,7 @@ on a single SSE connection, sending events with different Stream-Channel
 headers, and closing each channel independently.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/25_stream_multiplexing.py
 """
 

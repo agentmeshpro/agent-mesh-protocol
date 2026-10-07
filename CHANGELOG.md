@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+- **Spec identifiers moved with the repository.** The repository moved from
+  `github.com/CatlystAI/agent-mesh-protocol` to
+  `github.com/agentmeshpro/agent-mesh-protocol`. Every schema `$id` and
+  `$ref` base (`SPEC_BASE`), the A2A extension URI (now
+  `https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1`), the
+  registry and example documents, and the project URLs now use the new
+  address. Peers that match the A2A extension URI or schema `$id`s by exact
+  string must update to the new values. Old GitHub URLs redirect, but the
+  identifiers themselves are compared as strings, not fetched.
+
 ## [0.4.0] - 2026-10-07
 
 Interoperability and production-hardening release. **Breaking:** several

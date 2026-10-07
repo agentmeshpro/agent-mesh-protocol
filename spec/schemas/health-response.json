@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/health-response.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/health-response.json",
   "title": "HealthResponse",
   "description": "Response of GET /agent/health (WIRE-BINDING section 4.2).",
   "properties": {

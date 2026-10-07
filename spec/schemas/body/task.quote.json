@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.quote.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/task.quote.json",
   "title": "AMP body: task.quote",
   "description": "body.type = 'task.quote' — Non-binding cost/time estimate for a task.",
   "properties": {

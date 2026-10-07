@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/trust.upgrade_request.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/trust.upgrade_request.json",
   "title": "AMP body: trust.upgrade_request",
   "description": "body.type = 'trust.upgrade_request' — Request a trust tier upgrade.",
   "properties": {

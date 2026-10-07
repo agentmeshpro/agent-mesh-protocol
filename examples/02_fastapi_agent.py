@@ -11,7 +11,7 @@ and streaming events look when wired into FastAPI by hand.
 A more complete agent with tools, streaming, and health endpoint.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git fastapi uvicorn
     uvicorn examples.02_fastapi_agent:app --port 8000
 """
 

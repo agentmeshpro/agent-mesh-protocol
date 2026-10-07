@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.challenge.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/task.challenge.json",
   "title": "AMP body: task.challenge",
   "description": "body.type = 'task.challenge' — Issue a challenge to the sender.",
   "properties": {
