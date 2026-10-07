@@ -287,23 +287,16 @@ class TestSession:
     async def test_session_connect_handshake(self):
         """connect() performs the 3-phase handshake and returns a Session."""
         from ampro.client.session import connect
-
-        # Phase 1 response: session.established
-        established_body = {
-            "session_id": "sess-abc",
-            "negotiated_capabilities": ["messaging"],
-            "negotiated_version": "1.0.0",
-            "trust_tier": "verified",
-            "trust_score": 500,
-            "server_nonce": "server_nonce_xyz",
-            "binding_token": "binding_token_123",
-        }
-        established_msg = AgentMessage(
-            sender="@target",
-            recipient="@caller",
-            body=established_body,
-            body_type="session.established",
+        from ampro.session.handshake import (
+            HandshakeStateMachine,
+            SessionConfirmBody,
+            SessionInitBody,
+            server_accept_init,
+            server_verify_confirm,
         )
+
+        server_sm = HandshakeStateMachine()
+        server_state: dict = {}
 
         # Phase 3 response: session.confirm ack
         confirm_ack = AgentMessage(
@@ -319,14 +312,33 @@ class TestSession:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # Phase 1 response
+                # Phase 1 response: real key agreement, binding key never sent
+                init = SessionInitBody.model_validate(kwargs["json"]["body"])
+                est, binding = server_accept_init(
+                    init,
+                    server_sm,
+                    session_id="sess-abc",
+                    negotiated_capabilities=["messaging"],
+                    negotiated_version="1.0.0",
+                    trust_tier="verified",
+                    trust_score=500,
+                )
+                server_state["binding"] = binding
+                established_msg = AgentMessage(
+                    sender="@target",
+                    recipient="@caller",
+                    body=est.model_dump(mode="json"),
+                    body_type="session.established",
+                )
                 return httpx.Response(
                     200,
                     json=established_msg.model_dump(mode="json"),
                     request=httpx.Request("POST", args[0] if args else kwargs.get("url", "")),
                 )
             else:
-                # Phase 3 response
+                # Phase 3: server MUST verify the binding proof
+                confirm = SessionConfirmBody.model_validate(kwargs["json"]["body"])
+                server_verify_confirm(confirm, server_state["binding"], server_sm)
                 return httpx.Response(
                     200,
                     json=confirm_ack.model_dump(mode="json"),
@@ -358,6 +370,8 @@ class TestSession:
             assert second_call_json["body_type"] == "session.confirm"
             assert second_call_json["body"]["session_id"] == "sess-abc"
             assert "binding_proof" in second_call_json["body"]
+            assert second_call_json["body"]["confirm_nonce"]
+            assert "client_ephemeral_key" in first_call_json["body"]
 
     @pytest.mark.asyncio
     async def test_session_send_with_binding(self):

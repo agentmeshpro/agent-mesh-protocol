@@ -39,13 +39,16 @@ def _make_signed_link(
     delegate: str,
     scopes: list[str],
     *,
-    max_depth: int = 3,
+    max_depth: int | None = None,
     created_at: datetime | None = None,
     expires_at: datetime | None = None,
     chain_budget: str = "",
     parent_delegate: str | None = None,
 ) -> DelegationLink:
     """Create a DelegationLink with a real Ed25519 signature."""
+    if max_depth is None:
+        # Children must decrement max_depth (root=3, child=2).
+        max_depth = 3 if parent_delegate is None else 2
     now = datetime.now(UTC)
     created = created_at or now
     expires = expires_at or (now + timedelta(hours=1))
@@ -57,6 +60,7 @@ def _make_signed_link(
         "max_depth": max_depth,
         "created_at": created.isoformat(),
         "expires_at": expires.isoformat(),
+        "chain_budget": chain_budget,  # signed like every other field
     }
     sig = sign_delegation(private_seed, link_data, parent_delegate=parent_delegate)
     return DelegationLink(

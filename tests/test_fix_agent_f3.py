@@ -380,12 +380,13 @@ class TestHandshakeTimeout:
         from ampro import HandshakeStateMachine, HandshakeTimeoutError
 
         sm = HandshakeStateMachine(timeout_seconds=0.05)
-        # First transition races through before timeout — allow it to succeed
-        # or fail depending on timing. Sleep past the deadline and then
-        # the next transition MUST raise.
+        # The clock starts at the first transition (send_init), not at
+        # construction. Sleep past the deadline after it; the next
+        # transition MUST raise.
+        sm.transition("send_init")
         time.sleep(0.1)
         with pytest.raises(HandshakeTimeoutError):
-            sm.transition("send_init")
+            sm.transition("receive_established")
 
     def test_handshake_timeout_default(self):
         from ampro import HandshakeStateMachine

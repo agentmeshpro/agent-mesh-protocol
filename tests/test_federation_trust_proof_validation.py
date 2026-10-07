@@ -103,35 +103,31 @@ class TestVerifyFederationTrustProof:
     def test_valid_signature_with_resolver_returns_true(self):
         """A real Ed25519 signature, verified through a registered resolver,
         is the only path that returns True."""
-        import base64
-
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-        from ampro import RegistryFederationRequest, verify_federation_trust_proof
-        from ampro.registry.federation import register_federation_trust_proof_resolver
+        from ampro import verify_federation_trust_proof
+        from ampro.registry.federation import (
+            register_federation_trust_proof_resolver,
+            reset_federation_nonce_cache,
+            sign_federation_trust_proof,
+        )
 
         sk = Ed25519PrivateKey.generate()
         pk_bytes = sk.public_key().public_bytes_raw()
 
         registry_id = "agent://registry.example.com"
-        capabilities = ["resolve", "search"]
-        canonical = (
-            registry_id.encode("utf-8")
-            + b"\x00"
-            + b"\x1f".join(sorted(c.encode("utf-8") for c in capabilities))
-        )
-        sig = sk.sign(canonical)
-        sig_b64 = base64.b64encode(sig).decode()
-
+        audience = "agent://local-registry.example.com"
         register_federation_trust_proof_resolver(lambda rid: pk_bytes if rid == registry_id else None)
+        reset_federation_nonce_cache()
 
-        req = RegistryFederationRequest(
-            registry_id=registry_id,
-            capabilities=capabilities,
-            trust_proof=sig_b64,
+        # The proof binds audience, issued_at and a single-use nonce.
+        req = sign_federation_trust_proof(
+            sk.private_bytes_raw(), registry_id, ["resolve", "search"], audience=audience
         )
 
-        assert verify_federation_trust_proof(req) is True
+        assert verify_federation_trust_proof(req, expected_audience=audience) is True
+        # Replay is rejected.
+        assert verify_federation_trust_proof(req, expected_audience=audience) is False
 
         # Reset to no-resolver state for following tests
         register_federation_trust_proof_resolver(lambda rid: None)
