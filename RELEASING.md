@@ -10,12 +10,14 @@ Run these steps in order for every release. Do not skip.
 4. Bump `__version__` in `ampro/__init__.py`.
 5. Add new `## [X.Y.Z] — YYYY-MM-DD` section at top of `CHANGELOG.md`.
 6. Commit: `git commit -m "release: X.Y.Z — <summary>"`
-7. Tag: `git tag -a vX.Y.Z -m "<release notes summary>"`
-8. Push: `git push origin main && git push origin vX.Y.Z`
-9. Pushing the tag runs `.github/workflows/release.yml`: it builds the sdist
-   and wheel, uploads them to PyPI, then creates the GitHub Release with this
-   version's CHANGELOG section as its notes. Check the run, then
-   `pip install ampro==X.Y.Z` in a clean virtualenv.
+7. Release, either way:
+   - Push a tag: `git tag -a vX.Y.Z -m "<summary>" && git push origin main vX.Y.Z`
+   - Or, from main, run Actions → Release → Run workflow with target `pypi`.
+     It creates the `vX.Y.Z` tag itself.
+8. `.github/workflows/release.yml` builds the sdist and wheel, uploads them to
+   PyPI, then creates the GitHub Release with this version's CHANGELOG
+   section as its notes. Check the run, then `pip install ampro==X.Y.Z` in a
+   clean virtualenv.
 
 ## Publishing to PyPI
 
@@ -24,13 +26,16 @@ Run these steps in order for every release. Do not skip.
 uploads from `release.yml` running in the `pypi` environment of this
 repository, and no API token is stored anywhere.
 
-- The workflow refuses to publish when the release tag is not `v` + the
-  version in `pyproject.toml` and `ampro/__init__.py`.
+- The workflow refuses to publish when the tag is not `v` + the version in
+  `pyproject.toml` and `ampro/__init__.py`, or, on a manual run, when that
+  tag already exists or the branch is not main.
 - A PyPI upload is permanent. A version can be yanked but its number can
   never be reused, and its README and metadata are frozen as uploaded.
-- Dry run: start the Release workflow by hand (Actions → Release → Run
-  workflow). It builds and uploads to TestPyPI only, through the
-  `testpypi` environment.
+- Dry run: run the Release workflow by hand with target `testpypi` (the
+  default). It uploads to TestPyPI only, through the `testpypi`
+  environment.
+- Older versions: the Backfill releases workflow creates GitHub Releases
+  (and missing tags) from the CHANGELOG. It never publishes to PyPI.
 
 ## Versioning
 

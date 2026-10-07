@@ -4,15 +4,26 @@ name: Release
 # token is stored in the repository. PyPI trusts this exact workflow file
 # and the `pypi` environment, configured on pypi.org.
 #
-# - Pushing a tag vX.Y.Z uploads to PyPI, then creates the GitHub Release
-#   with that version's CHANGELOG section as its notes. Creating the
-#   Release in the GitHub UI with a new tag works too: it pushes the tag.
-# - Running the workflow by hand uploads to TestPyPI only, as a dry run.
+# Two ways to release version X.Y.Z (the version in pyproject.toml):
+# - Push a tag vX.Y.Z, or create a GitHub Release with a new tag vX.Y.Z.
+# - Run this workflow on main with target "pypi" (Actions -> Release ->
+#   Run workflow). It creates the vX.Y.Z tag itself.
+# Either way it uploads to PyPI, then creates the GitHub Release with that
+# version's CHANGELOG section as its notes.
+#
+# Running the workflow with target "testpypi" (the default) uploads to
+# TestPyPI only, as a dry run.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Where to publish"
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
 
 permissions:
   contents: read
@@ -20,21 +31,38 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Check the tag matches the package version
-        if: github.event_name == 'push'
+      - name: Check the version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+          grep -q "^__version__ = \"${version}\"$" ampro/__init__.py \
+            || { echo "ampro/__init__.py __version__ is not ${version}" >&2; exit 1; }
+          if [ "$EVENT" = push ] && [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match pyproject version ${version}" >&2
             exit 1
           fi
-          grep -q "^__version__ = \"${version}\"$" ampro/__init__.py \
-            || { echo "ampro/__init__.py __version__ is not ${version}" >&2; exit 1; }
+          if [ "$EVENT" = workflow_dispatch ] && [ "$TARGET" = pypi ]; then
+            if [ "${GITHUB_REF}" != refs/heads/main ]; then
+              echo "Publishing to PyPI by hand only runs on main" >&2
+              exit 1
+            fi
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${version}" >/dev/null 2>&1; then
+              echo "Tag v${version} already exists; bump the version first" >&2
+              exit 1
+            fi
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Build sdist and wheel
         run: |
           python -m pip install --upgrade pip build twine
@@ -51,7 +79,7 @@ jobs:
           path: dist/
 
   publish-pypi:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.target == 'pypi'
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -67,7 +95,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-testpypi:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.target != 'pypi'
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -86,8 +114,7 @@ jobs:
           skip-existing: true
 
   github-release:
-    if: github.event_name == 'push'
-    needs: publish-pypi
+    needs: [build, publish-pypi]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,15 +127,18 @@ jobs:
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          tag="v${VERSION}"
           # The CHANGELOG section for this version, without its heading.
-          awk -v v="$version" '
+          awk -v v="$VERSION" '
             /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
             found { print }
           ' CHANGELOG.md > notes.md
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+            # On a manual run the tag does not exist yet; --target creates it
+            # at the commit that was built and published.
+            gh release create "$tag" dist/* --title "$tag" --notes-file notes.md --target "$GITHUB_SHA"
           fi
