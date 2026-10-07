@@ -2308,8 +2308,8 @@ check, so v2 chains fail closed on older software.
 | `scopes` | string[] | required | 1–100 unique scopes, each 1–256 visible ASCII characters |
 | `max_depth` | integer 1..10 | `3` | As in v1 |
 | `max_fan_out` | integer 1..10 | `3` | As in v1 |
-| `created_at`, `expires_at` | RFC 3339 string | required | MUST carry `Z` or an explicit offset. Numbers and other formats MUST be rejected. `expires_at` MUST be later than `created_at` |
-| `trust_tier` | string | `"external"` | One of `internal`, `owner`, `verified`, `external` |
+| `created_at`, `expires_at` | RFC 3339 string | required | MUST carry `Z` or an explicit offset, and fall in UTC years 1970–9998. Numbers and other formats MUST be rejected. `expires_at` MUST be later than `created_at` |
+| `trust_tier` | string | `"external"` | One of `internal`, `owner`, `verified`, `external`. Never higher than the parent's |
 | `alg` | string | required | `EdDSA` (Ed25519) or `ES256` (ECDSA P-256, SHA-256) |
 | `kid` | string | required | Key id, 1–128 visible ASCII characters |
 | `jwks_url` | https URL | absent | Where the delegator publishes its keys |
@@ -2321,7 +2321,7 @@ check, so v2 chains fail closed on older software.
 | `constraints` | object[] | `[]` | Up to 20 typed limits, at most one per `(type, currency)`. See below |
 | `status_url` | https URL | absent | Where the link's revocation status is published |
 | `crit` | string[] | `[]` | Extension members the verifier MUST understand |
-| `signature` | string | required | base64url (no padding) signature. Ed25519: 64 bytes. ES256: 64 bytes, `r` then `s`, each 32 bytes big-endian |
+| `signature` | string | required | base64url (no padding) signature. Ed25519: 64 bytes. ES256: 64 bytes, `r` then `s`, each 32 bytes big-endian, with `s` in low-S form (`s` ≤ n/2); a high-S signature MUST be rejected |
 
 Constraint types. Money is always an integer number of minor units of
 an ISO 4217 currency (for example cents for `USD`), never a decimal:
@@ -2341,10 +2341,12 @@ member. Its name MUST be a namespaced extension name (EXTENSIONS.md,
 "Naming rules"); a link with an unnamespaced unknown member MUST be
 rejected. At most 20 extension members are allowed. Values MUST be JSON
 without floating-point numbers, with integers of magnitude below 2^53 and
-nesting depth at most 8. Extension members are signed. A verifier ignores
-extension members it does not understand **unless** they are listed in
-`crit`, in which case it MUST reject the chain. `crit` MUST NOT list a v2
-member, a name twice, or a member the link does not carry.
+nesting depth at most 8. Extension members are signed, and their values
+are signed verbatim: `null` values inside an extension value are kept,
+not omitted. A verifier ignores extension members it does not understand
+**unless** they are listed in `crit`, in which case it MUST reject the
+chain. `crit` MUST NOT list a v2 member, a name twice, or a member that
+is absent or `null`.
 
 **Canonical form.** The delegator signs the UTF-8 bytes of a JSON object
 holding every member of the link except `signature`, extension members
@@ -2360,8 +2362,11 @@ serialised the same way and their absent optional members omitted. The
 canonical form MUST NOT exceed 16 KiB.
 
 **Validation.** A receiver MUST reject an empty chain, a chain longer
-than 10 links, and a chain longer than the root's `max_depth`. For each
-link in order it MUST check, rejecting at the first failure:
+than 10 links, and a chain longer than the root's `max_depth`. It MUST
+reject a chain whose last `delegate` is not the authenticated agent
+presenting it: a chain is not a bearer token. It SHOULD refuse a link
+whose JSON form exceeds 16 KiB before parsing it. For each link in order
+it MUST check, rejecting at the first failure:
 
 1. `link_id` is not repeated in the chain.
 2. Every `crit` member is one the receiver understands.
@@ -2401,17 +2406,33 @@ And for every link after the root:
     (and `currency`) and is equal or tighter: a lower or equal
     `max_minor`, `remaining_minor` and `max`, and a subset of `ids`. The
     child MAY add constraints.
-18. Every member named in the parent's `crit` is present on the child.
-19. Fan-out, keyed by the parent's `link_id`, is below the parent's
+18. Every member named in the parent's `crit` is present and non-null on
+    the child and listed in the child's `crit`. Its value is identical to
+    the parent's, unless the extension's specification defines how it
+    narrows and the receiver applies that rule.
+19. `trust_tier` is not higher than the parent's
+    (`external` < `verified` < `owner` < `internal`).
+20. Fan-out, keyed by the parent's `link_id`, is below the parent's
     `max_fan_out`.
 
-**Using a chain.** Before acting, a receiver checks the action against
-every link: the scope is granted, money is given in the constrained
-currency and is within every `amount` cap and `budget` remaining, and
-the resource is allowed. An action that spends money MUST be refused
-when no link carries an `amount` or `budget` constraint. The reference
-implementation provides `authorize_action`; count limits need a counter
-and are left to the receiver.
+Any error the receiver hits while validating (an out-of-range value, a
+failing key or revocation lookup) MUST reject the chain.
+
+**Using a chain.** Before acting, a receiver checks that the actor is
+the chain's last `delegate` and checks the action against every link:
+the scope is granted, the resource is allowed, and for an action that
+moves money, the amount is given in the constrained currency, is within
+every `amount` cap, and together with what was already spent under each
+link stays within every `budget` remaining. A `budget` cannot be enforced
+without tracking spend: a receiver that does not track spend per
+`link_id` MUST refuse actions under a `budget`. After a spend succeeds,
+the receiver records it against every link in the chain. An action that
+moves money MUST be refused when no link carries an `amount` or `budget`
+constraint. The reference implementation provides `authorize_action`;
+count limits likewise need the receiver's counter.
+
+The reference implementation refuses v1 chains unless the caller passes
+`allow_v1=True`.
 
 `tests/vectors/delegation_chain_v2.json` covers these rules, and
 `spec/schemas/delegation-link-v2.json` describes the structure.
