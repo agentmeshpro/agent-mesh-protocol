@@ -1,7 +1,16 @@
 """Trust tiers, scoring, resolution, and proofs."""
 
 from ampro.trust.proof import TrustProofBody
-from ampro.trust.resolver import ALLOWED_JWT_ALGS, resolve_trust_tier, validate_jwt_algorithm
+from ampro.trust.resolver import (
+    ALLOWED_JWT_ALGS,
+    DID_PROOF_MAX_LIFETIME_SECONDS,
+    did_key_to_public_key,
+    register_api_key,
+    register_api_key_store,
+    resolve_trust_tier,
+    unregister_api_key,
+    validate_jwt_algorithm,
+)
 from ampro.trust.score import (
     TrustFactor,
     TrustPolicy,
@@ -22,6 +31,8 @@ __all__ = [
     "resolve_trust_tier",
     "validate_jwt_algorithm",
     "ALLOWED_JWT_ALGS",
+    "register_api_key", "unregister_api_key", "register_api_key_store",
+    "did_key_to_public_key", "DID_PROOF_MAX_LIFETIME_SECONDS",
     # Upgrade
     "TrustUpgradeRequestBody", "TrustUpgradeResponseBody",
     # Proof

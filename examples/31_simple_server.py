@@ -16,8 +16,10 @@ Then in another terminal:
       -d '{"sender":"agent://client.example.com","recipient":"agent://simple.example.com","body_type":"message","body":{"text":"hello"}}'
 """
 
-from ampro.server import AgentServer
+import os
+
 from ampro import AgentMessage
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://simple.example.com",
@@ -67,4 +69,9 @@ if __name__ == "__main__":
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://client.example.com\",\"recipient\":\"agent://simple.example.com\",\"body_type\":\"message\",\"body\":{\"text\":\"hello\"}}'")
     print()
-    server.run(port=8001)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8001)

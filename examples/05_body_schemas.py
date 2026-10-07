@@ -8,8 +8,9 @@ Run:
     python examples/05_body_schemas.py
 """
 
-from ampro import validate_body
 from pydantic import ValidationError
+
+from ampro import validate_body
 
 # --- Valid body types ---
 print("=== Valid Body Types ===\n")

@@ -20,7 +20,6 @@ from ampro.ampi.app import AgentApp
 from ampro.ampi.context import AMPContext
 from ampro.core.envelope import AgentMessage
 
-
 agent = AgentApp(
     agent_id="agent://quickstart-bot.example.com",
     endpoint="http://localhost:8000/agent/message",

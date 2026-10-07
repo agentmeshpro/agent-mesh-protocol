@@ -13,9 +13,9 @@ Run:
 from datetime import datetime, timezone
 
 from ampro import (
+    StreamAckEvent,
     StreamingEvent,
     StreamingEventType,
-    StreamAckEvent,
     StreamPauseEvent,
     StreamResumeEvent,
 )
@@ -156,7 +156,7 @@ if last_acked_seq < server_seq:
 # SSE format examples
 # ---------------------------------------------------------------------------
 
-print(f"\n=== SSE Wire Format Examples ===\n")
+print("\n=== SSE Wire Format Examples ===\n")
 
 examples = [
     StreamingEvent(

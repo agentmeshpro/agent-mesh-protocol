@@ -9,9 +9,9 @@ Run:
 """
 
 from ampro import (
-    parse_agent_uri,
-    normalize_shorthand,
     AddressType,
+    normalize_shorthand,
+    parse_agent_uri,
 )
 
 # --- Three Address Forms ---

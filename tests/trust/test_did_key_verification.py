@@ -40,10 +40,23 @@ def _make_jwt_proof(did: str) -> str:
     return f"{header}.{payload}.{sig}"
 
 
+AUDIENCE = "agent://receiver.example.com"
+
+
 def _make_signed_jwt_proof(private_key, did: str) -> str:
-    """Build a JWT-style DID proof with a real Ed25519 signature over header.payload."""
+    """Build a JWT-style DID proof with a real Ed25519 signature over header.payload.
+
+    Carries the claims the resolver requires: aud, iat, exp (short-lived)
+    and a unique jti.
+    """
+    import secrets
+    import time
+
+    now = int(time.time())
+    claims = {"did": did, "aud": AUDIENCE, "iat": now, "exp": now + 60,
+              "jti": secrets.token_hex(8)}
     header = base64.urlsafe_b64encode(json.dumps({"alg": "EdDSA"}).encode()).decode().rstrip("=")
-    payload = base64.urlsafe_b64encode(json.dumps({"did": did}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
     signing_input = f"{header}.{payload}".encode("ascii")
     sig_bytes = private_key.sign(signing_input)
     sig = base64.urlsafe_b64encode(sig_bytes).decode().rstrip("=")
@@ -134,7 +147,8 @@ async def test_wrong_multicodec_prefix_returns_external():
 async def test_jwt_wrapped_did_key_returns_verified():
     """W2.B.9 — DID key wrapped in JWT proof with VALID signature returns VERIFIED.
 
-    The signature must verify under the did:key's embedded public key.
+    The signature must verify under the did:key's embedded public key, and
+    the proof must be fresh, addressed to this agent and bound to the sender.
     """
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -145,7 +159,7 @@ async def test_jwt_wrapped_did_key_returns_verified():
     )
     did = _make_did_key_from_raw_pub(raw_pub)
     jwt_proof = _make_signed_jwt_proof(priv, did)
-    result = await _resolve_did(jwt_proof)
+    result = await _resolve_did(jwt_proof, audience=AUDIENCE, sender=did)
     assert result == TrustTier.VERIFIED
 
 

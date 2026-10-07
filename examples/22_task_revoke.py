@@ -13,8 +13,8 @@ Run:
 from ampro import (
     AgentMessage,
     TaskCreateBody,
-    TaskSpawnBody,
     TaskRevokeBody,
+    TaskSpawnBody,
     validate_body,
 )
 
@@ -138,7 +138,7 @@ validated = validate_body("task.revoke", revoke_cascade_msg.body)
 print(f"\n  Validated:       {type(validated).__name__}")
 print(f"  Task match:      {validated.task_id == PARENT_TASK}")
 
-print(f"\n  Effect:")
+print("\n  Effect:")
 print(f"    {PARENT_TASK} -> REVOKED")
 print(f"    Delegation chain from {SPECIALIST} -> REVOKED (cascade)")
 print(f"    {CHILD_TASK_A} -> NOT revoked (revoke_children=False)")
@@ -180,9 +180,9 @@ print(f"  revoke_children: {revoke_children.revoke_children}")
 validated2 = validate_body("task.revoke", revoke_children_msg.body)
 print(f"\n  Validated:       {type(validated2).__name__}")
 
-print(f"\n  Effect:")
+print("\n  Effect:")
 print(f"    {PARENT_TASK} -> REVOKED")
-print(f"    Delegation chain -> NOT followed (cascade=False)")
+print("    Delegation chain -> NOT followed (cascade=False)")
 print(f"    {CHILD_TASK_A} -> REVOKED (revoke_children=True)")
 print(f"    {CHILD_TASK_B} -> REVOKED (revoke_children=True)")
 
@@ -218,12 +218,12 @@ print(f"  revoke_children: {revoke_both.revoke_children}")
 validated3 = validate_body("task.revoke", revoke_both_msg.body)
 print(f"\n  Validated:       {type(validated3).__name__}")
 
-print(f"\n  Effect:")
+print("\n  Effect:")
 print(f"    {PARENT_TASK} -> REVOKED")
-print(f"    Delegation chain -> REVOKED (cascade=True)")
+print("    Delegation chain -> REVOKED (cascade=True)")
 print(f"    {CHILD_TASK_A} -> REVOKED (revoke_children=True)")
 print(f"    {CHILD_TASK_B} -> REVOKED (revoke_children=True)")
-print(f"    All downstream work is cancelled.")
+print("    All downstream work is cancelled.")
 
 # ---------------------------------------------------------------------------
 # Summary: The two flags are independent

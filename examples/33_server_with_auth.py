@@ -28,9 +28,11 @@ Test (API key — verified tier):
       -d '{"sender":"agent://partner","recipient":"agent://secure.example.com","body_type":"message","body":{"text":"hello"},"headers":{"Authorization":"ApiKey sk_live_demo123"}}'
 """
 
-from ampro.server import AgentServer
+import os
+
 from ampro import AgentMessage
 from ampro.identity.auth_methods import parse_authorization
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://secure.example.com",
@@ -96,7 +98,7 @@ def handle_message(msg: AgentMessage) -> dict:
 if __name__ == "__main__":
     print("=== AMP Server with Authorization ===\n")
     print(f"Agent: {server.agent_id}")
-    print(f"Auth methods supported: Bearer (JWT), ApiKey, DID\n")
+    print("Auth methods supported: Bearer (JWT), ApiKey, DID\n")
     print("Trust tier mapping:")
     print("  Bearer token → owner  (full access)")
     print("  ApiKey        → verified (full access)")
@@ -112,4 +114,9 @@ if __name__ == "__main__":
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://trusted\",\"recipient\":\"agent://secure.example.com\",\"body_type\":\"message\",\"body\":{\"text\":\"hello\"},\"headers\":{\"Authorization\":\"Bearer eyJ0b2tlbiI6ImRlbW8ifQ\"}}'")
     print()
-    server.run(port=8003)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8003)

@@ -15,8 +15,10 @@ Test:
       -d '{"sender":"agent://caller","recipient":"agent://tools.example.com","body_type":"task.create","body":{"description":"multiply","context":{"tool_name":"multiply","a":6,"b":7}}}'
 """
 
-from ampro.server import AgentServer
+import os
+
 from ampro import AgentMessage
+from ampro.server import AgentServer
 
 server = AgentServer(
     agent_id="agent://tools.example.com",
@@ -92,12 +94,17 @@ def handle_task(msg: AgentMessage) -> dict:
 if __name__ == "__main__":
     print("=== AMP Server with Tools ===\n")
     print(f"Agent: {server.agent_id}")
-    print(f"Tools:")
+    print("Tools:")
     for name, spec in TOOLS.items():
         print(f"  - {name}: {spec['description']}")
-    print(f"\nTry:\n")
+    print("\nTry:\n")
     print("  curl -X POST http://localhost:8002/agent/message \\")
     print("    -H 'Content-Type: application/json' \\")
     print("    -d '{\"sender\":\"agent://caller\",\"recipient\":\"agent://tools.example.com\",\"body_type\":\"task.create\",\"body\":{\"description\":\"multiply\",\"context\":{\"tool_name\":\"multiply\",\"a\":6,\"b\":7}}}'")
     print()
-    server.run(port=8002)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): everything above ran,
+        # but don't block on a long-running server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        server.run(port=8002)

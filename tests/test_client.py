@@ -5,6 +5,8 @@ Uses httpx mock transport to test all client functions without network access.
 
 from __future__ import annotations
 
+import asyncio
+import socket
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -14,6 +16,19 @@ import pytest
 from ampro.client.errors import AmpProtocolError
 from ampro.core.envelope import AgentMessage
 from ampro.wire.errors import ErrorType, ProblemDetail
+
+
+@pytest.fixture(autouse=True)
+def _fake_public_dns(monkeypatch):
+    """The client now resolves (and pins) every target host before
+    connecting — make every name resolve to a public address so these
+    tests never touch real DNS."""
+
+    async def fake_getaddrinfo(self, host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+    monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", fake_getaddrinfo)
+
 
 # ---------------------------------------------------------------------------
 # Helpers — mock HTTP transport
@@ -287,23 +302,16 @@ class TestSession:
     async def test_session_connect_handshake(self):
         """connect() performs the 3-phase handshake and returns a Session."""
         from ampro.client.session import connect
-
-        # Phase 1 response: session.established
-        established_body = {
-            "session_id": "sess-abc",
-            "negotiated_capabilities": ["messaging"],
-            "negotiated_version": "1.0.0",
-            "trust_tier": "verified",
-            "trust_score": 500,
-            "server_nonce": "server_nonce_xyz",
-            "binding_token": "binding_token_123",
-        }
-        established_msg = AgentMessage(
-            sender="@target",
-            recipient="@caller",
-            body=established_body,
-            body_type="session.established",
+        from ampro.session.handshake import (
+            HandshakeStateMachine,
+            SessionConfirmBody,
+            SessionInitBody,
+            server_accept_init,
+            server_verify_confirm,
         )
+
+        server_sm = HandshakeStateMachine()
+        server_state: dict = {}
 
         # Phase 3 response: session.confirm ack
         confirm_ack = AgentMessage(
@@ -319,14 +327,33 @@ class TestSession:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # Phase 1 response
+                # Phase 1 response: real key agreement, binding key never sent
+                init = SessionInitBody.model_validate(kwargs["json"]["body"])
+                est, binding = server_accept_init(
+                    init,
+                    server_sm,
+                    session_id="sess-abc",
+                    negotiated_capabilities=["messaging"],
+                    negotiated_version="1.0.0",
+                    trust_tier="verified",
+                    trust_score=500,
+                )
+                server_state["binding"] = binding
+                established_msg = AgentMessage(
+                    sender="@target",
+                    recipient="@caller",
+                    body=est.model_dump(mode="json"),
+                    body_type="session.established",
+                )
                 return httpx.Response(
                     200,
                     json=established_msg.model_dump(mode="json"),
                     request=httpx.Request("POST", args[0] if args else kwargs.get("url", "")),
                 )
             else:
-                # Phase 3 response
+                # Phase 3: server MUST verify the binding proof
+                confirm = SessionConfirmBody.model_validate(kwargs["json"]["body"])
+                server_verify_confirm(confirm, server_state["binding"], server_sm)
                 return httpx.Response(
                     200,
                     json=confirm_ack.model_dump(mode="json"),
@@ -358,6 +385,8 @@ class TestSession:
             assert second_call_json["body_type"] == "session.confirm"
             assert second_call_json["body"]["session_id"] == "sess-abc"
             assert "binding_proof" in second_call_json["body"]
+            assert second_call_json["body"]["confirm_nonce"]
+            assert "client_ephemeral_key" in first_call_json["body"]
 
     @pytest.mark.asyncio
     async def test_session_send_with_binding(self):
