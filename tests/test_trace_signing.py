@@ -74,7 +74,7 @@ class TestTamperDetection:
 
         # Tamper with trace_id
         tampered = TraceContext(
-            trace_id="0" * 32,
+            trace_id=generate_trace_id(),
             span_id=signed.span_id,
             parent_span_id=signed.parent_span_id,
             signature=signed.signature,

@@ -408,6 +408,8 @@ def validate_chain(
             )
 
         # --- 5. Scope narrowing ---
+        if not link.scopes:
+            return False, f"link {i}: a delegation must grant at least one scope"
         if parent is not None and not validate_scope_narrowing(
             parent.scopes, link.scopes
         ):

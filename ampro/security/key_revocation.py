@@ -20,7 +20,7 @@ import logging
 from enum import Enum
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,14 @@ class KeyRevocationBody(BaseModel):
     reason: str = Field(
         description="Revocation reason (key_compromise, key_rotation, agent_decommissioned)",
     )
+
+    @field_validator("reason")
+    @classmethod
+    def _known_reason(cls, value: str) -> str:
+        allowed = {r.value for r in RevocationReason}
+        if value not in allowed:
+            raise ValueError(f"reason must be one of {sorted(allowed)}")
+        return value
     replacement_key_id: str | None = Field(
         default=None,
         description="Replacement key ID, if key was rotated",
@@ -107,7 +115,11 @@ def validate_revocation_signature(body: KeyRevocationBody, public_key_bytes: byt
     canonical = {
         k: v for k, v in body.model_dump(mode="json").items() if k != "signature"
     }
-    message = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    # Same canonical JSON as every other signed AMP artefact: sorted keys,
+    # compact separators, UTF-8 (no \\u escaping).
+    message = json.dumps(
+        canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
 
     try:
         import base64
