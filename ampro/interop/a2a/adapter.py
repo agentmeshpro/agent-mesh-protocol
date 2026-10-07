@@ -1196,9 +1196,10 @@ class A2AAdapter:
         if reply is None:  # canceled
             current = await self.store.get_task(tid, owner)
             if current is not None and current.status.state == TaskState.CANCELED:
-                return
-            working.status = TaskStatus(state=TaskState.CANCELED, timestamp=now_timestamp())
-            await self.store.save_task(working, owner)
+                working.status = current.status
+            else:
+                working.status = TaskStatus(state=TaskState.CANCELED, timestamp=now_timestamp())
+                await self.store.save_task(working, owner)
             yield {"statusUpdate": dump(TaskStatusUpdateEvent(task_id=tid, context_id=cid,
                                                               status=working.status))}
             return

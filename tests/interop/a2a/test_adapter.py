@@ -750,6 +750,48 @@ async def test_defaults_come_from_server_security():
     assert len(adapter.authenticators) == 1
 
 
+async def test_cancel_during_stream_and_disconnect_cleanup():
+    from ampro.ampi.app import AgentApp
+    from ampro.interop.a2a import ANONYMOUS, A2AAdapter
+    from ampro.interop.a2a.adapter import _Call
+    from ampro.server import AgentServer
+    from ampro.server.http import HTTPRequest
+    from ampro.streaming.events import StreamingEvent
+
+    app = AgentApp("@long", "https://long.example")
+    finished = []
+
+    @app.on("task.create")
+    async def long(msg, ctx):
+        try:
+            await ctx.emit(StreamingEvent(type="thinking", data={}))
+            await asyncio.sleep(30)
+        finally:
+            finished.append(True)
+
+    server = AgentServer.from_app(app)
+    adapter = A2AAdapter.for_server(server)
+    call = _Call(ANONYMOUS, frozenset(), HTTPRequest("POST", "/a2a/message:stream"), "r1")
+
+    stream = adapter.op_stream_message(user_message("go"), call)
+    first = await stream.__anext__()
+    task_id = first["task"]["id"]
+    await stream.__anext__()  # the "thinking" status update
+    canceled = await adapter.op_cancel_task(task_id, call)
+    assert canceled["status"]["state"] == "TASK_STATE_CANCELED"
+    rest = [e async for e in stream]
+    assert rest[-1]["statusUpdate"]["status"]["state"] == "TASK_STATE_CANCELED"
+    assert finished == [True] and adapter._live == {}
+
+    # client disconnect: closing the generator cancels the handler
+    stream = adapter.op_stream_message(user_message("go"), call)
+    await stream.__anext__()
+    await stream.__anext__()
+    await stream.aclose()
+    await asyncio.sleep(0)
+    assert finished == [True, True] and adapter._live == {}
+
+
 async def test_oversized_stream_event_fails_task():
     from ampro.ampi.app import AgentApp
     from ampro.interop.a2a import A2AAdapter
