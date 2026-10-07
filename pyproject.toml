@@ -41,9 +41,12 @@ flask = [
 a2a = [
     "pyjwt[crypto]>=2.8",
 ]
+pact = [
+    "pyjwt[crypto]>=2.8",
+]
 mcp = []
 all = [
-    "ampro[server,a2a,mcp]",
+    "ampro[server,a2a,pact,mcp]",
 ]
 dev = [
     "pytest>=8.0",
