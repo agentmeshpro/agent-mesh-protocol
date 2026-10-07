@@ -40,7 +40,7 @@ import inspect
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -136,6 +136,13 @@ class AgentServer:
         # Security pipeline for POST /agent/message (WIRE-BINDING App. D).
         self.security = security or SecurityPolicy.from_config(self.config)
 
+        # Readiness (``GET /agent/ready``): every check must pass.  Shared
+        # backends (see :mod:`ampro.stores.redis`) register a ping here.
+        self.readiness_checks: list[Callable[[], Awaitable[bool]]] = []
+        # Called by :meth:`aclose` after the adapters (e.g. closing clients).
+        self.shutdown_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self._draining = False
+
     # ------------------------------------------------------------------
     # Alternate constructors
     # ------------------------------------------------------------------
@@ -188,6 +195,40 @@ class AgentServer:
     @property
     def adapters(self) -> list[ProtocolAdapter]:
         return list(self._adapters)
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    @property
+    def draining(self) -> bool:
+        """``True`` once :meth:`aclose` started; readiness then reports 503."""
+        return self._draining
+
+    async def aclose(self, grace: float = 10.0) -> None:
+        """Graceful shutdown (called on ASGI ``lifespan.shutdown``).
+
+        Readiness flips to ``503`` first so the load balancer stops
+        routing here, then every adapter with an ``aclose`` is closed (the
+        A2A adapter lets background tasks finish for up to *grace*
+        seconds), then :attr:`shutdown_callbacks` run.
+        """
+        if self._draining:
+            return
+        self._draining = True
+        for adapter in self._adapters:
+            close = getattr(adapter, "aclose", None)
+            if close is None:
+                continue
+            try:
+                await close(grace)
+            except Exception:
+                logger.exception("Adapter %r failed to close", getattr(adapter, "name", adapter))
+        for callback in self.shutdown_callbacks:
+            try:
+                await callback()
+            except Exception:
+                logger.exception("Shutdown callback failed")
 
     async def handle(self, request: HTTPRequest) -> HTTPResponse:
         """Handle a transport-neutral request — the single server entry point."""
@@ -310,9 +351,13 @@ class AgentServer:
         if method == "GET" and path == "/.well-known/agent.json":
             return self._agent_json_response()
 
-        # 2. GET /agent/health
+        # 2. GET /agent/health (liveness: the process answers)
         if method == "GET" and path == "/agent/health":
             return self._health_response()
+
+        # 2b. GET /agent/ready (readiness: shared backends reachable, not draining)
+        if method == "GET" and path == "/agent/ready":
+            return await self._ready_response()
 
         # 3. POST /agent/message
         if method == "POST" and path == "/agent/message":
@@ -374,6 +419,31 @@ class AgentServer:
             {"Content-Type": "application/json"},
             json.dumps(health.model_dump(mode="json")),
         )
+
+    async def _ready_response(self) -> tuple[int, dict[str, Any], str]:
+        """200 when this worker should receive traffic, else 503.
+
+        Not ready while draining or when any readiness check fails or
+        raises (e.g. Redis unreachable: replay protection and rate limits
+        would fail closed, so the balancer should route elsewhere).
+        """
+        ok = not self._draining
+        reason = "draining" if self._draining else None
+        if ok:
+            for check in self.readiness_checks:
+                try:
+                    passed = bool(await check())
+                except Exception:
+                    logger.warning("Readiness check raised", exc_info=True)
+                    passed = False
+                if not passed:
+                    ok, reason = False, "dependency unavailable"
+                    break
+        payload: dict[str, Any] = {"status": "ready" if ok else "not_ready"}
+        if reason:
+            payload["reason"] = reason
+        headers = {"Content-Type": "application/json", "Cache-Control": "no-store"}
+        return (200 if ok else 503), headers, json.dumps(payload)
 
     def _stream_placeholder(self) -> tuple[int, dict[str, Any], str]:
         """Placeholder for SSE streaming endpoint."""

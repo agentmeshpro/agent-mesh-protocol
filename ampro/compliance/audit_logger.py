@@ -105,9 +105,33 @@ class AuditLogger:
         self._last_hash: str = "0" * 64
 
     def log(self, entry: AuditEntry) -> AuditEntry:
-        """Append an entry with hash chain integrity."""
-        entry.previous_hash = self._last_hash
-        entry.sequence = self._storage.count()
+        """Append an entry with hash chain integrity.
+
+        The chain head is read from the storage (not cached in this
+        process), so several workers sharing one storage extend a single
+        chain.  A storage that offers ``append_at(entry, sequence) -> bool``
+        (compare-and-append) makes concurrent appends safe: a lost race is
+        retried against the new head.
+        """
+        append_at = getattr(self._storage, "append_at", None)
+        for _ in range(64):
+            tail = self._storage.tail()
+            entry.previous_hash = tail.hash if tail is not None and tail.hash else "0" * 64
+            entry.sequence = self._storage.count()
+            self._seal(entry)
+            if append_at is None:
+                self._storage.append(entry)
+                break
+            if append_at(entry, entry.sequence):
+                break
+        else:
+            raise RuntimeError("audit log append kept losing the race; giving up")
+        self._last_hash = entry.hash
+        logger.info("Audit: %s %s→%s [%s]", entry.message_id, entry.sender, entry.recipient, entry.action_taken)
+        return entry
+
+    @staticmethod
+    def _seal(entry: AuditEntry) -> None:
         content = json.dumps({
             "message_id": entry.message_id,
             "timestamp": entry.timestamp,
@@ -121,10 +145,6 @@ class AuditLogger:
             "sequence": entry.sequence,
         }, sort_keys=True)
         entry.hash = hashlib.sha256(content.encode()).hexdigest()
-        self._last_hash = entry.hash
-        self._storage.append(entry)
-        logger.info("Audit: %s %s→%s [%s]", entry.message_id, entry.sender, entry.recipient, entry.action_taken)
-        return entry
 
     def get_entries(self, message_id: str | None = None) -> list[AuditEntry]:
         """Query audit entries, optionally filtered by message_id."""

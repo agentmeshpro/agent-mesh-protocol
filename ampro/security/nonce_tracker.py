@@ -11,6 +11,22 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class ReplayCache(Protocol):
+    """Single-use value tracker (RFC 9421 nonces, DID-proof ``jti`` ...).
+
+    :class:`NonceTracker` is the bounded per-process default.  Deployments
+    with several workers must share one implementation (for example
+    :class:`ampro.stores.redis.RedisNonceTracker`); otherwise a request
+    replayed to a different worker is accepted.
+    """
+
+    def is_replay(self, nonce: str) -> bool:
+        """Record *nonce*; ``True`` if it was already recorded (atomic)."""
+        ...
 
 
 class NonceTracker:

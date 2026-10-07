@@ -42,7 +42,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 if TYPE_CHECKING:
-    from ampro.security.nonce_tracker import NonceTracker
+    from ampro.security.nonce_tracker import NonceTracker, ReplayCache
 
 # Default freshness window for ``created`` in signed requests. A verifier
 # rejects signatures whose ``created`` is older — or further in the future —
@@ -73,6 +73,19 @@ def _get_default_nonce_tracker() -> NonceTracker:
         from ampro.security.nonce_tracker import NonceTracker as _NT
         _DEFAULT_NONCE_TRACKER = _NT()
     return _DEFAULT_NONCE_TRACKER
+
+
+def set_default_nonce_tracker(tracker: ReplayCache | None) -> None:
+    """Replace the process-wide replay cache used when a caller passes none.
+
+    Multi-worker deployments install a shared
+    :class:`~ampro.security.nonce_tracker.ReplayCache` (for example
+    :class:`ampro.stores.redis.RedisNonceTracker`) at startup so a signed
+    request replayed to a different worker is rejected.  ``None`` restores
+    a fresh in-memory tracker on next use.
+    """
+    global _DEFAULT_NONCE_TRACKER
+    _DEFAULT_NONCE_TRACKER = tracker  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Content-Digest helper

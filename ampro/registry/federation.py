@@ -421,12 +421,33 @@ class _NonceCache:
             self._seen.clear()
 
 
-_FEDERATION_NONCES = _NonceCache()
+class FederationNonceCache(Protocol):
+    """Single-use store for federation ``trust_proof`` nonces.
+
+    The default is per-process; several registry workers must share one
+    (e.g. :class:`ampro.stores.redis.RedisFederationNonceCache`), otherwise
+    a proof replayed to a different worker is accepted.
+    """
+
+    def check_and_add(self, key: str, ttl_seconds: float) -> bool:
+        """Return True if *key* was unseen (and record it); False on replay."""
+        ...
+
+
+_FEDERATION_NONCES: FederationNonceCache = _NonceCache()
+
+
+def register_federation_nonce_cache(cache: FederationNonceCache | None) -> None:
+    """Install a shared federation nonce cache (``None`` restores the default)."""
+    global _FEDERATION_NONCES
+    _FEDERATION_NONCES = cache if cache is not None else _NonceCache()
 
 
 def reset_federation_nonce_cache() -> None:
     """Clear the process-local federation nonce cache (tests / key rotation)."""
-    _FEDERATION_NONCES.clear()
+    clear = getattr(_FEDERATION_NONCES, "clear", None)
+    if clear is not None:
+        clear()
 
 
 def federation_trust_proof_payload(

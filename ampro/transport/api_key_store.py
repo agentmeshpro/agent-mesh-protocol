@@ -24,6 +24,24 @@ import hashlib
 import hmac
 import threading
 import time
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class ApiKeyFailureTracker(Protocol):
+    """Brute-force protection for API-key auth, keyed by client address.
+
+    :class:`ApiKeyStore` is the per-process default; register a shared one
+    (e.g. :class:`ampro.stores.redis.RedisApiKeyFailureTracker`) with
+    :func:`ampro.trust.resolver.set_api_key_failure_tracker` so a guesser
+    cannot multiply its budget by the number of workers.
+    """
+
+    def is_blocked(self, ip: str) -> bool: ...
+
+    def record_failure(self, ip: str) -> None: ...
+
+    def reset_failures(self, ip: str) -> None: ...
 
 
 class ApiKeyStore:

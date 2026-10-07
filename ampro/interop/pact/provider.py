@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
@@ -55,13 +56,14 @@ from ampro.interop.pact.keys import ProviderKeySet
 from ampro.interop.pact.registry import PersonalAgentRegistry
 from ampro.interop.pact.scopes import Delegation, Turn, _turn
 from ampro.interop.pact.stores import (
-    BoundedTTLMap,
     Clock,
     ContextRecord,
     ContextStore,
     DelegationStores,
     InMemoryContextStore,
+    InMemoryReceiptStore,
     NonceStore,
+    ReceiptStore,
 )
 from ampro.server.http import HTTPRequest, HTTPResponse
 
@@ -116,6 +118,11 @@ class PACTProvider:
             (e.g. :class:`ampro.security.rate_limiter.RateLimiter`); applied
             per personal agent and per ``(PA, sub)``.
         replay_store: optional :class:`NonceStore` to reject a repeated PA-JWT ``jti``.
+        receipt_store: where signed receipts are kept for idempotent retries.
+        a2a_stores: ``brand_id -> dict`` of extra :class:`A2AAdapter` keyword
+            arguments (``task_store``, ``context_store``, ``idempotency_store``,
+            ``task_broker``) for each Brand's A2A interface; how several
+            workers share Brand task state (see ``docs/SCALING.md``).
         poll_interval: RFC 8628 ``interval`` for device flows.
     """
 
@@ -143,6 +150,8 @@ class PACTProvider:
         base_path: str = "/a2a",
         rate_limiter: Any = None,
         replay_store: NonceStore | None = None,
+        receipt_store: ReceiptStore | None = None,
+        a2a_stores: Callable[[str], dict[str, Any]] | None = None,
         max_text_chars: int = 16_000,
         poll_interval: int = 5,
         access_token_ttl: int = 3600,
@@ -171,7 +180,8 @@ class PACTProvider:
                 poll_interval=poll_interval, access_token_ttl=access_token_ttl,
             )
         self.contexts = context_store or InMemoryContextStore(clock=clock)
-        self._receipts = BoundedTTLMap(100_000, 24 * 3600, clock)
+        self.receipts: ReceiptStore = receipt_store or InMemoryReceiptStore(clock=clock)
+        self.a2a_stores = a2a_stores
         self._brands: dict[str, _Hosted] = {}
         for brand in brands:
             self.add_brand(brand)
@@ -201,6 +211,7 @@ class PACTProvider:
             serve_root_card=False,
             streaming=False,
             max_text_chars=self.max_text_chars,
+            **(self.a2a_stores(brand.brand_id) if self.a2a_stores is not None else {}),
         )
         self._brands[brand.brand_id] = _Hosted(brand, adapter, self.interface_url(brand.brand_id))
         return brand
@@ -400,7 +411,8 @@ class PACTProvider:
         if isinstance(reply_message, dict):
             reply_message.pop("taskId", None)
             if delegation is not None and self.delegation is not None:
-                receipt = self._receipt(turn, delegation, hosted, reply_context, reply_message)
+                receipt = await self._receipt(turn, delegation, hosted, reply_context,
+                                              reply_message)
                 reply_message.setdefault("metadata", {})["pact.receipt"] = receipt
                 await self.contexts.set_brand_user(reply_context, delegation.sub)
         elif isinstance(task, dict):
@@ -410,19 +422,18 @@ class PACTProvider:
             await hosted.adapter.close_context(reply_context)
         return a2a_json(payload)
 
-    def _receipt(self, turn: Turn, delegation: Delegation, hosted: _Hosted, context_id: str,
+    async def _receipt(self, turn: Turn, delegation: Delegation, hosted: _Hosted, context_id: str,
                  reply: dict[str, Any]) -> dict[str, Any]:
         assert self.delegation is not None
-        key = (hosted.brand.brand_id, context_id, str(reply.get("messageId")))
-        cached = self._receipts.get(key)
+        key = json.dumps([hosted.brand.brand_id, context_id, str(reply.get("messageId"))])
+        cached = await self.receipts.get(key)
         if cached is not None:  # an idempotent retry returns the original receipt
             return cached
         receipt = self.delegation.sign_receipt(
             grant_id=delegation.grant_id, user=delegation.sub, pa=delegation.client_id,
             brand=hosted.interface_url, scopes_used=turn.scopes_used, actions=turn.actions,
         )
-        self._receipts.set(key, receipt)
-        return receipt
+        return await self.receipts.put_if_absent(key, receipt)
 
     # ------------------------------------------------------------------
     # Hosting helpers

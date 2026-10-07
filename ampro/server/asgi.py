@@ -68,6 +68,9 @@ def make_asgi_app(server: AgentServer) -> Callable[[Scope, Receive, Send], Await
                         await run_hooks(hooks.startup_hooks)
                     await send({"type": "lifespan.startup.complete"})
                 elif message["type"] == "lifespan.shutdown":
+                    # Stop taking traffic and drain background work first,
+                    # then the app's own shutdown hooks.
+                    await server.aclose()
                     if hooks is not None:
                         await run_hooks(hooks.shutdown_hooks)
                     await send({"type": "lifespan.shutdown.complete"})
