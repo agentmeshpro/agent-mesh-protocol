@@ -28,7 +28,7 @@ PURE — zero platform-specific imports at module level.
 # ampro v0.3.0; downstream implementers may depend on it directly, or
 # provide their own implementation conforming to the same contract.
 #
-# Intended for `pip install agent-protocol && python -m ampro.server`.
+# Intended for `pip install ampro && python -m ampro.server`.
 # Full-stack implementers mount AMPI handlers into their own HTTP
 # framework and do not use this server.
 # ───────────────────────────────────────────────────────────────────
@@ -50,9 +50,13 @@ from pydantic import BaseModel, ValidationError
 
 from ampro.agent.health import HealthResponse
 from ampro.agent.schema import AgentJson
+from ampro.ampi.dispatch import build_context, dispatch
+from ampro.ampi.errors import AMPError
 from ampro.core.body_schemas import validate_body
 from ampro.core.envelope import AgentMessage
 from ampro.core.versioning import CURRENT_VERSION
+from ampro.server.http import HTTPRequest, HTTPResponse, ProtocolAdapter
+from ampro.trust.tiers import TrustTier
 from ampro.wire.config import DEFAULTS, WireConfig
 from ampro.wire.errors import (
     ProblemDetail,
@@ -60,6 +64,7 @@ from ampro.wire.errors import (
     invalid_message,
     not_found,
     not_implemented,
+    payload_too_large,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +85,8 @@ class AgentServer:
         endpoint: str,
         config: WireConfig | None = None,
         agent_json: AgentJson | None = None,
+        *,
+        trust_tier: TrustTier = TrustTier.EXTERNAL,
     ) -> None:
         self.agent_id = agent_id
         self.endpoint = endpoint
@@ -100,6 +107,17 @@ class AgentServer:
         self._handlers: dict[str, Callable[..., Any]] = {}
         self._default_handler: Callable[..., Any] | None = None
 
+        # AMPI app (set by ``from_app``).  When present, handlers are
+        # invoked as ``(msg, ctx)`` through the shared dispatcher, with
+        # the app's middleware and error hook.
+        self._app: AgentApp | None = None
+        # Trust tier given to callers.  This server does not authenticate
+        # senders itself, so the default is the least-privileged tier.
+        self.trust_tier = trust_tier
+
+        # Additional wire protocols (A2A, MCP, ...) served alongside AMP.
+        self._adapters: list[ProtocolAdapter] = []
+
     # ------------------------------------------------------------------
     # Alternate constructors
     # ------------------------------------------------------------------
@@ -108,9 +126,9 @@ class AgentServer:
     def from_app(cls, app: AgentApp) -> AgentServer:
         """Create an AgentServer from an AgentApp.
 
-        Maps AgentApp handlers to AgentServer handlers. Handlers
-        registered with ``@app.on("body_type")`` are wrapped to
-        accept the old ``(msg)`` signature if needed.
+        AMPI handlers are called as ``(msg, ctx)`` through the same
+        dispatcher as :class:`~ampro.server.test.TestServer`, so the
+        app's middleware and ``@on_error`` hook run too.
         """
 
         server = cls(
@@ -118,14 +136,72 @@ class AgentServer:
             endpoint=app.endpoint,
             agent_json=app.agent_json,
         )
-        # Copy handlers — AgentServer's old API uses (msg) only,
-        # but AMPI handlers use (msg, ctx).  We keep them as-is
-        # and let the handler pipeline deal with arity.
-        for body_type, handler in app.handlers.items():
-            server._handlers[body_type] = handler
-        if app.error_handler:
-            server._default_handler = app.error_handler
+        server._app = app
+        # Share the registry: ``@server.on`` on an app-backed server
+        # registers an AMPI ``(msg, ctx)`` handler.
+        server._handlers = app.handlers
         return server
+
+    @property
+    def app(self) -> AgentApp | None:
+        """The AMPI app backing this server, if any."""
+        return self._app
+
+    # ------------------------------------------------------------------
+    # Protocol adapters
+    # ------------------------------------------------------------------
+
+    def mount(self, adapter: ProtocolAdapter) -> ProtocolAdapter:
+        """Serve an additional wire protocol (e.g. A2A, MCP) from this server.
+
+        Adapters are consulted in mount order before the native AMP routes.
+        """
+        self._adapters.append(adapter)
+        return adapter
+
+    @property
+    def adapters(self) -> list[ProtocolAdapter]:
+        return list(self._adapters)
+
+    async def handle(self, request: HTTPRequest) -> HTTPResponse:
+        """Handle a transport-neutral request — the single server entry point."""
+        if len(request.body) > self.config.max_message_bytes:
+            return self.too_large_response()
+
+        for adapter in self._adapters:
+            response = await adapter.handle(request)
+            if response is not None:
+                return response
+
+        payload: Any = None
+        if request.method.upper() == "POST":
+            try:
+                payload = request.json()
+            except ValueError:
+                status, headers, body = self._error_response(
+                    invalid_message("Request body is not valid JSON")
+                )
+                return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+        status, headers, body = await self.route(request.method, request.path, payload)
+        return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+
+    def too_large_response(self) -> HTTPResponse:
+        """413 problem response for a body over ``max_message_bytes``."""
+        err = payload_too_large(
+            "Request body exceeds the maximum message size",
+            max_bytes=self.config.max_message_bytes,
+        )
+        status, headers, body = self._error_response(err)
+        return HTTPResponse(status, _lower(headers), body.encode("utf-8"))
+
+    def asgi(self) -> Callable[..., Any]:
+        """Return an ASGI application serving every mounted protocol.
+
+        Run it with any ASGI server, e.g. ``uvicorn.run(server.asgi())``.
+        """
+        from ampro.server.asgi import make_asgi_app
+
+        return make_asgi_app(self)
 
     # ------------------------------------------------------------------
     # Decorators
@@ -305,27 +381,36 @@ class AgentServer:
                 return self._error_response(err)
 
         # Step 3: Look up handler.
-        handler = self._handlers.get(msg.body_type, self._default_handler)
+        handler = self._handlers.get(msg.body_type)
+        if handler is None and self._app is None:
+            handler = self._default_handler
         if handler is None:
             err = not_implemented(
                 f"No handler registered for body_type '{msg.body_type}'"
             )
             return self._error_response(err)
 
-        # Step 4: Call handler (supports sync and async).
+        # Step 4: Call handler (supports sync and async), then serialise
+        # inside the same guard so a non-JSON result cannot escape as an
+        # unhandled exception.
         try:
-            result = handler(msg)
-            if inspect.isawaitable(result):
-                result = await result
+            if self._app is not None:
+                ctx = build_context(self.agent_id, msg, trust_tier=self.trust_tier)
+                result = await dispatch(self._app, msg, ctx)
+            else:
+                result = handler(msg)
+                if inspect.isawaitable(result):
+                    result = await result
+            return self._success_response(result)
+        except AMPError as exc:
+            logger.info("Handler rejected body_type '%s': %s", msg.body_type, exc)
+            return self._error_response(exc.to_problem_detail(status=400))
         except Exception:
             logger.exception("Handler raised for body_type '%s'", msg.body_type)
             err = internal_error(
                 "An unexpected error occurred while processing the request."
             )
             return self._error_response(err)
-
-        # Step 5: Serialize result.
-        return self._success_response(result)
 
     # ------------------------------------------------------------------
     # Response helpers
@@ -366,97 +451,70 @@ class AgentServer:
     # Server runners (optional — require framework deps)
     # ------------------------------------------------------------------
 
-    def run(self, port: int = 8000, adapter: str = "fastapi") -> None:
-        """Start the server using the specified adapter.
+    def run(
+        self,
+        port: int = 8000,
+        adapter: str = "asgi",
+        host: str = "127.0.0.1",
+    ) -> None:
+        """Start the server.
 
         Args:
             port:    TCP port to listen on.
-            adapter: ``"fastapi"`` (default) or ``"flask"``.
+            adapter: ``"asgi"`` (default, served by uvicorn), ``"fastapi"``
+                     (alias of ``"asgi"``, kept for compatibility) or
+                     ``"flask"``.
+            host:    Interface to bind.  Defaults to loopback; pass
+                     ``"0.0.0.0"`` explicitly to listen on all interfaces.
         """
-        if adapter == "fastapi":
-            self._run_fastapi(port)
+        if adapter in ("asgi", "fastapi"):
+            self._run_asgi(host, port)
         elif adapter == "flask":
-            self._run_flask(port)
+            self._run_flask(host, port)
         else:
-            raise ValueError(f"Unknown adapter '{adapter}'. Use 'fastapi' or 'flask'.")
+            raise ValueError(f"Unknown adapter '{adapter}'. Use 'asgi' or 'flask'.")
 
-    def _run_fastapi(self, port: int) -> None:
-        """Start with FastAPI + uvicorn."""
+    def _run_asgi(self, host: str, port: int) -> None:
+        """Start with uvicorn."""
         try:
             import uvicorn
-            from fastapi import FastAPI, Request
-            from fastapi.responses import JSONResponse, PlainTextResponse
         except ImportError as exc:
             raise RuntimeError(
-                "FastAPI adapter requires 'fastapi' and 'uvicorn'. "
-                "Install them: pip install fastapi uvicorn"
+                "Running the server requires 'uvicorn'. "
+                "Install it: pip install 'ampro[server]'"
             ) from exc
+        uvicorn.run(self.asgi(), host=host, port=port)
 
-        app = FastAPI(title=f"AMP Agent: {self.agent_id}")
-
-        @app.get("/.well-known/agent.json")
-        async def agent_json_endpoint() -> JSONResponse:
-            status, headers, body_str = self._agent_json_response()
-            return JSONResponse(content=json.loads(body_str), status_code=status)
-
-        @app.get("/agent/health")
-        async def health_endpoint() -> JSONResponse:
-            status, headers, body_str = self._health_response()
-            return JSONResponse(content=json.loads(body_str), status_code=status)
-
-        @app.post("/agent/message")
-        async def message_endpoint(request: Request) -> JSONResponse:
-            raw = await request.json()
-            status, headers, body_str = await self._handle_message(raw)
-            return JSONResponse(
-                content=json.loads(body_str),
-                status_code=status,
-                media_type=headers.get("Content-Type", "application/json"),
-            )
-
-        @app.get("/agent/stream")
-        async def stream_endpoint() -> PlainTextResponse:
-            status, headers, body_str = self._stream_placeholder()
-            return PlainTextResponse(
-                content=body_str,
-                status_code=status,
-                media_type="text/event-stream",
-            )
-
-        uvicorn.run(app, host="0.0.0.0", port=port)
-
-    def _run_flask(self, port: int) -> None:
-        """Start with Flask."""
+    def _run_flask(self, host: str, port: int) -> None:
+        """Start with Flask (no streaming support)."""
         try:
-            from flask import Flask, Response, jsonify
+            from flask import Flask, Response
             from flask import request as flask_request
         except ImportError as exc:
             raise RuntimeError(
                 "Flask adapter requires 'flask'. "
-                "Install it: pip install flask"
+                "Install it: pip install 'ampro[flask]'"
             ) from exc
 
         app = Flask(__name__)
 
-        @app.route("/.well-known/agent.json", methods=["GET"])
-        def agent_json_endpoint():  # type: ignore[no-untyped-def]
-            status, headers, body_str = self._agent_json_response()
-            return Response(body_str, status=status, content_type=headers["Content-Type"])
+        @app.route("/", defaults={"path": ""}, methods=["GET", "POST", "DELETE", "PUT"])
+        @app.route("/<path:path>", methods=["GET", "POST", "DELETE", "PUT"])
+        def catch_all(path: str):  # type: ignore[no-untyped-def]
+            req = HTTPRequest(
+                method=flask_request.method,
+                path="/" + path,
+                headers={k.lower(): v for k, v in flask_request.headers.items()},
+                query=dict(flask_request.args),
+                body=flask_request.get_data(),
+            )
+            resp = asyncio.run(self.handle(req))
+            if resp.is_streaming:
+                return Response("Streaming requires the ASGI adapter", status=501)
+            return Response(resp.body, status=resp.status, headers=resp.headers)
 
-        @app.route("/agent/health", methods=["GET"])
-        def health_endpoint():  # type: ignore[no-untyped-def]
-            status, headers, body_str = self._health_response()
-            return Response(body_str, status=status, content_type=headers["Content-Type"])
+        app.run(host=host, port=port)
 
-        @app.route("/agent/message", methods=["POST"])
-        def message_endpoint():  # type: ignore[no-untyped-def]
-            raw = flask_request.get_json(force=True)
-            status, headers, body_str = asyncio.run(self._handle_message(raw))
-            return Response(body_str, status=status, content_type=headers["Content-Type"])
 
-        @app.route("/agent/stream", methods=["GET"])
-        def stream_endpoint():  # type: ignore[no-untyped-def]
-            status, headers, body_str = self._stream_placeholder()
-            return Response(body_str, status=status, content_type=headers["Content-Type"])
-
-        app.run(host="0.0.0.0", port=port)
+def _lower(headers: dict[str, Any]) -> dict[str, str]:
+    return {k.lower(): str(v) for k, v in headers.items()}

@@ -12,7 +12,7 @@ Usage::
 # ampro v0.3.0; downstream implementers may depend on it directly, or
 # provide their own implementation conforming to the same contract.
 #
-# Intended for `pip install agent-protocol && python -m ampro.server`.
+# Intended for `pip install ampro && python -m ampro.server`.
 # Full-stack implementers mount AMPI handlers into their own HTTP
 # framework and do not use this server.
 # ───────────────────────────────────────────────────────────────────
@@ -42,6 +42,24 @@ def _load_app(app_str: str):
     return getattr(module, attr_name)
 
 
+def build_server(app, protocols: list[str] | None = None):
+    """Wrap *app* (an ``AgentApp`` or ``AgentServer``) in a server.
+
+    *protocols* lists the extra wire protocols to mount next to AMP,
+    e.g. ``["a2a", "mcp"]``.
+    """
+    from ampro.server.core import AgentServer
+
+    server = AgentServer.from_app(app) if hasattr(app, "handlers") else app
+    for name in protocols or []:
+        if name == "amp":
+            continue
+        from ampro.interop import load_adapter
+
+        server.mount(load_adapter(name, server))
+    return server
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -50,31 +68,25 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("app", help="App to run, e.g. 'main:agent'")
     parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
-    parser.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Interface to bind (default: 127.0.0.1; use 0.0.0.0 to expose)",
+    )
+    parser.add_argument(
+        "--protocols",
+        default="amp",
+        help="Comma-separated wire protocols to serve: amp,a2a,mcp (default: amp)",
+    )
 
     args = parser.parse_args(argv)
     app = _load_app(args.app)
+    protocols = [p.strip().lower() for p in args.protocols.split(",") if p.strip()]
+    server = build_server(app, protocols)
 
-    agent_id = getattr(app, "agent_id", "unknown")
     print(f"\n  AMP agent running on http://{args.host}:{args.port}")
-    print(f"  Agent ID:  {agent_id}")
-    print("  Endpoints:")
-    print("    GET  /.well-known/agent.json")
-    print("    GET  /agent/health")
-    print("    POST /agent/message")
-    print("    GET  /agent/stream")
+    print(f"  Agent ID:  {getattr(server, 'agent_id', 'unknown')}")
+    print(f"  Protocols: {', '.join(['amp'] + [a.name for a in server.adapters])}")
     print()
 
-    from ampro.server.core import AgentServer
-    if hasattr(app, "handlers"):
-        server = AgentServer(
-            agent_id=app.agent_id,
-            endpoint=app.endpoint,
-            agent_json=getattr(app, "agent_json", None),
-        )
-        for body_type, handler in app.handlers.items():
-            server._handlers[body_type] = handler
-    else:
-        server = app
-    server.run(port=args.port)
+    server.run(port=args.port, host=args.host)
