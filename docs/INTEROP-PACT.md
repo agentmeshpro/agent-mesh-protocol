@@ -73,7 +73,11 @@ Requests are processed in this order:
 5. Delegation-token verification. On failure the response is `401` with
    `error="invalid_token"`.
 6. PACT §4 validation.
-7. The Brand's `A2AAdapter`.
+7. The Brand's `A2AAdapter`. Request headers are forwarded to it, so
+   `traceparent` / `tracestate` / `AMP-Hop-Count` (and `metadata["amp.hopCount"]`)
+   are validated and mapped exactly as in
+   [INTEROP-A2A.md](INTEROP-A2A.md#trace-context-and-hop-count): malformed
+   values or a hop count above the limit get `400 INVALID_PARAMS`.
 8. Response normalization and the receipt.
 
 ### Personal-agent JWT rules (§3.2)
@@ -214,6 +218,18 @@ async with PACTClient(signer, audience="provider-aud-7f3c") as pa:
 
 Delegation tokens are kept per `sub` and refreshed when they are close to
 expiry.
+
+`message:send` carries `traceparent`, `tracestate` and `AMP-Hop-Count`
+headers, and `metadata["amp.hopCount"]`, taken from the handler the client is
+called from (a new trace at hop 1 otherwise). `PACTClient(max_hops=20)`
+raises `HopLimitExceeded` instead of sending when the next hop would exceed
+it.
+
+| PACT / A2A carrier | AMPContext |
+|---|---|
+| `traceparent` header | `trace_id`, `parent_span_id` |
+| `tracestate` header | `trace_state` |
+| `AMP-Hop-Count` header, `metadata["amp.hopCount"]` | `hop_count` (largest value wins) |
 
 ## Conformance
 

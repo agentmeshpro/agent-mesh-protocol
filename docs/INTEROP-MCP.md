@@ -144,6 +144,8 @@ returns `-32601`.
 | tool raises | `isError: true`, generic text with a reference id |
 | bad arguments | `isError: true`, naming only the offending fields |
 | unknown tool | JSON-RPC `-32602` |
+| `traceparent` / `tracestate` HTTP headers | `AMPContext.trace_id`, `parent_span_id`, `trace_state` (new `span_id` per request). Strict W3C parsing; malformed values get `400` JSON-RPC `-32600` before the body is read. |
+| `AMP-Hop-Count` HTTP header | `AMPContext.hop_count`; above `max_hops` (default `security.max_visited_agents`, 20) the request gets `400` "Hop limit exceeded". Tools run inside the request's span, so clients they call send `hop_count + 1`. |
 | `task.create` handler | tool `amp_task` (`description`, `context`, `priority`, `task_id`, `timeout_seconds`). It is dispatched as an AMP `task.create` `AgentMessage` through `ampro.ampi.dispatch.dispatch`, so app middleware and `@on_error` run. |
 
 `amp_task` can be turned off with `expose_tasks=False`. Scopes can be set on it
@@ -257,6 +259,13 @@ async with MCPToolSource("https://tools.example.com/mcp",
     capped at `max_response_bytes` (4 MiB).
   * If you pass your own `http_client`, you are responsible for its egress
     policy.
+* **Trace context and hop count:** every request carries `traceparent`,
+  `tracestate` and `AMP-Hop-Count` from the handler or tool it is called
+  from (a new trace at hop 1 outside any handler). A call whose hop count
+  would exceed `max_hops` (default 20) or the inbound limit raises
+  `HopLimitExceeded` without sending anything. See
+  [INTEROP-A2A.md](INTEROP-A2A.md#trace-context-and-hop-count) and
+  WIRE-BINDING Section 12.14.1.
 
 ## Limitations
 

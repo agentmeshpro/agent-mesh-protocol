@@ -2856,6 +2856,49 @@ boundaries.
 - When initiating a message with no existing trace context, the sender
   SHOULD generate new trace and span IDs.
 
+#### 12.14.1 W3C Trace Context and Hop Count (HTTP)
+
+The envelope headers above live inside the AMP envelope, as does
+`Visited-Agents` loop detection, so neither survives a hop through another
+protocol (AMP → A2A → MCP → AMP). Every HTTP route of the reference
+implementation (`POST /agent/message`, the A2A, PACT and MCP adapters) and
+every outbound client therefore also carries these **HTTP request headers**
+(not envelope headers), implemented in `ampro.interop.propagation`:
+
+| Header          | Format | Description |
+|-----------------|--------|-------------|
+| `traceparent`   | W3C Trace Context, version `00` | `00-<trace-id 32 hex>-<parent-id 16 hex>-<flags 2 hex>` |
+| `tracestate`    | W3C Trace Context | Vendor state, passed through unchanged (bounded) |
+| `AMP-Hop-Count` | 1-4 ASCII digits | Agent-to-agent hops taken so far, across all protocols |
+
+- **Strict parsing.** A receiver MUST reject (400; `INVALID_PARAMS` on A2A,
+  JSON-RPC `-32600` on MCP) a `traceparent` that is not exactly
+  `00-<32 lowercase hex>-<16 lowercase hex>-<2 lowercase hex>`, whose
+  trace-id or parent-id is all zeros, or whose version is `ff`. A higher
+  version is parsed per the W3C forward-compatibility rule (first 55
+  characters as version `00`; if longer, the 56th character MUST be `-`).
+  Values are bounded (256 characters) before parsing. Malformed input is
+  rejected, never repaired.
+- `tracestate` is read only alongside a valid `traceparent`. It MUST follow
+  the W3C list grammar with at most 32 members and no duplicate keys, or the
+  request is rejected. A value longer than 512 characters is truncated by
+  dropping members longer than 128 characters first, then members from the
+  end.
+- A receiver continues the trace: the handler's `trace_id` is the received
+  trace-id, its `parent_span_id` the received parent-id, and it mints a new
+  `span_id`. Outbound calls made while handling the request send that span
+  as their parent-id and the received `tracestate`. Only the `sampled` flag
+  is propagated.
+- **Hop count.** The effective hop count is the **maximum** of
+  `AMP-Hop-Count`, any protocol-specific copy (A2A `metadata["amp.hopCount"]`)
+  and the number of `Visited-Agents` entries; a lower value never lowers it.
+  If it exceeds the limit (`SecurityPolicy.max_visited_agents`, default 20)
+  the request is rejected: 409 `loop-detected` on `POST /agent/message`,
+  400 on A2A / PACT / MCP. Every outbound call sends `hop count + 1`, and a
+  client MUST NOT send a request whose hop count would exceed the limit.
+- When several carriers of the same request (HTTP header, A2A metadata, AMP
+  extension `traceId` / `spanId`) disagree, the request is rejected.
+
 ### 12.15 HTTP Message Signatures (RFC 9421 Profile)
 
 This section is NORMATIVE for every implementation that authenticates
@@ -4168,7 +4211,10 @@ otherwise follow the order of the reference server.
    being replayed against agent B.
 7. **Loop detection** -- A `Visited-Agents` header with more than 20
    entries, or one that already contains this agent, is rejected with
-   409.
+   409. So is a hop count (the larger of the `AMP-Hop-Count` HTTP header
+   and the `Visited-Agents` count, Section 12.14.1) above the same limit;
+   a malformed `traceparent`, `tracestate` or `AMP-Hop-Count` is rejected
+   with 400 before the body is dispatched.
 8. **Handler lookup** -- A body type with no handler gets 501.
 9. **Deduplication** -- The key is
    `principal_id || 0x00 || sender || 0x00 || id`.
