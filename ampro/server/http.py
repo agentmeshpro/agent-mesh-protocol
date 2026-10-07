@@ -31,6 +31,10 @@ class HTTPRequest:
     headers: dict[str, str] = field(default_factory=dict)
     query: dict[str, str] = field(default_factory=dict)
     body: bytes = b""
+    #: Peer address as seen by the transport (not from headers).
+    client: str | None = None
+    #: Identity from a client certificate the transport verified (mTLS).
+    client_cert_identity: str | None = None
 
     def header(self, name: str, default: str | None = None) -> str | None:
         return self.headers.get(name.lower(), default)

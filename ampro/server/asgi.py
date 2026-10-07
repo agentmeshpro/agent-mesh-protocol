@@ -95,6 +95,7 @@ def make_asgi_app(server: AgentServer) -> Callable[[Scope, Receive, Send], Await
             headers={k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]},
             query=query,
             body=body,
+            client=(scope.get("client") or (None,))[0],
         )
         response = await server.handle(request)
         await _send_response(send, response)
