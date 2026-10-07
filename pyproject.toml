@@ -83,6 +83,10 @@ Documentation = "https://github.com/CatlystAI/agent-mesh-protocol/blob/main/docs
 [tool.hatch.build.targets.wheel]
 packages = ["ampro"]
 
+[tool.hatch.build.targets.sdist]
+# The demo site and CI config are not part of the Python package.
+exclude = ["/site", "/.github"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
