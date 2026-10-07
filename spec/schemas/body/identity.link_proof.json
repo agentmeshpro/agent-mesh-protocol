@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/identity.link_proof.json",
+  "title": "AMP body: identity.link_proof",
+  "description": "Payload proving two agent addresses share the same controlling entity.",
+  "properties": {
+    "source_id": {
+      "description": "First agent:// URI",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "target_id": {
+      "description": "Second agent:// URI to link",
+      "title": "Target Id",
+      "type": "string"
+    },
+    "proof_type": {
+      "description": "Proof method (e.g. ed25519_cross_sign)",
+      "title": "Proof Type",
+      "type": "string"
+    },
+    "proof": {
+      "description": "Cryptographic proof of shared control",
+      "title": "Proof",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "ISO-8601 timestamp when proof was generated",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "When the link proof is no longer valid",
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "proof_type",
+    "proof",
+    "timestamp",
+    "expires_at"
+  ],
+  "type": "object",
+  "x-amp-body-type": "identity.link_proof",
+  "x-amp-constraints": [
+    "expires_at MUST be strictly after timestamp",
+    "proof MUST verify per WIRE-BINDING section 16.1.9"
+  ]
+}

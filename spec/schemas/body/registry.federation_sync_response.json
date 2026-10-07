@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/registry.federation_sync_response.json",
+  "title": "AMP body: registry.federation_sync_response",
+  "description": "body.type = 'registry.federation_sync_response' — Delta + cursor.",
+  "properties": {
+    "changes": {
+      "description": "Opaque change records — each registry defines its own schema (typically includes an op: insert|update|delete field).",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 500,
+      "title": "Changes",
+      "type": "array"
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Cursor"
+    },
+    "has_more": {
+      "default": false,
+      "title": "Has More",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "changes"
+  ],
+  "type": "object",
+  "x-amp-body-type": "registry.federation_sync_response"
+}

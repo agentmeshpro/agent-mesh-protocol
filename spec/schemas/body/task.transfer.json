@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.transfer.json",
+  "title": "AMP body: task.transfer",
+  "description": "body.type = 'task.transfer' — Transfer task ownership to another agent.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being transferred",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "transfer_to": {
+      "description": "Agent address to transfer ownership to",
+      "maxLength": 256,
+      "title": "Transfer To",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why the task is being transferred",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Context to pass to the new owner",
+      "title": "Context"
+    },
+    "partial_result": {
+      "anyOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Any partial work completed before transfer",
+      "title": "Partial Result"
+    }
+  },
+  "required": [
+    "task_id",
+    "transfer_to",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.transfer"
+}

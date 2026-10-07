@@ -45,8 +45,11 @@ pact = [
     "pyjwt[crypto]>=2.8",
 ]
 mcp = []
+redis = [
+    "redis>=5",
+]
 all = [
-    "ampro[server,a2a,pact,mcp]",
+    "ampro[server,a2a,pact,mcp,redis,conformance]",
 ]
 dev = [
     "pytest>=8.0",
@@ -57,10 +60,19 @@ dev = [
     "pyjwt[crypto]>=2.8",
     "a2a-sdk>=1.0",
     "mcp>=2.0",
+    "jsonschema>=4.18",
+    "openapi-spec-validator>=0.7",
+    "pyyaml>=6.0",
+    "redis>=5",
+    "fakeredis[lua]>=2.20",
+]
+conformance = [
+    "jsonschema>=4.18",
 ]
 
 [project.scripts]
 ampro-server = "ampro.server.cli:main"
+ampro-conformance = "ampro.conformance.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/CatlystAI/agent-mesh-protocol"

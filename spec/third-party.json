@@ -1,0 +1,9 @@
+{
+  "$comment": "Hand-maintained. Third-party registrations per docs/EXTENSIONS.md. scripts/generate_spec.py validates every entry and merges it into spec/registry/. Each entry needs owner, contact, spec and description; error_types also need an integer status.",
+  "description": "Third-party AMP extensions registered for discoverability. Registration is optional: names in a namespace you control work without it.",
+  "body_types": [],
+  "headers": [],
+  "error_types": [],
+  "stream_events": [],
+  "extension_uris": []
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.challenge.json",
+  "title": "AMP body: task.challenge",
+  "description": "body.type = 'task.challenge' — Issue a challenge to the sender.",
+  "properties": {
+    "challenge_id": {
+      "description": "Unique challenge identifier",
+      "title": "Challenge Id",
+      "type": "string"
+    },
+    "challenge_type": {
+      "description": "Challenge type (extensible, e.g. 'proof_of_work', 'captcha')",
+      "title": "Challenge Type",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "description": "Challenge-type-specific parameters",
+      "title": "Parameters",
+      "type": "object"
+    },
+    "expires_at": {
+      "description": "ISO-8601 expiration timestamp",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why this challenge was issued",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "challenge_id",
+    "challenge_type",
+    "expires_at",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.challenge"
+}

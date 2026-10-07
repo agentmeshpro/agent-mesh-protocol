@@ -19,10 +19,10 @@ import time
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
-from ampro.security.concurrency_limiter import ConcurrencyLimiter
-from ampro.security.rate_limiter import RateLimiter
+from ampro.security.concurrency_limiter import ConcurrencyBackend, ConcurrencyLimiter
+from ampro.security.rate_limiter import RateLimiter, RateLimiterBackend
 from ampro.server.auth import Authenticator
 from ampro.wire.config import WireConfig
 
@@ -37,6 +37,7 @@ class CachedResponse:
     body: bytes
 
 
+@runtime_checkable
 class ResponseCache(Protocol):
     """Dedup store that remembers the response for each message id."""
 
@@ -119,8 +120,10 @@ class SecurityPolicy:
     enforce_sender_binding: bool = True
     #: Reject envelopes addressed to another agent.
     enforce_recipient: bool = True
-    rate_limiter: RateLimiter | None = None
-    concurrency: ConcurrencyLimiter | None = None
+    #: Shared across workers?  Use :mod:`ampro.stores.redis` (see
+    #: docs/SCALING.md); the defaults are per-process.
+    rate_limiter: RateLimiterBackend | None = None
+    concurrency: ConcurrencyBackend | None = None
     dedup: ResponseCache | None = None
     handler_timeout_seconds: float | None = None
     max_visited_agents: int = 20

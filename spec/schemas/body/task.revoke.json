@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.revoke.json",
+  "title": "AMP body: task.revoke",
+  "description": "body.type = 'task.revoke' — Revoke a task.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being revoked",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Human-readable reason for revocation",
+      "title": "Reason",
+      "type": "string"
+    },
+    "cascade": {
+      "default": false,
+      "description": "Whether to propagate revocation to downstream delegates",
+      "title": "Cascade",
+      "type": "boolean"
+    },
+    "revoke_children": {
+      "default": false,
+      "description": "Whether to revoke child (spawned) tasks as well",
+      "title": "Revoke Children",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "task_id",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.revoke"
+}

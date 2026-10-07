@@ -44,7 +44,71 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
   new `rfc9421.json` and `session_binding.json`.
 - `@app.tool(name, description=, input_schema=, scopes=)` metadata;
   `AMPContext.principal`, `.scopes`, `.protocol`, `.metadata`.
-- Extras: `server`, `a2a`, `pact`, `mcp`, `flask`, `all`.
+- Extras: `server`, `a2a`, `pact`, `mcp`, `redis`, `conformance`, `flask`, `all`.
+- **Machine-readable specification** in `spec/`:
+  - JSON Schema 2020-12 for the envelope, every registered body type,
+    `agent.json`, health, RFC 7807 problem details, the encrypted body and
+    streaming events, each with a stable `$id`;
+  - `spec/openapi.yaml` (OpenAPI 3.1) for the HTTP binding;
+  - registries of body types, headers, error URNs, extension URIs (including
+    the A2A extension) and stream events.
+
+  `scripts/generate_spec.py` builds all of it from the reference models and
+  the WIRE-BINDING tables, and its `--check` mode fails CI on drift. The
+  published schemas accept and reject every schema-shaped test vector
+  exactly as the reference does.
+- **Black-box conformance suite**: `ampro.conformance` and the
+  `ampro-conformance --url … [--level] [--signing-key --keyid] [--report json]`
+  CLI. It tests any AMP implementation over HTTP:
+  - discovery, health, problem details, envelope and body validation;
+  - unknown body types, headers and fields;
+  - size limits (413), content type (415), recipient check, loop detection
+    (409), duplicate ids, rate limiting (429 and headers);
+  - version negotiation (406, `Protocol-Version`);
+  - with a key, RFC 9421 replay, tamper, freshness, nonce, algorithm and
+    sender-binding checks.
+
+  Each check cites its section and MUST/SHOULD level. See
+  `docs/CONFORMANCE.md`.
+- `GOVERNANCE.md`: the proposal process, protocol versioning, compatibility
+  guarantees, deprecation windows and registration authority.
+- `docs/EXTENSIONS.md`: naming rules for third-party body types, headers,
+  problem types, stream events and extension URIs. `ampro.wire.extensions`
+  implements them. Optional registration goes through `spec/third-party.json`.
+- `conformance` extra (`jsonschema`). The `dev` extra adds `jsonschema`,
+  `openapi-spec-validator` and `pyyaml`.
+- HTTP bindings for `registry.federation_revoke`, `registry.federation_sync`,
+  `registry.federation_sync_response` and `agent.metadata_invalidate`.
+  `ProblemDetail` now carries `max_bytes` (413) and `supported_versions` (406).
+- **Multi-worker deployments** (`ampro.stores.redis`, extra `redis`): a Redis
+  implementation of every stateful store, wired with one call,
+  `configure(server, url=..., prefix=...)`, or `ampro-server --store redis://...`
+  (`AMPRO_REDIS_URL`). It covers RFC 9421 and DID-proof replay caches, rate
+  and concurrency limits, AMP response dedup, A2A tasks, contexts,
+  idempotent replies and a cross-worker task broker (subscribe fan-out,
+  cancellation, busy lock), MCP sessions, and every PACT store (device
+  codes, grants, refresh-token rotation with reuse detection, consent
+  sessions, nonces, attempt limiters, contexts, receipts, PA registry). All
+  operations are atomic (`SET NX PX`, Lua, `GETDEL`), values are JSON, and
+  keys are namespaced with TTLs. See `docs/SCALING.md`.
+- Protocols for state that had none: `ReplayCache`, `RateLimiterBackend`,
+  `ConcurrencyBackend`, `SenderTrackerBackend`, `ApiKeyFailureTracker`,
+  `FederationNonceCache`, `ChannelRegistryBackend`, A2A `TaskBroker`, PACT
+  `ReceiptStore`. Setters for process-wide caches:
+  `rfc9421.set_default_nonce_tracker`, `resolver.set_did_proof_nonce_tracker`,
+  `resolver.set_api_key_failure_tracker`, `register_federation_nonce_cache`.
+  `A2AAdapter(task_broker=)` and `PACTProvider(receipt_store=, a2a_stores=)`.
+  `AuditLogger` now chains from the storage's tail, not a hash cached per
+  process, so workers sharing one `AuditStorage` extend a single chain;
+  storages with `append_at` get compare-and-append retries.
+- `GET /agent/ready` readiness endpoint (503 while draining or when a
+  `server.readiness_checks` entry fails) and graceful shutdown:
+  `AgentServer.aclose()` runs on ASGI lifespan shutdown and gives A2A
+  background runs a grace period, then cancels them into a terminal state.
+- `docs/SCALING.md`: inventory of all server-side state (what breaks
+  per-process, interface, shared backend), what still runs in one process
+  and why, and a deployment guide (uvicorn/gunicorn workers, Kubernetes
+  probes, graceful shutdown, Redis requirements).
 
 ### Fixed
 - `ampro-server` / `AgentServer.from_app` could not run AMPI handlers
@@ -53,6 +117,22 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
 - Examples 08, 10 and 27 crashed; every example now runs in CI.
 - `check_version` rejected same-major versions such as `1.0.1`.
 - Federation conflict resolution crashed on naive timestamps.
+- The reference server now meets the WIRE-BINDING requirements that
+  `ampro-conformance` checks:
+  - a `POST /agent/message` without `Content-Type` is treated as JSON
+    (section 3.2) instead of getting 415;
+  - `X-RateLimit-*` headers appear on every message response (12.4), not
+    only on a 429;
+  - `Accept-Version` (HTTP header or envelope header) is negotiated, with
+    406 and `supported_versions` for a malformed version or an unsupported
+    MAJOR (18.4);
+  - every message response carries `Protocol-Version`;
+  - the `/agent/stream` placeholder emits a defined `heartbeat` event with
+    `seq`.
+- WIRE-BINDING Appendix B said `additionalProperties: false` for the
+  envelope, which contradicted the forward-compatibility rule. It is now
+  `true`. Section 15.4 lists 406, 410 and 415, and section 16.1.8 lists
+  `agent.metadata_invalidate`.
 
 ### Security
 - Delegation links sign every field (previously `trust_tier`,
@@ -285,9 +365,20 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
 
 
 
-## [0.3.2]
+## [0.3.2] - 2026-04-21
 
-Not released — the version number was skipped.
+### Security
+- `verify_request` enforces a 300s freshness window on the signature's
+  `created` timestamp by default; stale or far-future signatures fail
+  closed. Callers supplying a `NonceTracker` get per-request replay
+  rejection via a new `nonce` kwarg on `sign_request`/`verify_request`.
+- `get_public_key` consults `should_reject_cached_key()` on every lookup,
+  cache hits included, so a revocation takes effect immediately instead of
+  after the 60s cache TTL.
+
+### Added
+- `docs/SECURITY-MODEL.md`: what the protocol does and does not guarantee,
+  with the host-platform checklist.
 
 ## [0.3.1] — 2026-04-20
 

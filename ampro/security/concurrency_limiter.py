@@ -9,6 +9,25 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class ConcurrencyBackend(Protocol):
+    """Leased concurrency slots per sender plus a global cap.
+
+    :class:`ConcurrencyLimiter` is the per-process default;
+    :class:`ampro.stores.redis.RedisConcurrencyLimiter` enforces the caps
+    across every worker.
+    """
+
+    def acquire(self, sender: str) -> bool: ...
+
+    def release(self, sender: str) -> None: ...
+
+    def can_accept(self, sender: str) -> bool: ...
+
+    def sender_active(self, sender: str) -> int: ...
 
 
 class ConcurrencyLimiter:

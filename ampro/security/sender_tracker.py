@@ -14,12 +14,31 @@ from __future__ import annotations
 import threading
 import time
 from enum import Enum
+from typing import Protocol, runtime_checkable
 
 
 class SenderState(str, Enum):
     NORMAL = "normal"
     THROTTLED = "throttled"
     BLOCKED = "blocked"
+
+
+@runtime_checkable
+class SenderTrackerBackend(Protocol):
+    """Poison-message escalation state per sender.
+
+    :class:`SenderTracker` is the per-process default;
+    :class:`ampro.stores.redis.RedisSenderTracker` shares it so a sender
+    cannot spread failures over several workers to stay unthrottled.
+    """
+
+    def get_state(self, sender: str) -> SenderState: ...
+
+    def record_failure(self, sender: str) -> SenderState: ...
+
+    def record_success(self, sender: str) -> None: ...
+
+    def is_allowed(self, sender: str) -> bool: ...
 
 
 class SenderTracker:

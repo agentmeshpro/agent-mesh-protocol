@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/trust.upgrade_request.json",
+  "title": "AMP body: trust.upgrade_request",
+  "description": "body.type = 'trust.upgrade_request' — Request a trust tier upgrade.",
+  "properties": {
+    "session_id": {
+      "description": "Session requiring the trust upgrade",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "current_tier": {
+      "description": "Sender's current trust tier. Must be one of: internal, owner, verified, external",
+      "title": "Current Tier",
+      "type": "string"
+    },
+    "required_tier": {
+      "description": "Trust tier needed to proceed. Must be one of: internal, owner, verified, external",
+      "title": "Required Tier",
+      "type": "string"
+    },
+    "verification_methods": {
+      "description": "Accepted verification methods (e.g. ['jwt', 'did:web', 'oauth2'])",
+      "items": {
+        "type": "string"
+      },
+      "title": "Verification Methods",
+      "type": "array"
+    },
+    "verification_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional URL for out-of-band verification",
+      "title": "Verification Url"
+    },
+    "reason": {
+      "description": "Human-readable reason for the upgrade request",
+      "title": "Reason",
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "default": 300,
+      "description": "How long to wait for verification",
+      "title": "Timeout Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "session_id",
+    "current_tier",
+    "required_tier",
+    "verification_methods",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "trust.upgrade_request"
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.auth_refresh.json",
+  "title": "AMP stream event data: stream.auth_refresh",
+  "description": "Server-sent event carrying a refreshed authentication token.",
+  "properties": {
+    "method": {
+      "description": "Authentication refresh method",
+      "enum": [
+        "bearer",
+        "refresh",
+        "jwks-kid",
+        "jwt",
+        "api_key"
+      ],
+      "title": "Method",
+      "type": "string"
+    },
+    "token": {
+      "description": "The new authentication token. Must be 16-4096 chars and use only the URL-safe / JWT charset [A-Za-z0-9._-].",
+      "maxLength": 4096,
+      "minLength": 16,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "title": "Token",
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "ISO-8601 timestamp when the new token expires",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "method",
+    "token",
+    "expires_at"
+  ],
+  "type": "object",
+  "x-amp-event-type": "stream.auth_refresh"
+}

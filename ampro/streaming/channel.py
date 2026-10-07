@@ -9,6 +9,7 @@ opened, used, and closed.
 from __future__ import annotations
 
 import threading
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +29,23 @@ class ChannelQuotaExceededError(Exception):
             f"Session {session_id} already has {limit} channels open; "
             f"MAX_CHANNELS_PER_SESSION={MAX_CHANNELS_PER_SESSION}"
         )
+
+
+@runtime_checkable
+class ChannelRegistryBackend(Protocol):
+    """Open-channel accounting per session (quota enforcement).
+
+    :class:`ChannelRegistry` is per-process; a session whose SSE
+    connections land on several workers needs a shared implementation
+    (e.g. :class:`ampro.stores.redis.RedisChannelRegistry`) for the cap to
+    hold globally.
+    """
+
+    def register_channel(self, session_id: str, channel_id: str) -> None: ...
+
+    def release_channel(self, session_id: str, channel_id: str) -> None: ...
+
+    def count(self, session_id: str) -> int: ...
 
 
 class ChannelRegistry:

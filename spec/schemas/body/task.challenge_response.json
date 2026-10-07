@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.challenge_response.json",
+  "title": "AMP body: task.challenge_response",
+  "description": "body.type = 'task.challenge_response' — Respond to a challenge.",
+  "properties": {
+    "challenge_id": {
+      "description": "Challenge ID being responded to",
+      "title": "Challenge Id",
+      "type": "string"
+    },
+    "solution": {
+      "description": "The computed answer to the challenge",
+      "title": "Solution",
+      "type": "string"
+    }
+  },
+  "required": [
+    "challenge_id",
+    "solution"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.challenge_response"
+}

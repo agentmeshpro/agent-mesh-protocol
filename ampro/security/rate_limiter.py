@@ -14,8 +14,24 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Protocol, runtime_checkable
 
 from ampro.security.rate_limit import RateLimitInfo
+
+
+@runtime_checkable
+class RateLimiterBackend(Protocol):
+    """Per-key request budget.
+
+    :class:`RateLimiter` is the per-process default; behind a load
+    balancer use a shared implementation such as
+    :class:`ampro.stores.redis.RedisRateLimiter`, otherwise every worker
+    grants its own full budget.
+    """
+
+    def check(self, sender: str) -> tuple[bool, RateLimitInfo]:
+        """Count one request for *sender*; ``(allowed, info)``."""
+        ...
 
 
 class RateLimiter:

@@ -257,6 +257,32 @@ _DID_PROOF_NONCE_TRACKER = NonceTracker(
 )
 
 
+def set_did_proof_nonce_tracker(tracker: Any | None) -> None:
+    """Install the replay cache for DID-proof ``jti`` values (process-wide).
+
+    *tracker* is any :class:`~ampro.security.nonce_tracker.ReplayCache`.
+    Several workers must share one (e.g.
+    :class:`ampro.stores.redis.RedisNonceTracker`) or a proof replayed to
+    another worker is accepted.  ``None`` restores a fresh in-memory one.
+    """
+    global _DID_PROOF_NONCE_TRACKER
+    _DID_PROOF_NONCE_TRACKER = tracker if tracker is not None else NonceTracker(
+        window_seconds=DID_PROOF_MAX_LIFETIME_SECONDS + 2 * CLOCK_SKEW_SECONDS,
+    )
+
+
+def set_api_key_failure_tracker(tracker: Any | None) -> None:
+    """Install the brute-force tracker for API-key auth (process-wide).
+
+    *tracker* is any :class:`~ampro.transport.api_key_store.ApiKeyFailureTracker`;
+    ``None`` restores the in-memory default.
+    """
+    global _api_key_store
+    _api_key_store = tracker if tracker is not None else ApiKeyStore(
+        max_failures=10, block_seconds=900,
+    )
+
+
 def _b64url_decode(data: str) -> bytes:
     remainder = len(data) % 4
     if remainder:

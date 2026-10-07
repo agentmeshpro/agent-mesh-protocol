@@ -7,7 +7,10 @@ with Redis or a database:
 * :class:`ContextStore` — which principal owns a ``contextId``, and whether
   the conversation was closed;
 * :class:`IdempotencyStore` — stored replies keyed by
-  ``(contextId, messageId)`` so retries never re-run the agent.
+  ``(contextId, messageId)`` so retries never re-run the agent;
+* :class:`TaskBroker` — cross-worker coordination of *running* tasks:
+  event fan-out to ``SubscribeToTask`` streams on other workers,
+  cancellation requests, liveness and the "task is busy" lock.
 
 The ``InMemory*`` defaults are bounded (LRU capacity + TTL) and suitable
 for a single process.  All methods are ``async``.
@@ -17,6 +20,8 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import OrderedDict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, Protocol, runtime_checkable
 
 from ampro.interop.a2a.types import Task, TaskState
@@ -233,7 +238,118 @@ class InMemoryIdempotencyStore:
             self._replies.set(key, (time.monotonic(), reply))
 
 
+class _Timeout:
+    def __repr__(self) -> str:
+        return "TIMEOUT"
+
+
+#: Returned by :meth:`TaskSubscription.get` when nothing arrived in time.
+TIMEOUT = _Timeout()
+
+#: Control item asking the worker that runs a task to cancel it.
+CANCEL = {"__amp_control__": "cancel"}
+
+
+@runtime_checkable
+class TaskSubscription(Protocol):
+    async def get(self, timeout: float) -> dict[str, Any] | None | _Timeout:
+        """Next published item, ``None`` (end of stream) or :data:`TIMEOUT`."""
+
+
+@runtime_checkable
+class TaskBroker(Protocol):
+    """Coordination of running A2A tasks between workers.
+
+    A task's handler runs on the worker that received the request; this
+    seam lets the *other* workers see it.  :class:`InMemoryTaskBroker`
+    (``distributed = False``) is the single-process default: the adapter
+    then uses its local fan-out only.  A distributed broker (e.g.
+    :class:`ampro.stores.redis.RedisTaskBroker`) carries events, cancel
+    requests, liveness and the per-task busy lock across processes.
+    """
+
+    #: ``True`` when events / cancels must cross process boundaries.
+    distributed: bool
+
+    async def publish(self, task_id: str, item: dict[str, Any] | None) -> None:
+        """Deliver *item* (``None`` = end of stream) to every subscriber."""
+
+    def subscribe(self, task_id: str) -> Any:
+        """Async context manager yielding a :class:`TaskSubscription`.
+
+        The subscription is active when the context is entered, so an
+        event published afterwards is never missed.
+        """
+
+    async def set_live(self, task_id: str) -> None:
+        """Mark *task_id* as running somewhere (expires on its own)."""
+
+    async def clear_live(self, task_id: str) -> None: ...
+
+    async def is_live(self, task_id: str) -> bool: ...
+
+    async def request_cancel(self, task_id: str) -> None:
+        """Ask whichever worker runs *task_id* to cancel it."""
+
+    async def try_lock(self, task_id: str) -> bool:
+        """Take the per-task busy lock (one input turn at a time)."""
+
+    async def unlock(self, task_id: str) -> None: ...
+
+    async def aclose(self) -> None: ...
+
+
+class _NoSubscription:
+    async def get(self, timeout: float) -> dict[str, Any] | None | _Timeout:
+        return None
+
+
+class InMemoryTaskBroker:
+    """Single-process :class:`TaskBroker`: only the busy lock is real."""
+
+    distributed = False
+
+    def __init__(self) -> None:
+        self._busy: set[str] = set()
+
+    async def publish(self, task_id: str, item: dict[str, Any] | None) -> None:
+        return None
+
+    @asynccontextmanager
+    async def subscribe(self, task_id: str) -> AsyncIterator[_NoSubscription]:
+        yield _NoSubscription()
+
+    async def set_live(self, task_id: str) -> None:
+        return None
+
+    async def clear_live(self, task_id: str) -> None:
+        return None
+
+    async def is_live(self, task_id: str) -> bool:
+        return False
+
+    async def request_cancel(self, task_id: str) -> None:
+        return None
+
+    async def try_lock(self, task_id: str) -> bool:
+        if task_id in self._busy:
+            return False
+        self._busy.add(task_id)
+        return True
+
+    async def unlock(self, task_id: str) -> None:
+        self._busy.discard(task_id)
+
+    async def aclose(self) -> None:
+        return None
+
+
 __all__ = [
+    "CANCEL",
+    "InMemoryTaskBroker",
+    "TIMEOUT",
+    "TaskBroker",
+    "TaskSubscription",
     "BoundedTTLMap",
     "ContextStore",
     "IdempotencyStore",

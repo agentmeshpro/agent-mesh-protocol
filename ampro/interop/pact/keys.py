@@ -56,6 +56,10 @@ class ProviderKeySet:
         if not private_jwks:
             raise ValueError("at least one signing key is required")
         self._keys: list[_Key] = []
+        #: ``True`` for :meth:`generate`d keys: tokens and receipts they sign
+        #: are only verifiable by this process, so every worker behind a load
+        #: balancer must load the same key set instead (see docs/SCALING.md).
+        self.ephemeral = False
         seen: set[str] = set()
         for jwk in private_jwks:
             key, alg = private_key_from_jwk(jwk)
@@ -102,7 +106,9 @@ class ProviderKeySet:
     @classmethod
     def generate(cls) -> ProviderKeySet:
         """An ephemeral ES256 key (tokens die with the process)."""
-        return cls([generate_es256_jwk()])
+        keys = cls([generate_es256_jwk()])
+        keys.ephemeral = True
+        return keys
 
     # -- use ------------------------------------------------------------
 

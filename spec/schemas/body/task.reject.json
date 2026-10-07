@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.reject.json",
+  "title": "AMP body: task.reject",
+  "description": "body.type = 'task.reject' — Reject a task with reason.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the rejected task",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why the task was rejected",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Additional detail about the rejection",
+      "title": "Detail"
+    },
+    "required_tier": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Trust tier required to accept this task",
+      "title": "Required Tier"
+    },
+    "required": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Missing capabilities or permissions required",
+      "title": "Required"
+    },
+    "supported": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Capabilities the agent does support",
+      "title": "Supported"
+    },
+    "retry_eligible": {
+      "default": false,
+      "description": "Whether the sender can retry after meeting requirements",
+      "title": "Retry Eligible",
+      "type": "boolean"
+    },
+    "retry_after_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How long to wait before retrying",
+      "title": "Retry After Seconds"
+    }
+  },
+  "required": [
+    "task_id",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.reject"
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.assign.json",
+  "title": "AMP body: task.assign",
+  "description": "body.type = 'task.assign' — Assign an existing task to an agent.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being assigned",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "assignee": {
+      "description": "Agent address to assign the task to",
+      "maxLength": 256,
+      "title": "Assignee",
+      "type": "string"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Why this assignee was chosen",
+      "title": "Reason"
+    }
+  },
+  "required": [
+    "task_id",
+    "assignee"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.assign"
+}

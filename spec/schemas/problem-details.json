@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/problem-details.json",
+  "title": "ProblemDetails",
+  "description": "RFC 7807 problem details, served as application/problem+json (WIRE-BINDING section 7). Extension members are allowed and MUST be ignored when not understood. Standard `type` URNs are listed in spec/registry/errors.json.",
+  "properties": {
+    "type": {
+      "description": "URN identifying the error type (e.g. urn:amp:error:rate-limited)",
+      "title": "Type",
+      "type": "string",
+      "pattern": "^urn:"
+    },
+    "title": {
+      "description": "Short human-readable summary of the problem",
+      "title": "Title",
+      "type": "string"
+    },
+    "status": {
+      "description": "HTTP status code applicable to this problem",
+      "title": "Status",
+      "type": "integer"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable explanation specific to this occurrence",
+      "title": "Detail"
+    },
+    "instance": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "URI identifying the specific occurrence of the problem",
+      "title": "Instance"
+    },
+    "retry_after_seconds": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Seconds the client should wait before retrying",
+      "title": "Retry After Seconds"
+    },
+    "max_bytes": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "413 only: the receiver's maximum message size in bytes",
+      "title": "Max Bytes"
+    },
+    "supported_versions": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "406 only: protocol versions the receiver supports",
+      "title": "Supported Versions"
+    }
+  },
+  "required": [
+    "type",
+    "title",
+    "status"
+  ],
+  "type": "object"
+}

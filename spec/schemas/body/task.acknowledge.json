@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.acknowledge.json",
+  "title": "AMP body: task.acknowledge",
+  "description": "body.type = 'task.acknowledge' — Acknowledge receipt and acceptance of a task.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being acknowledged",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "estimated_duration_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Estimated time to complete the task",
+      "title": "Estimated Duration Seconds"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional acknowledgement message",
+      "title": "Message"
+    },
+    "upgraded_tier": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Upgraded trust tier granted for this task",
+      "title": "Upgraded Tier"
+    },
+    "scopes": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Scopes granted for task execution",
+      "title": "Scopes"
+    },
+    "valid_for_session": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Session ID for which the trust upgrade is valid",
+      "title": "Valid For Session"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO-8601 timestamp when granted permissions expire",
+      "title": "Expires At"
+    }
+  },
+  "required": [
+    "task_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.acknowledge"
+}

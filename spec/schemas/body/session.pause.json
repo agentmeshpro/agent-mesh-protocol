@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.pause.json",
+  "title": "AMP body: session.pause",
+  "description": "body.type = 'session.pause' — Temporarily suspend the session.\n\n``resume_token`` MUST be an opaque, unguessable handle (e.g.\n``secrets.token_urlsafe(32)``).  Do NOT send the output of\n:func:`create_resume_token` here: that structure embeds the session's\nbinding key and must stay server-side, keyed by the opaque handle.",
+  "properties": {
+    "session_id": {
+      "description": "Session ID to pause",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable reason for pausing",
+      "title": "Reason"
+    },
+    "resume_token": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Token required to resume this session",
+      "title": "Resume Token"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "session.pause"
+}

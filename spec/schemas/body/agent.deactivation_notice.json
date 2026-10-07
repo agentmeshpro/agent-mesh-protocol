@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/agent.deactivation_notice.json",
+  "title": "AMP body: agent.deactivation_notice",
+  "description": "body.type = 'agent.deactivation_notice' — Notify peers of orderly shutdown.",
+  "properties": {
+    "agent_id": {
+      "description": "agent:// URI of the agent being deactivated",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Human-readable reason for deactivation",
+      "title": "Reason",
+      "type": "string"
+    },
+    "deactivation_time": {
+      "description": "ISO-8601 timestamp when deactivation started",
+      "title": "Deactivation Time",
+      "type": "string"
+    },
+    "active_sessions": {
+      "description": "Number of sessions still open",
+      "title": "Active Sessions",
+      "type": "integer"
+    },
+    "migration_endpoint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Endpoint of a replacement agent, if available",
+      "title": "Migration Endpoint"
+    },
+    "final_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO-8601 timestamp when agent will go fully offline",
+      "title": "Final At"
+    },
+    "metadata": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional additional context",
+      "title": "Metadata"
+    }
+  },
+  "required": [
+    "agent_id",
+    "reason",
+    "deactivation_time",
+    "active_sessions"
+  ],
+  "type": "object",
+  "x-amp-body-type": "agent.deactivation_notice"
+}

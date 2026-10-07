@@ -80,7 +80,7 @@ class BodyTypeBinding(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Canonical body type bindings -- all 49 types
+# Canonical body type bindings -- every registered body type
 # ---------------------------------------------------------------------------
 
 BODY_TYPE_BINDINGS: dict[str, BodyTypeBinding] = {
@@ -468,6 +468,39 @@ BODY_TYPE_BINDINGS: dict[str, BodyTypeBinding] = {
         http_method="POST",
         response_mode=ResponseMode.FIRE,
         expected_response=None,
+    ),
+    "registry.federation_revoke": BodyTypeBinding(
+        body_type="registry.federation_revoke",
+        http_method="POST",
+        response_mode=ResponseMode.FIRE,
+        expected_response=None,
+        idempotent=True,
+    ),
+    "registry.federation_sync": BodyTypeBinding(
+        body_type="registry.federation_sync",
+        http_method="POST",
+        response_mode=ResponseMode.SYNC,
+        expected_response="registry.federation_sync_response",
+        idempotent=True,
+    ),
+    "registry.federation_sync_response": BodyTypeBinding(
+        body_type="registry.federation_sync_response",
+        http_method="POST",
+        response_mode=ResponseMode.FIRE,
+        expected_response=None,
+        idempotent=True,
+    ),
+
+    # ------------------------------------------------------------------
+    # Cache invalidation
+    # ------------------------------------------------------------------
+
+    "agent.metadata_invalidate": BodyTypeBinding(
+        body_type="agent.metadata_invalidate",
+        http_method="POST",
+        response_mode=ResponseMode.FIRE,
+        expected_response=None,
+        idempotent=True,
     ),
 }
 

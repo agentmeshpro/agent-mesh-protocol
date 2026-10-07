@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.resume.json",
+  "title": "AMP stream event data: stream.resume",
+  "description": "stream.resume — client tells server it is ready for more events.",
+  "properties": {
+    "from_seq": {
+      "description": "Resume streaming from this sequence number",
+      "title": "From Seq",
+      "type": "integer"
+    },
+    "buffer_capacity": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How many events the client can buffer",
+      "title": "Buffer Capacity"
+    }
+  },
+  "required": [
+    "from_seq"
+  ],
+  "type": "object",
+  "x-amp-event-type": "stream.resume"
+}

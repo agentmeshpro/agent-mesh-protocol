@@ -3,6 +3,10 @@
 Usage::
     ampro-server main:agent --port 8000
     python -m ampro.server main:agent --port 8000
+    ampro-server main:agent --store redis://redis:6379/0   # share state across workers
+
+``--store`` defaults to ``$AMPRO_REDIS_URL``; ``--store-prefix`` to
+``$AMPRO_REDIS_PREFIX`` (else ``ampro``).
 """
 
 # ─── Reference implementation, not production-wired ────────────────
@@ -21,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
 
 
@@ -60,6 +65,20 @@ def build_server(app, protocols: list[str] | None = None):
     return server
 
 
+def configure_store(server, store: str | None, prefix: str | None = None):
+    """Wire *server*'s state to a shared store URL (``redis://`` / ``rediss://``).
+
+    ``None`` / empty keeps the per-process in-memory defaults.
+    """
+    if not store:
+        return None
+    if not store.startswith(("redis://", "rediss://", "unix://")):
+        raise SystemExit(f"Unsupported --store {store!r}: expected redis://, rediss:// or unix://")
+    from ampro.stores.redis import configure
+
+    return configure(server, url=store, prefix=prefix or "ampro")
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -79,14 +98,28 @@ def main(argv: list[str] | None = None) -> None:
         help="Comma-separated wire protocols to serve: amp,a2a,mcp (default: amp)",
     )
 
+    parser.add_argument(
+        "--store",
+        default=os.environ.get("AMPRO_REDIS_URL") or None,
+        help="Shared state store URL, e.g. redis://localhost:6379/0 "
+             "(default: $AMPRO_REDIS_URL; unset = per-process memory)",
+    )
+    parser.add_argument(
+        "--store-prefix",
+        default=os.environ.get("AMPRO_REDIS_PREFIX") or "ampro",
+        help="Key prefix in the shared store (default: $AMPRO_REDIS_PREFIX or 'ampro')",
+    )
+
     args = parser.parse_args(argv)
     app = _load_app(args.app)
     protocols = [p.strip().lower() for p in args.protocols.split(",") if p.strip()]
     server = build_server(app, protocols)
+    configure_store(server, args.store, args.store_prefix)
 
     print(f"\n  AMP agent running on http://{args.host}:{args.port}")
     print(f"  Agent ID:  {getattr(server, 'agent_id', 'unknown')}")
     print(f"  Protocols: {', '.join(['amp'] + [a.name for a in server.adapters])}")
+    print(f"  State:     {'shared (' + args.store_prefix + ')' if args.store else 'per-process'}")
     print()
 
     server.run(port=args.port, host=args.host)

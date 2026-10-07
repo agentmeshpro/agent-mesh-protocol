@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/encrypted-body.json",
+  "title": "EncryptedBody",
+  "description": "Body of an envelope that carries the Content-Encryption header (WIRE-BINDING section 12.11).",
+  "properties": {
+    "ciphertext": {
+      "description": "Base64-encoded encrypted payload",
+      "title": "Ciphertext",
+      "type": "string"
+    },
+    "iv": {
+      "description": "Base64-encoded initialization vector",
+      "title": "Iv",
+      "type": "string"
+    },
+    "tag": {
+      "description": "Base64-encoded authentication tag",
+      "title": "Tag",
+      "type": "string"
+    },
+    "algorithm": {
+      "description": "JWE encryption algorithm (e.g. A256GCM)",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "recipient_key_id": {
+      "description": "Key ID of the intended recipient",
+      "title": "Recipient Key Id",
+      "type": "string"
+    },
+    "required_encryption": {
+      "default": false,
+      "description": "When True, all subsequent messages in this session MUST also be encrypted. Plaintext bodies received after this flag has been pinned on the session MUST be rejected (downgrade prevention).",
+      "title": "Required Encryption",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ciphertext",
+    "iv",
+    "tag",
+    "algorithm",
+    "recipient_key_id"
+  ],
+  "type": "object"
+}

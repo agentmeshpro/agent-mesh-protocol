@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/agent-json.json",
+  "title": "AgentJson",
+  "description": "Agent identity document served at GET /.well-known/agent.json (WIRE-BINDING section 4.1). Unknown fields MUST be ignored.",
+  "additionalProperties": true,
+  "properties": {
+    "protocol_version": {
+      "description": "Protocol version (e.g. '1.0.0')",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "identifiers": {
+      "description": "All agent:// URIs for this agent",
+      "items": {
+        "type": "string"
+      },
+      "title": "Identifiers",
+      "type": "array"
+    },
+    "endpoint": {
+      "description": "HTTPS endpoint for POST /agent/message",
+      "title": "Endpoint",
+      "type": "string"
+    },
+    "jwks_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "JWKS endpoint URL",
+      "title": "Jwks Url"
+    },
+    "capabilities": {
+      "additionalProperties": true,
+      "title": "Capabilities",
+      "type": "object"
+    },
+    "constraints": {
+      "additionalProperties": true,
+      "title": "Constraints",
+      "type": "object"
+    },
+    "security": {
+      "additionalProperties": true,
+      "title": "Security",
+      "type": "object"
+    },
+    "billing": {
+      "additionalProperties": true,
+      "title": "Billing",
+      "type": "object"
+    },
+    "streaming": {
+      "additionalProperties": true,
+      "title": "Streaming",
+      "type": "object"
+    },
+    "compliance": {
+      "additionalProperties": true,
+      "title": "Compliance",
+      "type": "object"
+    },
+    "languages": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Languages",
+      "type": "array"
+    },
+    "ttl_seconds": {
+      "default": 3600,
+      "minimum": 1,
+      "title": "Ttl Seconds",
+      "type": "integer"
+    },
+    "visibility": {
+      "additionalProperties": true,
+      "description": "Visibility and contact policy configuration",
+      "title": "Visibility",
+      "type": "object"
+    },
+    "supported_schemas": {
+      "description": "Context schema URNs this agent understands (e.g. urn:schema:purchase-order:v1)",
+      "items": {
+        "type": "string"
+      },
+      "title": "Supported Schemas",
+      "type": "array"
+    },
+    "status": {
+      "default": "active",
+      "description": "Agent lifecycle status: active, deactivating, or decommissioned",
+      "title": "Status",
+      "type": "string"
+    },
+    "moved_to": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "agent:// URI this agent has migrated to. Consumers MUST validate this is a valid agent:// URI before following.",
+      "title": "Moved To"
+    },
+    "certifications": {
+      "description": "Compliance certifications (SOC2, ISO27001, etc.)",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Certifications",
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "identifiers",
+    "endpoint"
+  ],
+  "type": "object"
+}

@@ -398,6 +398,37 @@ class InMemoryAttemptLimiter:
             return count + 1 <= self.limit
 
 
+# ---------------------------------------------------------------------------
+# Receipts (§5.6): an idempotent retry returns the original receipt
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class ReceiptStore(Protocol):
+    async def get(self, key: str) -> dict[str, Any] | None: ...
+
+    async def put_if_absent(self, key: str, receipt: dict[str, Any]) -> dict[str, Any]:
+        """Store *receipt* unless *key* has one; returns the stored receipt."""
+
+
+class InMemoryReceiptStore:
+    def __init__(self, *, max_items: int = 100_000, ttl_seconds: float = 24 * 3600,
+                 clock: Clock = time.time) -> None:
+        self._data = BoundedTTLMap(max_items, ttl_seconds, clock)
+        self._lock = asyncio.Lock()
+
+    async def get(self, key: str) -> dict[str, Any] | None:
+        return self._data.get(key)
+
+    async def put_if_absent(self, key: str, receipt: dict[str, Any]) -> dict[str, Any]:
+        async with self._lock:
+            current = self._data.get(key)
+            if current is not None:
+                return current
+            self._data.set(key, receipt)
+            return receipt
+
+
 @dataclass
 class DelegationStores:
     """Every store the delegated profile needs, swappable as a unit."""
@@ -430,8 +461,10 @@ __all__ = [
     "InMemoryDeviceAuthorizationStore",
     "InMemoryGrantStore",
     "InMemoryNonceStore",
+    "InMemoryReceiptStore",
     "InMemoryRefreshTokenStore",
     "NonceStore",
+    "ReceiptStore",
     "RefreshToken",
     "RefreshTokenStore",
     "secret_key",

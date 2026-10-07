@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.checkpoint.json",
+  "title": "AMP stream event data: stream.checkpoint",
+  "description": "Periodic state snapshot emitted on the SSE stream.",
+  "properties": {
+    "checkpoint_id": {
+      "description": "Unique checkpoint identifier",
+      "title": "Checkpoint Id",
+      "type": "string"
+    },
+    "seq": {
+      "description": "Sequence number at this checkpoint",
+      "minimum": 0,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "state_snapshot": {
+      "additionalProperties": true,
+      "description": "Serialized state at this point (<= 1 MiB when JSON-encoded)",
+      "title": "State Snapshot",
+      "type": "object"
+    },
+    "timestamp": {
+      "description": "ISO-8601 timestamp",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "required": [
+    "checkpoint_id",
+    "seq",
+    "timestamp"
+  ],
+  "type": "object",
+  "x-amp-event-type": "stream.checkpoint"
+}

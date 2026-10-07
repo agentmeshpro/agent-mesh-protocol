@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.redirect.json",
+  "title": "AMP body: task.redirect",
+  "description": "body.type = 'task.redirect' — Redirect a task to another agent.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being redirected",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "redirect_to": {
+      "description": "agent:// URI of the suggested target agent",
+      "title": "Redirect To",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why the redirect is happening (e.g. overloaded, capability_mismatch, maintenance)",
+      "title": "Reason",
+      "type": "string"
+    },
+    "original_description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Original task description for forwarding",
+      "title": "Original Description"
+    },
+    "load_level": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Redirecting agent's current load (0-100)",
+      "title": "Load Level"
+    },
+    "alternative_agents": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Additional agent URIs the caller could try",
+      "title": "Alternative Agents"
+    },
+    "retry_after_seconds": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "When the agent expects to be available again",
+      "title": "Retry After Seconds"
+    },
+    "visited_agents": {
+      "description": "Chain of agent:// URIs that have already processed this redirect, used to detect cycles",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Visited Agents",
+      "type": "array"
+    },
+    "max_hops": {
+      "default": 5,
+      "description": "Maximum allowed redirect chain length before a loop error is raised",
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Hops",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "task_id",
+    "redirect_to",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.redirect"
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.export_response.json",
+  "title": "AMP body: data.export_response",
+  "properties": {
+    "subject_id": {
+      "description": "Unique identifier of the data subject whose data was exported",
+      "title": "Subject Id",
+      "type": "string"
+    },
+    "status": {
+      "description": "Outcome status of the export operation",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "export_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Signed URL to download the exported data package",
+      "title": "Export Url"
+    },
+    "size_bytes": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Total size of the export in bytes",
+      "title": "Size Bytes"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 8601 timestamp when the download URL expires",
+      "title": "Expires At"
+    },
+    "categories_exported": {
+      "description": "Data categories included in the export",
+      "items": {
+        "type": "string"
+      },
+      "title": "Categories Exported",
+      "type": "array"
+    }
+  },
+  "required": [
+    "subject_id",
+    "status"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.export_response"
+}

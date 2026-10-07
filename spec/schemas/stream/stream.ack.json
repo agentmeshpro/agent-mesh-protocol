@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/stream.ack.json",
+  "title": "AMP stream event data: stream.ack",
+  "description": "stream.ack — client tells server what it has processed.",
+  "properties": {
+    "last_seq": {
+      "description": "Last sequence number the client has processed",
+      "title": "Last Seq",
+      "type": "integer"
+    },
+    "timestamp": {
+      "description": "ISO-8601 timestamp of the acknowledgment",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "required": [
+    "last_seq",
+    "timestamp"
+  ],
+  "type": "object",
+  "x-amp-event-type": "stream.ack"
+}

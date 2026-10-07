@@ -1,0 +1,24 @@
+{
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/extensions.json",
+  "registry": "extensions",
+  "description": "Extension URIs assigned by AMP and registered by third parties (docs/EXTENSIONS.md).",
+  "protocol_version": "1.0.0",
+  "change_process": "GOVERNANCE.md; third-party registrations per docs/EXTENSIONS.md",
+  "entries": [
+    {
+      "uri": "https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1",
+      "name": "AMP extension for A2A",
+      "kind": "a2a-extension",
+      "status": "stable",
+      "since": "0.4.0",
+      "owner": "AMP maintainers",
+      "description": "Carries AMP delegation chains, jurisdiction, data residency, trace context and cost receipts in A2A message metadata. Activated with the A2A-Extensions header; listed in the Agent Card with required=false.",
+      "params": [
+        "agent_id",
+        "amp_endpoint",
+        "protocol_version"
+      ],
+      "spec": "docs/INTEROP-A2A.md#amp-extension"
+    }
+  ]
+}

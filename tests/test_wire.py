@@ -316,9 +316,9 @@ class TestErrors:
 
         err = payload_too_large("Body exceeds 10 MB", max_bytes=10_485_760)
         assert err.status == 413
-        # extra="ignore" means max_bytes is silently dropped from the model
+        # WIRE-BINDING 7.2.9: the problem carries the receiver's limit.
         data = err.model_dump()
-        assert "max_bytes" not in data
+        assert data["max_bytes"] == 10_485_760
 
     def test_internal_error_factory(self) -> None:
         from ampro.wire.errors import internal_error

@@ -72,12 +72,16 @@ from ampro.interop.a2a.mapping import (
     value_to_parts,
 )
 from ampro.interop.a2a.store import (
+    CANCEL,
     PENDING,
+    TIMEOUT,
     ContextStore,
     IdempotencyStore,
     InMemoryContextStore,
     InMemoryIdempotencyStore,
+    InMemoryTaskBroker,
     InMemoryTaskStore,
+    TaskBroker,
     TaskStore,
 )
 from ampro.interop.a2a.types import (
@@ -112,6 +116,8 @@ _PUSH_ROUTE = re.compile(r"^/tasks/([^/:]+)/pushNotificationConfigs(/[^/]+)?$")
 _DEFAULT_PAGE_SIZE = 50
 _MAX_PAGE_SIZE = 100
 _STREAM_QUEUE = 256
+#: How often a cross-worker subscriber re-checks that the task still runs.
+_LIVENESS_POLL_SECONDS = 15.0
 
 _SILENT_EVENTS = frozenset({
     StreamingEventType.HEARTBEAT,
@@ -182,6 +188,8 @@ class _Live:
 
     runner: asyncio.Task[Any] | None = None
     subscribers: list[asyncio.Queue[dict[str, Any] | None]] = field(default_factory=list)
+    #: Listens for cancel requests from other workers (distributed broker).
+    watcher: asyncio.Task[Any] | None = None
 
     def publish(self, item: dict[str, Any] | None) -> None:
         for q in list(self.subscribers):
@@ -227,6 +235,10 @@ class A2AAdapter:
             (default: ``server.security.require_auth``).
         task_store / context_store / idempotency_store: state backends
             (defaults: bounded in-memory stores, see :mod:`.store`).
+        task_broker: cross-worker coordination of running tasks (event
+            fan-out to subscribers, cancellation, busy lock); default
+            :class:`~ampro.interop.a2a.store.InMemoryTaskBroker`.  See
+            ``docs/SCALING.md``.
         card: a fixed :class:`AgentCard`; otherwise one is built per request
             from the options below and the server's handlers.
         name / description / version / skills / provider: card fields.
@@ -267,6 +279,7 @@ class A2AAdapter:
         task_store: TaskStore | None = None,
         context_store: ContextStore | None = None,
         idempotency_store: IdempotencyStore | None = None,
+        task_broker: TaskBroker | None = None,
         card: AgentCard | None = None,
         name: str | None = None,
         description: str | None = None,
@@ -306,6 +319,7 @@ class A2AAdapter:
                                        else InMemoryContextStore())
         self.replies: IdempotencyStore = (idempotency_store if idempotency_store is not None
                                           else InMemoryIdempotencyStore())
+        self.broker: TaskBroker = task_broker if task_broker is not None else InMemoryTaskBroker()
         self._card = card
         self._card_options: dict[str, Any] = {
             "name": name, "description": description, "version": version,
@@ -329,7 +343,6 @@ class A2AAdapter:
         self.handler_timeout = handler_timeout
         self.realm = realm
         self._live: dict[str, _Live] = {}
-        self._busy_tasks: set[str] = set()
         self._background: set[asyncio.Task[Any]] = set()
 
     @classmethod
@@ -370,6 +383,86 @@ class A2AAdapter:
     async def close_context(self, context_id: str) -> None:
         """Close a conversation; later messages to it get ``UNSUPPORTED_OPERATION``."""
         await self.contexts.close_context(context_id)
+
+    async def aclose(self, grace: float = 10.0) -> None:
+        """Graceful shutdown: let background runs finish, then cancel them.
+
+        Runs still going after *grace* seconds are cancelled, which records
+        them as ``CANCELED`` in the task store (so other workers see a
+        terminal state instead of a task stuck in ``WORKING``).
+        """
+        pending = {t for t in self._background if not t.done()}
+        if pending:
+            _, still = await asyncio.wait(pending, timeout=grace)
+            if still:
+                for live in list(self._live.values()):
+                    if live.runner is not None and not live.runner.done():
+                        live.runner.cancel()
+                await asyncio.wait(still, timeout=max(1.0, grace))
+        await self.broker.aclose()
+
+    # ------------------------------------------------------------------
+    # Live-task bookkeeping (local fan-out + cross-worker broker)
+    # ------------------------------------------------------------------
+
+    async def _publish(self, task_id: str, live: _Live, item: dict[str, Any] | None) -> None:
+        live.publish(item)
+        if self.broker.distributed:
+            try:
+                await self.broker.publish(task_id, item)
+            except Exception:
+                logger.exception("A2A task broker publish failed (task_id=%s)", task_id)
+
+    async def _go_live(self, task_id: str, live: _Live) -> None:
+        self._live[task_id] = live
+        if not self.broker.distributed:
+            return
+        try:
+            await self.broker.set_live(task_id)
+        except Exception:
+            logger.exception("A2A task broker set_live failed (task_id=%s)", task_id)
+        ready = asyncio.Event()
+        live.watcher = asyncio.ensure_future(self._watch_cancel(task_id, live, ready))
+        # Wait until the watcher subscribed, so a cancel sent right after
+        # the client saw the task is never missed.
+        waiter = asyncio.ensure_future(ready.wait())
+        await asyncio.wait({waiter, live.watcher}, timeout=5.0,
+                           return_when=asyncio.FIRST_COMPLETED)
+        waiter.cancel()
+
+    async def _end_live(self, task_id: str, live: _Live) -> None:
+        if self._live.get(task_id) is live:
+            self._live.pop(task_id, None)
+        if live.watcher is not None:
+            live.watcher.cancel()
+            live.watcher = None
+        if self.broker.distributed:
+            try:
+                await self.broker.clear_live(task_id)
+            except Exception:
+                logger.exception("A2A task broker clear_live failed (task_id=%s)", task_id)
+
+    async def _watch_cancel(self, task_id: str, live: _Live, ready: asyncio.Event) -> None:
+        """Cancel the local runner when another worker asks for it."""
+        try:
+            async with self.broker.subscribe(task_id) as sub:
+                ready.set()
+                while True:
+                    item = await sub.get(_LIVENESS_POLL_SECONDS)
+                    if item is TIMEOUT:
+                        continue
+                    if item is None:
+                        return
+                    if item == CANCEL:
+                        if live.runner is not None and not live.runner.done():
+                            live.runner.cancel()
+                        return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("A2A cancel watcher failed (task_id=%s)", task_id)
+        finally:
+            ready.set()
 
     # ------------------------------------------------------------------
     # Entry point
@@ -717,10 +810,17 @@ class A2AAdapter:
             live.runner.cancel()
         task.status = TaskStatus(state=TaskState.CANCELED, timestamp=now_timestamp())
         await self.store.save_task(task, owner)
+        update = {"statusUpdate": dump(TaskStatusUpdateEvent(
+            task_id=task.id, context_id=task.context_id, status=task.status))}
         if live is not None:
-            live.publish({"statusUpdate": dump(TaskStatusUpdateEvent(
-                task_id=task.id, context_id=task.context_id, status=task.status))})
-            live.publish(None)
+            await self._publish(task_id, live, update)
+            await self._publish(task_id, live, None)
+        elif self.broker.distributed:
+            # The run (if any) lives on another worker: ask it to stop and
+            # end that task's subscriber streams everywhere.
+            await self.broker.request_cancel(task_id)
+            await self.broker.publish(task_id, update)
+            await self.broker.publish(task_id, None)
         return dump(task)
 
     async def op_list_tasks(self, params: dict[str, Any], call: _Call) -> dict[str, Any]:
@@ -816,11 +916,11 @@ class A2AAdapter:
                         state["started"] = True
                         working = self._working_task(prep)
                         await self.store.save_task(working, prep.call.principal.id)
-                        self._live[prep.task_id] = live
+                        await self._go_live(prep.task_id, live)
                         first = {"task": dump(working)}
-                        live.publish(first)
+                        await self._publish(prep.task_id, live, first)
                         yield first
-                    live.publish(item)
+                    await self._publish(prep.task_id, live, item)
                     yield item
                     continue
                 getter.cancel()
@@ -841,10 +941,10 @@ class A2AAdapter:
                 # Canceled before anything was emitted.
                 return
             for item in pending:
-                live.publish(item)
+                await self._publish(prep.task_id, live, item)
                 yield item
             async for item in self._final_events(prep, reply, streamed, artifact_id):
-                live.publish(item)
+                await self._publish(prep.task_id, live, item)
                 yield item
             task = await self.store.get_task(prep.task_id, prep.call.principal.id)
             payload = {"task": dump(task)} if task is not None else None
@@ -855,11 +955,18 @@ class A2AAdapter:
                 # concurrency slot; bounded so a handler that ignores
                 # cancellation cannot hold the stream open.
                 await asyncio.wait({runner}, timeout=_CANCEL_GRACE_SECONDS)
-            live.publish(None)
-            self._live.pop(prep.task_id, None)
+            if state["started"]:
+                await self._publish(prep.task_id, live, None)
+                await self._end_live(prep.task_id, live)
+            else:
+                live.publish(None)
             await self._release(prep, payload)
 
     async def op_subscribe(self, task_id: str, call: _Call) -> AsyncIterator[dict[str, Any]]:
+        if self.broker.distributed and task_id not in self._live:
+            async for item in self._subscribe_remote(task_id, call):
+                yield item
+            return
         task = await self.store.get_task(task_id, call.principal.id)
         if task is None:
             raise A2AError("TASK_NOT_FOUND")
@@ -884,6 +991,36 @@ class A2AAdapter:
         finally:
             if live is not None and queue in live.subscribers:
                 live.subscribers.remove(queue)
+
+    async def _subscribe_remote(self, task_id: str,
+                                call: _Call) -> AsyncIterator[dict[str, Any]]:
+        """``SubscribeToTask`` for a task whose run may live on another worker.
+
+        The broker subscription is opened *before* the task is read, so no
+        event published after that read can be missed.  Ownership is the
+        task store's (shared) answer.
+        """
+        async with self.broker.subscribe(task_id) as sub:
+            task = await self.store.get_task(task_id, call.principal.id)
+            if task is None:
+                raise A2AError("TASK_NOT_FOUND")
+            if task.status.state.is_terminal:
+                raise A2AError("UNSUPPORTED_OPERATION",
+                               "Task is in a terminal state and cannot be subscribed to")
+            yield {"task": dump(task)}
+            if not await self.broker.is_live(task_id):
+                return
+            while True:
+                item = await sub.get(_LIVENESS_POLL_SECONDS)
+                if item is TIMEOUT:
+                    if not await self.broker.is_live(task_id):
+                        return  # the run ended (or its worker died)
+                    continue
+                if item is None:
+                    return
+                if "task" in item or "__amp_control__" in item:
+                    continue
+                yield item
 
     # ------------------------------------------------------------------
     # Message pipeline
@@ -942,15 +1079,14 @@ class A2AAdapter:
             return stored
 
         if continuing is not None:
-            if task_id in self._busy_tasks:
+            if not await self.broker.try_lock(task_id):
                 await self.replies.finish_message(context_id, msg.message_id, None)
                 raise A2AError("UNSUPPORTED_OPERATION", "Task is busy")
-            self._busy_tasks.add(task_id)
         try:
             amp_message, ctx = self._build_amp(msg, req, call, context_id, task_id, continuing)
         except BaseException:
             if continuing is not None:
-                self._busy_tasks.discard(task_id)
+                await self.broker.unlock(task_id)
             await self.replies.finish_message(context_id, msg.message_id, None)
             raise
         return _Prepared(
@@ -1203,7 +1339,7 @@ class A2AAdapter:
             return
         prep.released = True
         if prep.continuing is not None:
-            self._busy_tasks.discard(prep.task_id)
+            await self.broker.unlock(prep.task_id)
         await self.replies.finish_message(prep.context_id, prep.message.message_id, payload)
 
     def _working_task(self, prep: _Prepared) -> Task:
@@ -1281,13 +1417,13 @@ class A2AAdapter:
         working = self._working_task(prep)
         await self.store.save_task(working, owner)
         live = _Live()
-        self._live[prep.task_id] = live
         streamed: list[Part] = []
         artifact_id = new_id()
+        task_id = prep.task_id
 
         async def push(event: TaskStatusUpdateEvent | TaskArtifactUpdateEvent) -> None:
             key = "statusUpdate" if isinstance(event, TaskStatusUpdateEvent) else "artifactUpdate"
-            live.publish({key: dump(event)})
+            await self._publish(task_id, live, {key: dump(event)})
 
         self._bind_emit(prep, push, streamed, artifact_id)
 
@@ -1310,14 +1446,14 @@ class A2AAdapter:
                                                  update={"task_id": prep.task_id}))
                     reply = Reply(task=done)
                 async for item in self._final_events(prep, reply, streamed, artifact_id):
-                    live.publish(item)
+                    await self._publish(task_id, live, item)
                 task = await self.store.get_task(prep.task_id, owner)
                 payload = {"task": dump(task)} if task is not None else None
             except Exception:
                 logger.exception("A2A background task failed")
             finally:
-                live.publish(None)
-                self._live.pop(prep.task_id, None)
+                await self._publish(task_id, live, None)
+                await self._end_live(task_id, live)
                 await self._release(prep, payload)
                 self._background.discard(asyncio.current_task())  # type: ignore[arg-type]
                 if lease is not None:
@@ -1327,6 +1463,7 @@ class A2AAdapter:
         # there (even before it started); the wrapper always cleans up.
         work = asyncio.ensure_future(self._run(prep))
         live.runner = work
+        await self._go_live(task_id, live)
         self._background.add(asyncio.ensure_future(runner()))
         return {"task": dump(_trim_history(working, prep.history_length))}
 

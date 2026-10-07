@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.reroute.json",
+  "title": "AMP body: task.reroute",
+  "description": "body.type = 'task.reroute' — Cancel or redirect a task.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task to reroute",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "action": {
+      "description": "Reroute action to perform",
+      "enum": [
+        "cancel",
+        "redirect"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "redirect_to": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Agent address to redirect to when action='redirect'",
+      "title": "Redirect To"
+    },
+    "reason": {
+      "description": "Why the task is being rerouted",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "action",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.reroute"
+}

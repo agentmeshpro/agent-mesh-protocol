@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.escalate.json",
+  "title": "AMP body: task.escalate",
+  "description": "body.type = 'task.escalate' — Escalate a task to a human or specific agent.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being escalated",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "escalate_to": {
+      "description": "Who to escalate to",
+      "enum": [
+        "sender_human",
+        "local_human",
+        "specific"
+      ],
+      "title": "Escalate To",
+      "type": "string"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Target agent address when escalate_to='specific'",
+      "title": "Target"
+    },
+    "reason": {
+      "description": "Why escalation is needed",
+      "maxLength": 8192,
+      "title": "Reason",
+      "type": "string"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Context to pass to the escalation target",
+      "title": "Context"
+    },
+    "partial_result": {
+      "anyOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Any partial work completed before escalation",
+      "title": "Partial Result"
+    }
+  },
+  "required": [
+    "task_id",
+    "escalate_to",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.escalate"
+}

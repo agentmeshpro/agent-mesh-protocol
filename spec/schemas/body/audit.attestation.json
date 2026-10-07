@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/audit.attestation.json",
+  "title": "AMP body: audit.attestation",
+  "description": "body.type = 'audit.attestation' — mutual session attestation.\n\nThe ``model_validator`` guarantees that the set of agents exactly\nmatches the set of signature keys — no missing and no extra\nsignatures are allowed.",
+  "properties": {
+    "audit_id": {
+      "description": "Unique attestation identifier",
+      "title": "Audit Id",
+      "type": "string"
+    },
+    "agents": {
+      "description": "agent:// URIs of all participating agents",
+      "items": {
+        "type": "string"
+      },
+      "title": "Agents",
+      "type": "array"
+    },
+    "events_hash": {
+      "description": "SHA-256 hash of all session events",
+      "title": "Events Hash",
+      "type": "string"
+    },
+    "attestation_signatures": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Agent URI -> base64-encoded Ed25519 signature mapping",
+      "title": "Attestation Signatures",
+      "type": "object"
+    },
+    "timestamp": {
+      "description": "ISO-8601 timestamp of attestation",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "required": [
+    "audit_id",
+    "agents",
+    "events_hash",
+    "attestation_signatures",
+    "timestamp"
+  ],
+  "type": "object",
+  "x-amp-body-type": "audit.attestation"
+}

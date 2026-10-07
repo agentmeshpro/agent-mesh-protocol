@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.erasure_request.json",
+  "title": "AMP body: data.erasure_request",
+  "properties": {
+    "subject_id": {
+      "description": "Unique identifier of the data subject requesting erasure",
+      "title": "Subject Id",
+      "type": "string"
+    },
+    "subject_proof": {
+      "description": "RESERVED for v2. Proof of identity for the data subject (e.g. signed token). Not validated in v1 — the sender's identity from the verified envelope is the sole authorization signal. This field is retained in the schema for forward compatibility; supply any non-empty string.",
+      "title": "Subject Proof",
+      "type": "string"
+    },
+    "scope": {
+      "description": "Scope of data to erase",
+      "enum": [
+        "all",
+        "conversations",
+        "tasks",
+        "tools"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Legal basis for the erasure request",
+      "enum": [
+        "user_request",
+        "account_deletion",
+        "consent_withdrawn",
+        "legal_order"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "deadline": {
+      "description": "ISO 8601 deadline for completion",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "callback_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "URL to notify when erasure is complete",
+      "title": "Callback Url"
+    }
+  },
+  "required": [
+    "subject_id",
+    "subject_proof",
+    "scope",
+    "reason",
+    "deadline"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.erasure_request"
+}

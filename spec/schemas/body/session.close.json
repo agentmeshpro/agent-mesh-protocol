@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.close.json",
+  "title": "AMP body: session.close",
+  "description": "body.type = 'session.close' — Gracefully close the session.",
+  "properties": {
+    "session_id": {
+      "description": "Session ID to close",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable reason for closing",
+      "title": "Reason"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "session.close"
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/trust.upgrade_response.json",
+  "title": "AMP body: trust.upgrade_response",
+  "description": "body.type = 'trust.upgrade_response' — Respond with identity proof.",
+  "properties": {
+    "session_id": {
+      "description": "Session the upgrade applies to",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "method": {
+      "description": "Verification method used",
+      "title": "Method",
+      "type": "string"
+    },
+    "proof": {
+      "description": "The identity proof (JWT, DID proof, etc.)",
+      "title": "Proof",
+      "type": "string"
+    },
+    "new_tier": {
+      "description": "Resulting trust tier after verification. Must be one of: internal, owner, verified, external",
+      "title": "New Tier",
+      "type": "string"
+    },
+    "new_score": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Updated trust score, if available",
+      "title": "New Score"
+    }
+  },
+  "required": [
+    "session_id",
+    "method",
+    "proof",
+    "new_tier"
+  ],
+  "type": "object",
+  "x-amp-body-type": "trust.upgrade_response"
+}

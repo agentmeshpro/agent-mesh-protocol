@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.consent_revoke.json",
+  "title": "AMP body: data.consent_revoke",
+  "description": "body.type = 'data.consent.revoke' — Revoke a consent grant.",
+  "properties": {
+    "grant_id": {
+      "description": "ID of the consent grant being revoked",
+      "title": "Grant Id",
+      "type": "string"
+    },
+    "requester": {
+      "description": "Agent requesting the revocation",
+      "title": "Requester",
+      "type": "string"
+    },
+    "target": {
+      "description": "Agent whose consent grant is being revoked",
+      "title": "Target",
+      "type": "string"
+    },
+    "scopes": {
+      "description": "Scopes to revoke (empty = revoke all)",
+      "items": {
+        "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+    },
+    "reason": {
+      "description": "Human-readable reason for revocation",
+      "title": "Reason",
+      "type": "string"
+    },
+    "effective_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO-8601 timestamp when revocation takes effect; None = immediate",
+      "title": "Effective At"
+    }
+  },
+  "required": [
+    "grant_id",
+    "requester",
+    "target",
+    "reason"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.consent_revoke"
+}

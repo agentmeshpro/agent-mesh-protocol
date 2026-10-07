@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.progress.json",
+  "title": "AMP body: task.progress",
+  "description": "body.type = 'task.progress' — Report task progress.",
+  "properties": {
+    "task_id": {
+      "description": "ID of the task being updated",
+      "maxLength": 256,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "percentage": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Completion percentage (0-100)",
+      "title": "Percentage"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable progress message",
+      "title": "Message"
+    },
+    "estimated_remaining_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Estimated seconds until task completion",
+      "title": "Estimated Remaining Seconds"
+    },
+    "metadata": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Arbitrary progress metadata",
+      "title": "Metadata"
+    }
+  },
+  "required": [
+    "task_id"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.progress"
+}

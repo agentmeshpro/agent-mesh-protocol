@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.response.json",
+  "title": "AMP body: task.response",
+  "description": "body.type = 'task.response' — Structured response to a task.",
+  "properties": {
+    "task_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ID of the task this response corresponds to",
+      "title": "Task Id"
+    },
+    "text": {
+      "description": "Human-readable response text",
+      "maxLength": 65536,
+      "title": "Text",
+      "type": "string"
+    },
+    "attachments": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional response attachments",
+      "title": "Attachments"
+    },
+    "data": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional structured response data",
+      "title": "Data"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "type": "object",
+  "x-amp-body-type": "task.response"
+}

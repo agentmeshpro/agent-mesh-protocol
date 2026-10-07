@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/data.erasure_response.json",
+  "title": "AMP body: data.erasure_response",
+  "$defs": {
+    "RetainedRecord": {
+      "description": "A record retained despite an erasure request, with its legal justification.\n\nSupports partial-erasure tracking: not every record can be deleted\n(audit logs, regulatory-retention windows, etc.).  Each retained\nrecord MUST carry a machine-readable ``reason`` and a human\n``legal_basis`` citing the statute or policy.",
+      "properties": {
+        "record_id": {
+          "description": "Stable record identifier",
+          "maxLength": 256,
+          "title": "Record Id",
+          "type": "string"
+        },
+        "category": {
+          "description": "e.g. 'audit_log', 'financial_record'",
+          "title": "Category",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Machine-readable retention cause",
+          "enum": [
+            "legal_hold",
+            "regulatory_retention",
+            "user_denied"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "legal_basis": {
+          "description": "Statute or policy reference",
+          "maxLength": 512,
+          "title": "Legal Basis",
+          "type": "string"
+        },
+        "review_after": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp after which retention should be re-evaluated",
+          "title": "Review After"
+        }
+      },
+      "required": [
+        "record_id",
+        "category",
+        "reason",
+        "legal_basis"
+      ],
+      "title": "RetainedRecord",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "subject_id": {
+      "description": "Unique identifier of the data subject whose data was erased",
+      "title": "Subject Id",
+      "type": "string"
+    },
+    "status": {
+      "description": "Outcome status of the erasure operation",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "records_deleted": {
+      "default": 0,
+      "description": "Total number of records deleted",
+      "title": "Records Deleted",
+      "type": "integer"
+    },
+    "categories_deleted": {
+      "description": "Data categories that were successfully deleted",
+      "items": {
+        "type": "string"
+      },
+      "title": "Categories Deleted",
+      "type": "array"
+    },
+    "retained": {
+      "description": "Records retained with legal justification for each",
+      "items": {
+        "$ref": "#/$defs/RetainedRecord"
+      },
+      "title": "Retained",
+      "type": "array"
+    },
+    "completed_at": {
+      "description": "ISO 8601 timestamp when erasure was completed",
+      "title": "Completed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "subject_id",
+    "status",
+    "completed_at"
+  ],
+  "type": "object",
+  "x-amp-body-type": "data.erasure_response"
+}

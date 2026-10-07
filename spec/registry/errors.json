@@ -1,0 +1,160 @@
+{
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/errors.json",
+  "registry": "errors",
+  "description": "RFC 7807 problem `type` URNs (WIRE-BINDING section 7). Clients SHOULD match on the URN rather than the HTTP status.",
+  "protocol_version": "1.0.0",
+  "change_process": "GOVERNANCE.md; third-party registrations per docs/EXTENSIONS.md",
+  "urn_prefix": "urn:amp:error:",
+  "entries": [
+    {
+      "type": "urn:amp:error:header-injection",
+      "status": 400,
+      "title": "Header injection detected",
+      "section": "14"
+    },
+    {
+      "type": "urn:amp:error:invalid-callback-url",
+      "status": 400,
+      "title": "Invalid callback URL",
+      "section": "12.8"
+    },
+    {
+      "type": "urn:amp:error:invalid-message",
+      "status": 400,
+      "title": "Invalid message",
+      "section": "7.2.1"
+    },
+    {
+      "type": "urn:amp:error:unauthorized",
+      "status": 401,
+      "title": "Unauthorized",
+      "section": "7.2.2"
+    },
+    {
+      "type": "urn:amp:error:capability-not-negotiated",
+      "status": 403,
+      "title": "Capability not negotiated",
+      "section": "17.4"
+    },
+    {
+      "type": "urn:amp:error:consent-denied",
+      "status": 403,
+      "title": "Consent denied",
+      "section": "13.3"
+    },
+    {
+      "type": "urn:amp:error:contact-policy-violation",
+      "status": 403,
+      "title": "Contact policy violation",
+      "section": "7.2.3"
+    },
+    {
+      "type": "urn:amp:error:delegation-denied",
+      "status": 403,
+      "title": "Delegation denied",
+      "section": "11.11"
+    },
+    {
+      "type": "urn:amp:error:delegation-validation-failed",
+      "status": 403,
+      "title": "Delegation validation failed",
+      "section": "11.11.1"
+    },
+    {
+      "type": "urn:amp:error:forbidden",
+      "status": 403,
+      "title": "Forbidden",
+      "section": "7.2.3"
+    },
+    {
+      "type": "urn:amp:error:jurisdiction-conflict",
+      "status": 403,
+      "title": "Jurisdiction conflict",
+      "section": "13.5"
+    },
+    {
+      "type": "urn:amp:error:residency-violation",
+      "status": 403,
+      "title": "Data residency violation",
+      "section": "13.6"
+    },
+    {
+      "type": "urn:amp:error:not-found",
+      "status": 404,
+      "title": "Not found",
+      "section": "7.2.4"
+    },
+    {
+      "type": "urn:amp:error:version-mismatch",
+      "status": 406,
+      "title": "Protocol version mismatch",
+      "section": "7.2.5"
+    },
+    {
+      "type": "urn:amp:error:timeout",
+      "status": 408,
+      "title": "Request timeout",
+      "section": "7.2.6"
+    },
+    {
+      "type": "urn:amp:error:loop-detected",
+      "status": 409,
+      "title": "Loop detected",
+      "section": "Appendix D"
+    },
+    {
+      "type": "urn:amp:error:nonce-replay",
+      "status": 409,
+      "title": "Nonce replay detected",
+      "section": "7.2.7"
+    },
+    {
+      "type": "urn:amp:error:session-expired",
+      "status": 410,
+      "title": "Session expired",
+      "section": "7.2.8"
+    },
+    {
+      "type": "urn:amp:error:payload-too-large",
+      "status": 413,
+      "title": "Payload too large",
+      "section": "7.2.9"
+    },
+    {
+      "type": "urn:amp:error:content-type-mismatch",
+      "status": 415,
+      "title": "Content type mismatch",
+      "section": "3.2"
+    },
+    {
+      "type": "urn:amp:error:rate-limited",
+      "status": 429,
+      "title": "Rate limit exceeded",
+      "section": "7.2.10"
+    },
+    {
+      "type": "urn:amp:error:stream-limit-exceeded",
+      "status": 429,
+      "title": "Stream limit exceeded",
+      "section": "8.7"
+    },
+    {
+      "type": "urn:amp:error:internal-error",
+      "status": 500,
+      "title": "Internal error",
+      "section": "7.2.11"
+    },
+    {
+      "type": "urn:amp:error:not-implemented",
+      "status": 501,
+      "title": "Not implemented",
+      "section": "7.2.12"
+    },
+    {
+      "type": "urn:amp:error:unavailable",
+      "status": 503,
+      "title": "Service unavailable",
+      "section": "7.2.13"
+    }
+  ]
+}

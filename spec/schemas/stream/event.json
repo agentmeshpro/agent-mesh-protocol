@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/stream/event.json",
+  "title": "StreamEvent",
+  "description": "One Server-Sent Event on GET /agent/stream, as parsed from the `id:`, `event:` and `data:` lines (WIRE-BINDING section 8.3). `data` is the JSON-decoded payload. Receivers MUST ignore event types they do not understand.",
+  "type": "object",
+  "required": [
+    "event",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Event id for Last-Event-ID reconnection"
+    },
+    "event": {
+      "type": "string",
+      "description": "Event type; see spec/registry/stream-events.json",
+      "examples": [
+        "thinking",
+        "tool_call",
+        "tool_result",
+        "text_delta",
+        "state_change",
+        "agent_call",
+        "agent_result",
+        "error",
+        "heartbeat",
+        "done",
+        "stream.ack",
+        "stream.pause",
+        "stream.resume",
+        "stream.channel_open",
+        "stream.channel_close",
+        "stream.checkpoint",
+        "stream.auth_refresh"
+      ]
+    },
+    "data": {
+      "type": "object",
+      "description": "Event payload. Server-emitted events carry a monotonically increasing integer `seq`.",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.ack"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.ack.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.auth_refresh"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.auth_refresh.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.channel_close"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.channel_close.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.channel_open"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.channel_open.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.checkpoint"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.checkpoint.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.pause"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.pause.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "stream.resume"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "stream.resume.json"
+          }
+        }
+      }
+    }
+  ]
+}

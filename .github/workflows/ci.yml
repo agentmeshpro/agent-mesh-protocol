@@ -28,7 +28,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Lint
-        run: ruff check ampro/ tests/ examples/
+        run: ruff check ampro/ tests/ examples/ scripts/
+      - name: Machine-readable spec is up to date
+        run: python scripts/generate_spec.py --check
       - name: Run tests (includes conformance oracles and runnable examples)
         run: pytest -q --tb=short
 

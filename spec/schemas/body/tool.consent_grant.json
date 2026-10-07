@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/tool.consent_grant.json",
+  "title": "AMP body: tool.consent_grant",
+  "description": "body.type = 'tool.consent.grant' — Grant consent for a specific tool.",
+  "properties": {
+    "tool_name": {
+      "description": "Name of the tool consent is granted for",
+      "title": "Tool Name",
+      "type": "string"
+    },
+    "scopes": {
+      "description": "Granted scopes (may be subset of requested)",
+      "items": {
+        "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+    },
+    "grant_id": {
+      "description": "Unique grant identifier",
+      "title": "Grant Id",
+      "type": "string"
+    },
+    "valid_for_session": {
+      "description": "Session ID this grant is scoped to",
+      "title": "Valid For Session",
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "ISO-8601 expiration timestamp",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "restrictions": {
+      "additionalProperties": true,
+      "description": "Optional constraints (max_invocations, allowed_params, etc.)",
+      "title": "Restrictions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "tool_name",
+    "scopes",
+    "grant_id",
+    "valid_for_session",
+    "expires_at"
+  ],
+  "type": "object",
+  "x-amp-body-type": "tool.consent_grant"
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.pong.json",
+  "title": "AMP body: session.pong",
+  "description": "body.type = 'session.pong' — Keepalive pong response.",
+  "properties": {
+    "session_id": {
+      "description": "Session ID being kept alive",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "ISO-8601 timestamp of the pong",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "active_tasks": {
+      "default": 0,
+      "description": "Number of tasks currently active in this session",
+      "title": "Active Tasks",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "session_id",
+    "timestamp"
+  ],
+  "type": "object",
+  "x-amp-body-type": "session.pong"
+}
