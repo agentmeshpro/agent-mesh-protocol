@@ -1,5 +1,5 @@
 {
-  "description": "Test vectors for TraceContext and inject_trace_headers (AMP v0.1.5). Covers root spans, child spans, header injection, and invalid trace identifiers.",
+  "description": "Test vectors for TraceContext and inject_trace_headers (AMP v0.1.5). Covers root spans, child spans, header injection, and invalid trace identifiers. ampro.TraceContext does not validate identifier format; the 32/16 lowercase-hex rule comes from WIRE-BINDING 12.14.",
   "vectors": [
     {
       "description": "Valid trace context with parent span — child delegation hop",
@@ -60,9 +60,10 @@
       },
       "expected_headers": {
         "Trace-Id": "abcdef1234567890abcdef1234567890",
-        "Span-Id": "fedcba0987654321"
+        "Span-Id": "fedcba0987654321",
+        "Parent-Span-Id": "1234567890abcdef"
       },
-      "note": "parent_span_id is not included in injected headers — it is tracked in the TraceContext model only."
+      "note": "inject_trace_headers emits Parent-Span-Id when the context has a parent span (WIRE-BINDING 12.14)."
     },
     {
       "description": "Three-hop trace — gateway, specialist, worker share one trace_id",

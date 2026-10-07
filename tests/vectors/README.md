@@ -1,81 +1,160 @@
 # Test Vectors
 
-These JSON files are conformance test vectors used by the test suite to validate
-AMP protocol implementations. They exist as portable cross-implementation
-references — a Go or TypeScript implementation can re-use them to verify
-behavioural equivalence with the Python reference.
+Portable conformance vectors for the Agent Mesh Protocol. A Go, Rust or
+TypeScript implementation can load these JSON files and check that it
+accepts, rejects and signs exactly what the Python reference does.
+
+All 36 files (391 cases) are executed by
+[`tests/test_vectors.py`](../test_vectors.py) on every test run. Use that
+runner as the reference for how to interpret each file.
 
 ## Format
 
-Each vector is a self-describing JSON object. Top-level keys typically include:
+Each file is a JSON object with:
 
-- `description` — what the vector exercises
-- `vectors` — list of individual test cases (name, input, expected output, notes)
-- `parse_vectors` / `match_vectors` — split sections for parsers vs matchers
-- `$schema`, `title` — optional JSON Schema metadata
+- `description`: what the file covers. For signed artefacts it also states
+  the exact canonicalisation rule.
+- `keys` (crypto files only): the fixed test keys used to produce the
+  file. See [Test keys](#test-keys).
+- one or more case lists, usually `vectors`. Some files split cases into
+  `parse_vectors` / `match_vectors`, `contact_policy_vectors` /
+  `filter_vectors`, or `negative_vectors`.
 
-Individual cases generally carry `name`, `input` (the protocol message or
-operation), `expected` or `valid` (required decision / output), plus free-form
-`notes` and (where relevant) an `rfc` or AMP version reference.
+Most cases have a `valid` boolean (accept or reject) and an input:
+`body` + `body_type`, `envelope`, `input`, `value`, `agent_json` or
+`certification`. When `valid` is false, `expected_error` names the
+offending field or a phrase from the error. Other files use `expected`
+objects, `expected_violation`, `expected_conflict`, `allowed`, and so on;
+the runner shows how each one is checked.
+
+### Envelope bodies
+
+When an envelope carries the `Content-Encryption` header, its `body` is an
+`EncryptedBody` and is validated as one (WIRE-BINDING section 12.11).
+Otherwise the body is validated against the schema for `body_type`.
+Unknown `body_type`s are passed through unvalidated.
+
+### Signed artefacts
+
+Cases that carry a signature also carry the exact bytes that were signed,
+for example `expected_canonical`, `signed_canonical`,
+`expected.signature_base` or `expected.confirm_transcript`. A conforming
+implementation MUST:
+
+1. rebuild those bytes from the case's fields using its own
+   canonicalisation code and compare them byte for byte;
+2. verify the signature with the public key named by the case; and
+3. for Ed25519, re-sign with the committed seed and get the identical
+   signature (RFC 8032 signatures are deterministic).
+
+A `"sign": {"kind": ..., "key": ...}` object marks a case whose
+signature fields are produced by the generator. When a case also has
+`"tamper"`, the body was changed after signing, so the signature MUST NOT
+verify. A `"known_gap"` field marks an expectation that the reference
+implementation does not meet yet: the runner xfails that case, and fails
+once the gap is fixed.
+
+## Test keys
+
+These keys are public and used only for test vectors. Never use them for
+anything else.
+
+| Name | Type | Source |
+|------|------|--------|
+| `ed25519-a`, `ed25519-b`, `ed25519-c` | Ed25519 | RFC 8032 section 7.1, TEST 1 / 2 / 3 secret keys |
+| `x25519-client` | X25519 | RFC 7748 section 6.1, Alice's private key |
+| `x25519-server` | X25519 | `SHA-256("ampro test vector x25519 server")` |
+| `a256gcm` | AES-256 | `SHA-256("ampro test vector a256gcm key")` |
+
+Every file that uses a key embeds that key's seed or private key and its
+public key in `keys`. The runner also checks that each public key really
+derives from the committed private key.
+
+## Regenerating
+
+```bash
+python tests/vectors/_generate.py          # rewrite the crypto values in place
+python tests/vectors/_generate.py --check  # exit 1 if anything is stale
+```
+
+The generator fully writes `rfc9421.json`, `session_binding.json` and
+`delegation_chain.json`. In every other file it recomputes the cases that
+carry a `sign` directive. It produces the bytes with ampro's own
+canonicalisation helpers, so a diff after a code change means the wire
+format changed. `test_generator_is_up_to_date` fails if the committed
+vectors are stale.
 
 ## Index
 
-Thirty-four vectors, grouped by protocol surface. The `Test` column names the
-Python test file that covers the same surface (and, in most cases, the
-behaviour the vector encodes); cross-implementation runners should re-implement
-equivalent assertions against the JSON.
+| Vector | Cases | Protocol surface | Crypto |
+|--------|------:|------------------|:------:|
+| addressing.json | 7 | `agent://` URI parsing (host, slug@registry, DID) | |
+| agent_lifecycle.json | 11 | `agent.deactivation_notice`, lifecycle status in agent.json, registry resolution `gone` | |
+| audit_attestation.json | 9 | `audit.attestation` body | |
+| backpressure.json | 12 | `stream.ack` / `stream.pause` / `stream.resume` events | |
+| body_types.json | 19 | Core body types, including the `session.*` handshake bodies (`client_ephemeral_key`, `server_ephemeral_key`, `confirm_nonce`; no `binding_token`) | |
+| certifications.json | 10 | `CertificationLink` in agent.json | |
+| challenge.json | 11 | `task.challenge` / `task.challenge_response` | |
+| consent_revoke.json | 11 | `data.consent_revoke` | |
+| context_schema.json | 11 | Context-schema URN parsing and matching | |
+| cost_receipt.json | 13 | `CostReceipt`, `CostReceiptChain` (signature check, nonce replay, Decimal totals), `task.complete.cost_receipt` | yes |
+| data_residency.json | 13 | `DataResidency`, region validation, violation checks, `Data-Residency` header | |
+| delegation_chain.json | 17 | Signed delegation chains: canonical form, `parent_delegate` binding, depth, scope narrowing, fan-out, budgets, expiry, naive timestamps | yes |
+| encryption.json | 10 | `EncryptedBody` and `Content-Encryption`. A256GCM cases decrypt with the `a256gcm` key | yes |
+| envelope.json | 3 | `AgentMessage` envelope | |
+| erasure_propagation.json | 12 | `erasure.propagation_status` | |
+| handshake.json | 4 | Session handshake state machine transitions | |
+| headers.json | 8 (+ header list) | Standard header registry | |
+| identity_link.json | 11 | `identity.link_proof`, including the required `expires_at` | |
+| identity_migration.json | 10 | `identity.migration`, `AgentJson.moved_to` | |
+| jurisdiction.json | 15 | `JurisdictionInfo`, code validation, conflict checks | |
+| key_revocation.json | 10 | `key.revocation`: Ed25519 signature over all fields except `signature` | yes |
+| priority.json | 10 | `Priority` enum | |
+| registry_federation.json | 14 | Federation request/response schemas, signed trust proofs (audience, `issued_at`, single-use nonce), signed revokes | yes |
+| registry_search.json | 12 | Registry search request/match/result (`limit`; `max_results` is a deprecated alias) | |
+| rfc9421.json | 16 | RFC 9421 HTTP message-signature profile: content-digest, `@authority`, signature base, freshness, nonce, alg allow-list, replay | yes |
+| session_binding.json | 4 | X25519 + HKDF-SHA256 binding key, `binding_proof`, per-message `Session-Binding` HMAC, low-order-key rejection | yes |
+| stream_channel.json | 11 | Stream channel open/close, `Stream-Channel` multiplexing | |
+| stream_checkpoint.json | 10 | Stream checkpoint events | |
+| task_redirect.json | 11 | `task.redirect`, `X-Load-Level` | |
+| task_revoke.json | 8 | `task.revoke` | |
+| tool_consent.json | 11 | `tool.consent_request` / `tool.consent_grant` | |
+| tracing.json | 10 | Trace context format (32/16 lowercase hex) and header injection | |
+| trust_proof.json | 10 | `trust.proof` body (schema only; ampro treats the proof as opaque) | |
+| trust_scoring.json | 5 | Trust-score factors and tier | |
+| trust_upgrade.json | 12 | `trust.upgrade_request` / `trust.upgrade_response` | |
+| visibility.json | 20 | Contact policies and agent.json visibility filtering | |
 
-| Vector | Protocol Surface | Test |
-|--------|------------------|------|
-| addressing.json | Agent address parsing (AMP URIs) | tests/test_wire.py |
-| agent_lifecycle.json | Agent lifecycle status + `agent.deactivation_notice` body (v0.1.3) | tests/test_agent_lifecycle.py |
-| audit_attestation.json | `AuditAttestationBody` / `body.type = audit.attestation` (v0.1.8) | tests/test_audit_attestation.py |
-| backpressure.json | `stream.ack` / `stream.pause` / `stream.resume` events (v0.1.2) | tests/test_backpressure.py |
-| body_types.json | Body type validation across all body kinds | tests/test_protocol.py |
-| certifications.json | `CertificationLink` in `agent.json` (v0.1.9) — SOC2, ISO27001, etc. | tests/test_certifications.py |
-| challenge.json | `task.challenge` + `task.challenge_response` (v0.1.2) | tests/test_challenge.py |
-| consent_revoke.json | `DataConsentRevokeBody` / `body.type = data.consent_revoke` (v0.1.6) | tests/test_consent_revoke.py |
-| context_schema.json | Context schema URN parse + match | tests/test_context_schema.py |
-| cost_receipt.json | `CostReceipt`, `CostReceiptChain`, `task.complete.cost_receipt` (v0.1.3) | tests/test_cost_receipt.py |
-| data_residency.json | `DataResidency`, `validate_residency_region`, `check_residency_violation` (v0.1.6) | tests/test_data_residency.py |
-| delegation_chain.json | Delegation chain validation | tests/delegation/test_cost_receipt_signatures.py |
-| encryption.json | `EncryptedBody` + `Content-Encryption` header (v0.1.9) | tests/test_encryption.py |
-| envelope.json | Message envelope validation | tests/test_protocol.py |
-| erasure_propagation.json | `ErasurePropagationStatusBody` / `erasure.propagation_status` (v0.1.6) | tests/test_erasure_propagation.py |
-| handshake.json | Complete handshake sequence | tests/test_handshake.py |
-| headers.json | Standard AMP headers (set + examples) | tests/test_client.py |
-| identity_link.json | `IdentityLinkProofBody` / `identity.link_proof` (v0.1.8) | tests/test_identity_link.py |
-| identity_migration.json | `IdentityMigrationBody` + `AgentJson.moved_to` (v0.1.8) | tests/test_identity_migration.py |
-| jurisdiction.json | `JurisdictionInfo`, `validate_jurisdiction_code`, conflict checks (v0.1.6) | tests/test_jurisdiction.py |
-| key_revocation.json | `key.revocation` body (v0.1.2) — all 3 revocation reasons | tests/test_key_revocation.py |
-| priority.json | `Priority` enum (v0.1.5) — 5 valid values + invalids | tests/test_priority.py |
-| registry_federation.json | `RegistryFederationRequest` / `Response` (v0.1.8) | tests/test_registry_federation.py |
-| registry_search.json | `RegistrySearchRequest` / `Match` / `Result` (v0.1.4) | tests/test_registry_search.py |
-| stream_channel.json | Stream channel open / close / multiplexing events (v0.1.7) | tests/test_stream_channel.py |
-| stream_checkpoint.json | Stream checkpoint + reconnection events (v0.1.7) | tests/test_stream_checkpoint.py |
-| task_redirect.json | `TaskRedirectBody` + `X-Load-Level` header (v0.1.4) | tests/test_task_redirect.py |
-| task_revoke.json | `TaskRevokeBody` — cascade / revoke_children flags (v0.1.5) | tests/test_task_revoke.py |
-| tool_consent.json | `tool.consent_request` + `tool.consent_grant` (v0.1.2) | tests/test_tool_consent.py |
-| tracing.json | `TraceContext` + `inject_trace_headers` (v0.1.5) | tests/test_tracing.py |
-| trust_proof.json | `TrustProofBody` / `trust.proof` ZKP proofs (v0.1.9) | tests/test_trust_proof.py |
-| trust_scoring.json | Trust score calculation | tests/test_trust_score.py |
-| trust_upgrade.json | `trust.upgrade_request` + `trust.upgrade_response` (v0.1.2) | tests/test_trust_upgrade.py |
-| visibility.json | Visibility + contact policy (filters) | tests/test_visibility.py |
+## Using these vectors from another implementation
 
-## Using these vectors from a non-Python implementation
+1. Load each file. Read `keys` if present, decoding the hex and base64url
+   fields.
+2. For every case in every list, feed the input to your equivalent parser,
+   validator or signer.
+3. Assert the recorded outcome: `valid`, the `expected*` fields, or for
+   RFC 9421 `verify.expect` at `verify.at` (Unix seconds) with a fresh
+   replay cache. An `expect` list means: verify that many times in a row
+   with the same cache.
+4. For signed cases, compare canonical bytes, verify the signature, and
+   re-sign deterministically (see [Signed artefacts](#signed-artefacts)).
 
-1. Load the JSON file.
-2. For each entry in `vectors` (or `parse_vectors` / `match_vectors`), feed
-   `input` into the equivalent parser / validator in your language.
-3. Assert the observed output matches `expected` (or `valid` boolean where the
-   vector is a negative case).
-4. If a case lists an `rfc` / AMP version, gate the assertion on your
-   implementation's supported version.
+Watch for these portability traps:
 
-## Adding a new vector
+- Canonical JSON means sorted keys, `,` and `:` separators, and UTF-8.
+  Most artefacts emit non-ASCII characters raw (`ensure_ascii=False`).
+  Key revocations escape them (`\uXXXX`).
+- `cost_usd` is signed as Python's `json` module renders the float, for
+  example `0.005` or `5.0`. JavaScript's `JSON.stringify(5.0)` gives `5`.
+- Session-binding HMACs are keyed with the UTF-8 bytes of the hex binding
+  key (64 ASCII characters), not the raw 32 bytes. Public keys enter the
+  HKDF `info` and the confirm transcript as base64url strings without
+  padding.
 
-- Place the file here as `<surface>.json`.
-- Include a top-level `description` and AMP version the vectors target.
-- Add a row to the Index above (keep rows alphabetised).
-- Exercise it from the matching Python test so regressions in the reference
-  implementation surface immediately.
+## Adding a vector
+
+- Add `<surface>.json` with a top-level `description`.
+- Add a handler for it in `tests/test_vectors.py`.
+  `test_every_vector_file_has_a_handler` enforces this.
+- For a signed artefact, add a `sign` kind or a builder to `_generate.py`
+  and run it. Never hand-write signatures.
+- Add a row to the index above, keeping rows in alphabetical order.

@@ -1,5 +1,5 @@
 {
-  "description": "Test vectors for IdentityLinkProofBody (body.type = identity.link_proof) (AMP v0.1.8). Covers valid link proofs with different proof types and invalid payloads.",
+  "description": "Test vectors for IdentityLinkProofBody (body.type = identity.link_proof) (AMP v0.1.8). Link proofs carry a required expires_at (strictly after timestamp). Covers valid link proofs with different proof types and invalid payloads.",
   "vectors": [
     {
       "description": "Valid link proof — ed25519_cross_sign between host and slug addresses",
@@ -10,7 +10,8 @@
         "target_id": "agent://assistant@hub.example.com",
         "proof_type": "ed25519_cross_sign",
         "proof": "MEUCIQD2YnoGk5kqLwDhP8N2xJMB1rGpKY8E4vZf1kA9T7vXwAIgEfG3hOd6HjK5nRr8Q2eL1mN4pS7tU0vWxYz3aBcDeF=",
-        "timestamp": "2026-04-09T10:00:00Z"
+        "timestamp": "2026-04-09T10:00:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       }
     },
     {
@@ -22,7 +23,8 @@
         "target_id": "agent://did:web:example.com",
         "proof_type": "dns_txt",
         "proof": "amp-verify=abc123def456ghi789jkl012mno345pqr678stu901vwx234",
-        "timestamp": "2026-04-09T10:05:00Z"
+        "timestamp": "2026-04-09T10:05:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       },
       "note": "DNS TXT record at source domain proves ownership of both addresses."
     },
@@ -35,7 +37,8 @@
         "target_id": "agent://worker@registry-b.example.com",
         "proof_type": "registry_attestation",
         "proof": "att-cross-registry-001",
-        "timestamp": "2026-04-09T11:00:00Z"
+        "timestamp": "2026-04-09T11:00:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       },
       "note": "Registry vouches for the link between two slug addresses in different registries."
     },
@@ -48,7 +51,8 @@
         "target_id": "agent://backup.example.com",
         "proof_type": "ed25519_cross_sign",
         "proof": "SIGxyz789abc012def345ghi678jkl901mno234pqr567stu890vwx123yz",
-        "timestamp": "2026-04-09T14:30:00Z"
+        "timestamp": "2026-04-09T14:30:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       }
     },
     {
@@ -68,7 +72,8 @@
           "target_id": "agent://assistant@hub.example.com",
           "proof_type": "ed25519_cross_sign",
           "proof": "MEUCIQD2YnoGk5kqLwDhP8N2xJMB1rGpKY8E4vZf1kA9T7vXwAIgEfG3hOd6HjK5nRr8Q2eL1mN4pS7tU0vWxYz3aBcDeF=",
-          "timestamp": "2026-04-09T10:00:00Z"
+          "timestamp": "2026-04-09T10:00:00Z",
+          "expires_at": "2027-04-09T00:00:00Z"
         }
       },
       "note": "IdentityLinkProofBody inside a full AgentMessage envelope."
@@ -82,7 +87,8 @@
         "target_id": "agent://assistant@hub.example.com",
         "proof_type": "ed25519_cross_sign",
         "proof": "SOME_PROOF",
-        "timestamp": "2026-04-09T10:00:00Z"
+        "timestamp": "2026-04-09T10:00:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       }
     },
     {
@@ -94,7 +100,8 @@
         "source_id": "agent://assistant.example.com",
         "proof_type": "ed25519_cross_sign",
         "proof": "SOME_PROOF",
-        "timestamp": "2026-04-09T10:00:00Z"
+        "timestamp": "2026-04-09T10:00:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       }
     },
     {
@@ -106,7 +113,8 @@
         "source_id": "agent://assistant.example.com",
         "target_id": "agent://assistant@hub.example.com",
         "proof_type": "ed25519_cross_sign",
-        "timestamp": "2026-04-09T10:00:00Z"
+        "timestamp": "2026-04-09T10:00:00Z",
+        "expires_at": "2027-04-09T00:00:00Z"
       }
     },
     {
@@ -118,7 +126,35 @@
         "source_id": "agent://assistant.example.com",
         "target_id": "agent://assistant@hub.example.com",
         "proof_type": "ed25519_cross_sign",
-        "proof": "SOME_PROOF"
+        "proof": "SOME_PROOF",
+        "expires_at": "2027-04-09T00:00:00Z"
+      }
+    },
+    {
+      "description": "Invalid — missing expires_at (required)",
+      "body_type": "identity.link_proof",
+      "valid": false,
+      "expected_error": "expires_at",
+      "body": {
+        "source_id": "agent://assistant.example.com",
+        "target_id": "agent://assistant@hub.example.com",
+        "proof_type": "ed25519_cross_sign",
+        "proof": "SOME_PROOF",
+        "timestamp": "2026-04-09T10:00:00Z"
+      }
+    },
+    {
+      "description": "Invalid — expires_at not strictly after timestamp",
+      "body_type": "identity.link_proof",
+      "valid": false,
+      "expected_error": "expires_at must be strictly after timestamp",
+      "body": {
+        "source_id": "agent://assistant.example.com",
+        "target_id": "agent://assistant@hub.example.com",
+        "proof_type": "ed25519_cross_sign",
+        "proof": "SOME_PROOF",
+        "timestamp": "2026-04-09T10:00:00Z",
+        "expires_at": "2026-04-09T10:00:00Z"
       }
     }
   ]

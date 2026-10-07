@@ -190,9 +190,9 @@ validates the `body` payload. 49+ typed body schemas organized by HTTP verb anal
 
 | Body Type | Purpose |
 |-----------|---------|
-| `session.init` | Propose a new session (capabilities, nonce) |
-| `session.established` | Accept session (terms, binding token) |
-| `session.confirm` | Confirm session (binding proof) |
+| `session.init` | Propose a new session (capabilities, nonce, ephemeral X25519 key) |
+| `session.established` | Accept session (terms, nonce, ephemeral X25519 key, confirm nonce) |
+| `session.confirm` | Confirm session (binding proof, echoed confirm nonce) |
 | `session.ping` / `session.pong` | Keepalive |
 | `session.pause` / `session.resume` | Suspend and resume |
 | `session.close` | Graceful termination |
@@ -259,10 +259,20 @@ When a message arrives, the receiver resolves trust in order:
 1. Same organization? → `INTERNAL`
 2. Bearer JWT with owner scope? → `OWNER`
 3. Bearer JWT with valid signature? → `VERIFIED`
-4. DID proof with valid key? → `VERIFIED`
-5. API key in allowlist? → `VERIFIED`
-6. mTLS with valid certificate? → `VERIFIED`
+4. DID proof: a compact EdDSA JWS signed by a `did:key`, with `aud` naming
+   this agent, a lifetime of at most 300 s, a single-use `jti`, and the DID
+   bound to the envelope sender (or to one of the sender's verified, linked
+   DIDs)? → `VERIFIED`
+5. API key registered via `register_api_key` (stored hashed, compared in
+   constant time, capped at `VERIFIED`)? → `VERIFIED`
+6. mTLS client certificate verified by the transport (the identity never
+   comes from a request header)? → `VERIFIED`
 7. Everything else → `EXTERNAL`
+
+Requests can also authenticate with RFC 9421 HTTP message signatures
+(Ed25519, with a required nonce and a 300 s freshness window). A credential
+that is present but invalid gets a 401. It is never silently downgraded
+to `EXTERNAL`. See WIRE-BINDING sections 12.1 and 12.15.
 
 ### Trust Score (0-1000)
 
@@ -322,26 +332,38 @@ Client → Server:  session.init
 
 Server → Client:  session.established
   "OK. Session ID: sess-123. Your trust: verified (450/1000).
-   We'll use messaging + tools. Here's my nonce and a binding token."
+   We'll use messaging + tools. Here's my nonce, my ephemeral X25519
+   key, and a single-use confirm nonce."
 
 Client → Server:  session.confirm
-  "Confirmed. Here's my proof I have the binding token."
+  "Confirmed. Here's an HMAC proving I derived the same binding key,
+   and your confirm nonce back."
 ```
+
+The server verifies the proof before the session becomes active.
 
 After the confirm, the session is `ACTIVE`. Every subsequent message carries the
 `Session-Id` header.
 
-### Session Binding (HMAC-SHA256)
+### Session Binding (X25519 + HKDF + HMAC-SHA256)
 
 Sessions are cryptographically bound to prevent hijacking:
 
-1. During handshake, both sides exchange random nonces
-2. Both derive a binding token: `HMAC-SHA256(shared_secret, client_nonce + server_nonce + session_id)`
-3. Every message includes a `Session-Binding` header: `HMAC-SHA256(binding_token, session_id + message_id)`
-4. Receiver verifies using constant-time comparison
+1. During the handshake, both sides exchange random nonces and ephemeral
+   X25519 public keys.
+2. Each side derives the binding key on its own:
+   `HKDF-SHA256(X25519 shared secret, salt = nonces, info = session ID + both public keys)`.
+   The key is never sent.
+3. The client proves it holds the key with `binding_proof`, an HMAC over the
+   handshake transcript. The server verifies the proof before it activates
+   the session.
+4. Every message includes a `Session-Binding` header:
+   `HMAC-SHA256(key, session_id ‖ 0x00 ‖ message_id ‖ 0x00 ‖ SHA-256(canonical body))`.
+5. The receiver verifies the header using constant-time comparison.
 
-If someone guesses the Session-Id (UUID) but doesn't know the binding secret,
-their messages are rejected.
+If someone guesses the Session-Id (UUID) but doesn't know the binding key,
+their messages are rejected. An observer who watched the handshake can't
+compute the key either. The exact derivation is in WIRE-BINDING section 9.3.
 
 ### Implicit Sessions
 
@@ -373,11 +395,16 @@ Charlie verifies the entire chain before accepting.
 
 ### Constraints
 
+- **Whole-link signature**: The delegator signs every link field, plus the
+  parent's delegate, so a link can't be edited or moved to another chain
 - **Scope narrowing**: Each hop can only narrow scopes, never widen
-- **Budget decrement**: Budget decreases at each hop, never increases
-- **Depth limit**: Maximum delegation depth, decremented at each hop
+- **Budget decrement**: Budget never increases along the chain, and a hop
+  can't drop its parent's budget
+- **Depth limit**: Each child's `max_depth` is at most its parent's minus one.
+  The chain can't be longer than the root's `max_depth`.
 - **Loop detection**: `Visited-Agents` header prevents A→B→C→A cycles
-- **Fan-out limit**: Maximum parallel delegations per hop (default: 3)
+- **Fan-out limit**: Maximum sub-delegations per link (default: 3), enforced
+  by receivers that track counts
 
 ### Delegation Headers
 
@@ -593,8 +620,8 @@ not the fixtures.
 |-------|-----------|
 | **Identity** | Ed25519 keys, DID, JWT, API keys, mTLS |
 | **Authentication** | JWKS key fetching, DID resolution, API key validation |
-| **Session security** | HMAC-SHA256 binding, nonce exchange |
-| **Message integrity** | Nonce tracking, dedup store, replay protection |
+| **Session security** | X25519 + HKDF binding key (never sent), verified binding proof, per-message HMAC over the body digest |
+| **Message integrity** | RFC 9421 signatures with a covered content-digest, required nonce, caller-scoped dedup |
 | **Authorization** | Trust tiers, capability negotiation, delegation chains |
 | **Abuse prevention** | Rate limiting, concurrency limiting, circuit breakers |
 | **Privacy** | Visibility levels, contact policies, delegation chain privacy |
@@ -666,4 +693,28 @@ ampro-server main:agent --port 8000
 
 - [`examples/41_ampi_quickstart.py`](../examples/41_ampi_quickstart.py) —
   minimum viable AMPI agent in ~30 lines.
+
+---
+
+## Interop
+
+`ampro.interop` serves and calls AMP agents over other agent protocols. Each
+interop package is a `ProtocolAdapter` (`ampro.server.http`). You mount it on
+an `AgentServer` with `server.mount(adapter)`, or with
+`ampro-server --protocols amp,a2a,mcp`. The adapter translates its wire
+format to and from `AgentMessage` and dispatches through the same AMPI
+handlers, so one `AgentApp` serves every protocol:
+
+- `ampro.interop.a2a`: Google A2A (HTTP+JSON and JSON-RPC bindings)
+- `ampro.interop.pact`: PACT personal-agent identity and delegated authority
+  on top of A2A
+- `ampro.interop.mcp`: Model Context Protocol (exposes `@tool`s)
+
+The server offers each request to the mounted adapters, in mount order,
+before its native AMP routes. Only the message-size limit runs before
+the adapters see a request. The native-route pipeline (WIRE-BINDING
+Appendix D) does not run for adapter traffic, so each adapter has to
+authenticate requests itself, using the shared `Authenticator` contract
+in `ampro.server.auth`. Each adapter will be described in its own
+`docs/INTEROP-*.md`.
 
