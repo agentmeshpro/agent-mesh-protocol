@@ -336,9 +336,20 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
 
 
 
-## [0.3.2]
+## [0.3.2] - 2026-04-21
 
-Not released — the version number was skipped.
+### Security
+- `verify_request` enforces a 300s freshness window on the signature's
+  `created` timestamp by default; stale or far-future signatures fail
+  closed. Callers supplying a `NonceTracker` get per-request replay
+  rejection via a new `nonce` kwarg on `sign_request`/`verify_request`.
+- `get_public_key` consults `should_reject_cached_key()` on every lookup,
+  cache hits included, so a revocation takes effect immediately instead of
+  after the 60s cache TTL.
+
+### Added
+- `docs/SECURITY-MODEL.md`: what the protocol does and does not guarantee,
+  with the host-platform checklist.
 
 ## [0.3.1] — 2026-04-20
 
