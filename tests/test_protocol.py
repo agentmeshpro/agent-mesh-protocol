@@ -901,12 +901,16 @@ class TestDelegationSignatures:
         return seed, pub
 
     def _make_signed_link(self, private_seed, delegator, delegate, scopes,
-                          max_depth=3, created_at=None, expires_at=None,
+                          max_depth=None, created_at=None, expires_at=None,
                           parent_delegate=None):
         """Create a DelegationLink with a real Ed25519 signature."""
         from datetime import datetime, timedelta
 
         from ampro.delegation.chain import DelegationLink, sign_delegation
+
+        if max_depth is None:
+            # Children must decrement max_depth (root=3, child=2).
+            max_depth = 3 if parent_delegate is None else 2
 
         now = datetime.now(UTC)
         created = created_at or now
