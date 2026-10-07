@@ -32,6 +32,8 @@ async def send(
     sender: str | None = None,
     headers: dict[str, Any] | None = None,
     timeout: float = 30.0,
+    *,
+    allow_private: bool = False,
 ) -> AgentMessage:
     """Send a message to an AMP agent and return the response.
 
@@ -47,6 +49,10 @@ async def send(
             messages, but required for session-bound communication.
         headers: Additional AMP headers (e.g. ``{"Priority": "high"}``).
         timeout: HTTP timeout in seconds (default 30).
+        allow_private: Allow the target to resolve to a loopback, private
+            or otherwise internal address.  Off by default (SSRF
+            protection); set ``True`` only for local development, e.g.
+            ``send("agent://localhost:8443", ..., allow_private=True)``.
 
     Returns:
         The response ``AgentMessage`` from the target agent.
@@ -54,6 +60,8 @@ async def send(
     Raises:
         AmpProtocolError: If the server returns a non-2xx response.
         ValueError: If the URI cannot be resolved.
+        SSRFError: (subclass of ``ValueError``) if the target is internal
+            and ``allow_private`` is False.
     """
     endpoint = await _resolve_endpoint(to)
 
@@ -65,4 +73,6 @@ async def send(
         body=body,
     )
 
-    return await _post_message(endpoint, msg, timeout=timeout)
+    return await _post_message(
+        endpoint, msg, timeout=timeout, allow_private=allow_private,
+    )

@@ -8,6 +8,11 @@ Handles:
   - agent:// URI resolution to HTTPS endpoints via /.well-known/agent.json
   - POST /agent/message with AgentMessage envelope
   - Error mapping from HTTP responses to AmpProtocolError
+  - SSRF protection: every outbound request is checked with
+    :mod:`ampro.security.ssrf` (scheme, internal hostnames, every resolved
+    address) and the connection is pinned to the checked addresses so DNS
+    rebinding cannot redirect it.  Pass ``allow_private=True`` to the public
+    helpers to reach loopback / private addresses during local development.
 """
 
 from __future__ import annotations
@@ -17,15 +22,36 @@ from typing import Any
 
 import httpx
 
+from ampro import __version__ as _AMPRO_VERSION
 from ampro.client.errors import AmpProtocolError
 from ampro.core.addressing import AddressType, parse_agent_uri
 from ampro.core.envelope import AgentMessage
+from ampro.security.ssrf import pinned_async_transport, validate_url_async
 from ampro.wire.errors import ProblemDetail
 
 logger = logging.getLogger("ampro.client")
 
 # Header sent on all AMP client requests.
-_USER_AGENT = "ampro-client/0.2.1"
+_USER_AGENT = f"ampro-client/{_AMPRO_VERSION}"
+
+
+async def _guarded_client(url: str, *, allow_private: bool = False) -> httpx.AsyncClient:
+    """Return an ``httpx.AsyncClient`` that may only talk to *url*'s host.
+
+    The host is resolved once; every resolved address must be public
+    (unless *allow_private*), and the client's transport dials only those
+    addresses.  Redirects are not followed and environment proxies are
+    ignored (a proxy would re-resolve the name and defeat pinning).
+
+    Raises:
+        SSRFError: (a ``ValueError``) if the URL is not allowed.
+    """
+    validated = await validate_url_async(url, allow_private=allow_private)
+    return httpx.AsyncClient(
+        transport=pinned_async_transport(validated),
+        follow_redirects=False,
+        trust_env=False,
+    )
 
 
 async def _resolve_endpoint(uri: str) -> str:
@@ -85,6 +111,7 @@ async def _post_message(
     *,
     timeout: float = 30.0,
     extra_headers: dict[str, str] | None = None,
+    allow_private: bool = False,
 ) -> AgentMessage:
     """POST an AgentMessage to ``/agent/message`` and return the response.
 
@@ -93,12 +120,14 @@ async def _post_message(
         msg: The message envelope to send.
         timeout: Request timeout in seconds.
         extra_headers: Additional HTTP headers (e.g. Session-Binding).
+        allow_private: Permit loopback/private targets (local development).
 
     Returns:
         The response parsed as an AgentMessage.
 
     Raises:
         AmpProtocolError: If the server returns a non-2xx response.
+        SSRFError: If the endpoint is not a permitted outbound target.
     """
     url = f"{endpoint}/agent/message"
     headers = {
@@ -110,7 +139,7 @@ async def _post_message(
 
     payload = msg.model_dump(mode="json")
 
-    async with httpx.AsyncClient() as client:
+    async with await _guarded_client(url, allow_private=allow_private) as client:
         response = await client.post(
             url,
             json=payload,
@@ -129,17 +158,19 @@ async def _get_json(
     *,
     timeout: float = 30.0,
     extra_headers: dict[str, str] | None = None,
+    allow_private: bool = False,
 ) -> dict[str, Any]:
     """GET a URL and return parsed JSON.
 
     Raises:
         AmpProtocolError: If the server returns a non-2xx response.
+        SSRFError: If the URL is not a permitted outbound target.
     """
     headers = {"User-Agent": _USER_AGENT}
     if extra_headers:
         headers.update(extra_headers)
 
-    async with httpx.AsyncClient() as client:
+    async with await _guarded_client(url, allow_private=allow_private) as client:
         response = await client.get(url, headers=headers, timeout=timeout)
 
     if response.status_code >= 400:
