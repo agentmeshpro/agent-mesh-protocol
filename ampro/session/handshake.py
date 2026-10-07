@@ -273,10 +273,10 @@ class SessionPongBody(BaseModel):
 class SessionPauseBody(BaseModel):
     """body.type = 'session.pause' — Temporarily suspend the session.
 
-    The ``resume_token`` SHOULD be created via :func:`create_resume_token`
-    which embeds session_id, binding_token, and optional context into a
-    structured, optionally HMAC-signed token. This ensures the binding
-    state survives process restarts and can be verified on resume.
+    ``resume_token`` MUST be an opaque, unguessable handle (e.g.
+    ``secrets.token_urlsafe(32)``).  Do NOT send the output of
+    :func:`create_resume_token` here: that structure embeds the session's
+    binding key and must stay server-side, keyed by the opaque handle.
     """
 
     session_id: str = Field(

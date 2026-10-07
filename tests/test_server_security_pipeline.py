@@ -260,3 +260,23 @@ async def test_api_key_callers_get_distinct_bound_identities():
         assert len(calls) == 2
     finally:
         _reset_api_keys_for_tests()
+
+
+async def test_encrypted_envelope_is_not_validated_as_plaintext():
+    import json as _json
+    from pathlib import Path
+
+    vectors = _json.loads(
+        (Path(__file__).parent / "vectors" / "encryption.json").read_text()
+    )["vectors"]
+    sample = next(v for v in vectors if v.get("valid"))["envelope"]
+    server, calls = make_server()
+    env = envelope(
+        body_type="task.create",
+        headers={"Content-Encryption": "A256GCM"},
+        body=sample["body"],
+    )
+    resp = await post(server, env)
+    assert resp.status == 202, resp.body
+    bad = envelope(id="m-bad", headers={"Content-Encryption": "A256GCM"}, body={"nope": 1})
+    assert (await post(server, bad)).status == 400

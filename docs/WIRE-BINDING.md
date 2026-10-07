@@ -2743,10 +2743,6 @@ Signature: sig1=:hmmboKHLvPhvwTpoDfk3F9gXHKOxWXnV3bSRLGcinaM4YO/yG/0Q1YtVBra367T
 - Verifiers MUST reject a signature whose covered components omit
   `@method`, `@target-uri`, or `@authority`.
 
-  *Implementation note: ampro 0.4.0's `verify_request` does not yet
-  enforce this rule. It is tracked by the `known_gap` case in
-  `tests/vectors/rfc9421.json`.*
-
 - **Content-Digest (RFC 9530)**: the header value is
   `sha-256=:<base64(SHA-256(body))>:`.
 - When the request body is non-empty, verifiers MUST reject the request

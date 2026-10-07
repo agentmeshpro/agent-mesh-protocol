@@ -385,7 +385,7 @@ def verify_request(
 
     # The signature must bind the request line and the target, otherwise a
     # signature captured on one route or agent could be replayed on another.
-    if "@method" not in covered or not ({"@target-uri", "@authority"} & set(covered)):
+    if not {"@method", "@target-uri", "@authority"} <= set(covered):
         return False
 
     # Body integrity. A non-empty body is only authenticated when

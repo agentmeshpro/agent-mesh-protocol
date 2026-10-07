@@ -473,8 +473,7 @@
         "at": 1775743200,
         "expect": false,
         "method": "DELETE",
-        "reason": "required covered components missing",
-        "known_gap": "ampro 0.4.0 verify_request does not enforce the required component set"
+        "reason": "required covered components missing"
       }
     },
     {

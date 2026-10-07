@@ -493,8 +493,21 @@ class AgentServer:
             err = invalid_message(f"Invalid envelope: {exc.error_count()} validation error(s)")
             return self._error_response(err)
 
-        # Step 2: Validate body against body_type schema.
-        if msg.body is not None and isinstance(msg.body, dict):
+        # Step 2: Validate body against body_type schema.  An encrypted
+        # envelope (``Content-Encryption``) carries ciphertext under the
+        # plaintext body_type; its schema applies only after decryption,
+        # which is the handler's (or a middleware's) job.
+        encrypted = any(k.lower() == "content-encryption" for k in (msg.headers or {}))
+        if encrypted:
+            from ampro.security.encryption import EncryptedBody
+
+            try:
+                EncryptedBody.model_validate(msg.body)
+            except ValidationError as exc:
+                return self._error_response(invalid_message(
+                    f"Encrypted body is malformed: {exc.error_count()} error(s)"
+                ))
+        elif msg.body is not None and isinstance(msg.body, dict):
             try:
                 validate_body(msg.body_type, msg.body)
             except ValidationError as exc:

@@ -376,7 +376,6 @@ _RFC9421_CASES: list[dict[str, Any]] = [
             "expect": False,
             "method": "DELETE",
             "reason": "required covered components missing",
-            "known_gap": "ampro 0.4.0 verify_request does not enforce the required component set",
         },
     },
     {

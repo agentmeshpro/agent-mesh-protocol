@@ -169,14 +169,14 @@ class TestMissingCoveredHeader:
         priv, _, pub = _keypair()
         created = int(time.time())
         nonce = secrets.token_hex(8)
-        covered = ["@method", "@target-uri", "x-h"]
+        covered = ["@method", "@target-uri", "@authority", "x-h"]
         base = create_signature_base("GET", URL, {"x-h": ""}, covered,
                                      created=created, keyid="k1", nonce=nonce)
         sig = base64.b64encode(priv.sign(base.encode())).decode()
         headers = {
             "Signature": f"sig1=:{sig}:",
             "Signature-Input": (
-                f'sig1=("@method" "@target-uri" "x-h");created={created};'
+                f'sig1=("@method" "@target-uri" "@authority" "x-h");created={created};'
                 f'keyid="k1";alg="ed25519";nonce="{nonce}"'
             ),
         }
