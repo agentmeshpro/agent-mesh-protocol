@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/task.delegate.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/task.delegate.json",
   "title": "AMP body: task.delegate",
   "description": "body.type = 'task.delegate' — Delegate a task with full chain context.",
   "properties": {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/envelope.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/envelope.json",
   "title": "AgentMessage",
   "description": "AMP message envelope (WIRE-BINDING section 5.1). Receiver acceptance schema: senders MUST also include `id` and `body_type`. Unknown top-level fields and headers MUST be ignored.",
   "properties": {

@@ -75,10 +75,10 @@ ampro-server = "ampro.server.cli:main"
 ampro-conformance = "ampro.conformance.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/CatlystAI/agent-mesh-protocol"
-Repository = "https://github.com/CatlystAI/agent-mesh-protocol"
-Issues = "https://github.com/CatlystAI/agent-mesh-protocol/issues"
-Documentation = "https://github.com/CatlystAI/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
+Homepage = "https://github.com/agentmeshpro/agent-mesh-protocol"
+Repository = "https://github.com/agentmeshpro/agent-mesh-protocol"
+Issues = "https://github.com/agentmeshpro/agent-mesh-protocol/issues"
+Documentation = "https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ampro"]

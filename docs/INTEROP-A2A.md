@@ -192,7 +192,7 @@ The principal fills in the `AMPContext` fields `sender_address`, `trust_tier`,
 
 ## AMP extension
 
-* URI: `https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1`
+* URI: `https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1`
 * The card lists it with `required: false` and these params:
   `agent_id`, `amp_endpoint`, `protocol_version`.
 * A client activates it with `A2A-Extensions: <uri>`. The server echoes

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.established.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/session.established.json",
   "title": "AMP body: session.established",
   "description": "body.type = 'session.established' — Server accepts the session.",
   "properties": {

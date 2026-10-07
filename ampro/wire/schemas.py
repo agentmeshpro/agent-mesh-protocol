@@ -27,7 +27,7 @@ from typing import Any
 from pydantic import BaseModel
 
 #: Base URL of the machine-readable specification.
-SPEC_BASE = "https://github.com/CatlystAI/agent-mesh-protocol/spec/"
+SPEC_BASE = "https://github.com/agentmeshpro/agent-mesh-protocol/spec/"
 #: Base URL every schema ``$id`` lives under.
 SCHEMA_BASE = SPEC_BASE + "schemas/"
 #: JSON Schema dialect used by every document.

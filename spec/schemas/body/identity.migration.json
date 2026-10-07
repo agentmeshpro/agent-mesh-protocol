@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/identity.migration.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/identity.migration.json",
   "title": "AMP body: identity.migration",
   "description": "body.type = 'identity.migration' — Announce address migration.",
   "properties": {

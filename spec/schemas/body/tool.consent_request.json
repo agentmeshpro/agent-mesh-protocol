@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/tool.consent_request.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/tool.consent_request.json",
   "title": "AMP body: tool.consent_request",
   "description": "body.type = 'tool.consent.request' — Request consent for a specific tool.",
   "properties": {

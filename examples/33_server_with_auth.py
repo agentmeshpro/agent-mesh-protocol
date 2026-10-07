@@ -9,7 +9,7 @@ Key point: trust resolution is YOUR handler's job, not the server's.
 The server routes messages; your handler decides what trust means.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git fastapi uvicorn
     python examples/33_server_with_auth.py
 
 Test (no auth — external tier):

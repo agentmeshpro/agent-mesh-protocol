@@ -6,7 +6,7 @@ delegation chains) and revoke_children=True (follows spawned children).
 Each revocation is wrapped in an AgentMessage envelope.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/22_task_revoke.py
 """
 

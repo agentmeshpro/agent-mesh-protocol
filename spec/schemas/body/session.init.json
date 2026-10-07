@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/schemas/body/session.init.json",
+  "$id": "https://github.com/agentmeshpro/agent-mesh-protocol/spec/schemas/body/session.init.json",
   "title": "AMP body: session.init",
   "description": "body.type = 'session.init' — Propose a new session with capabilities.",
   "properties": {

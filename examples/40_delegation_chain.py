@@ -11,7 +11,7 @@ This example reuses the delegation keypairs to sign cost receipts.
 Extends example 06 with v0.1.3 cost receipt accumulation.
 
 Run:
-    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
+    pip install git+https://github.com/agentmeshpro/agent-mesh-protocol.git
     python examples/40_delegation_chain.py
 """
 
