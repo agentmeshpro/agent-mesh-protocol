@@ -128,6 +128,9 @@ _SILENT_EVENTS = frozenset({
 TEXT_MODES = ("text/plain",)
 
 
+#: How long a cancelled handler gets to unwind before its slot is released.
+_CANCEL_GRACE_SECONDS = 5.0
+
 class _Unset:
     pass
 
@@ -848,6 +851,10 @@ class A2AAdapter:
         finally:
             if not runner.done():
                 runner.cancel()
+                # Wait for the handler to actually stop before releasing its
+                # concurrency slot; bounded so a handler that ignores
+                # cancellation cannot hold the stream open.
+                await asyncio.wait({runner}, timeout=_CANCEL_GRACE_SECONDS)
             live.publish(None)
             self._live.pop(prep.task_id, None)
             await self._release(prep, payload)
