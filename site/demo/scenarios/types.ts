@@ -13,7 +13,7 @@ export type BodyType =
   | 'message'
   | 'session.init'
   | 'session.established'
-  | 'voice.utterance'
+  | 'com.example.demo.voice_utterance'
 
 export type StreamEventType =
   | 'thinking'

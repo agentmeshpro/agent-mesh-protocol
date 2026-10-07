@@ -26,6 +26,7 @@ import { Renderer } from '@openuidev/react-lang'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { ProtocolEnvelope } from './components/protocol-envelope'
+import { DIRECTORY_QUERY, DIRECTORY_RESPONSE } from './body-types'
 import { bakeryLibrary } from './bakery-library'
 import { porterLibrary } from './porter-library'
 import { bakeryLibraryMachine } from './bakery-library-machine'
@@ -33,6 +34,11 @@ import { porterLibraryMachine } from './porter-library-machine'
 import { useAmpTheme, type AmpTheme } from './theme'
 import { TicketVisual } from './components/ticket-visual'
 import { cn } from '@/lib/cn'
+
+/** Client-side mirrors of the server limits (see lib/limits.ts). */
+const MAX_MESSAGE_CHARS = 1000
+const MAX_HISTORY_SENT = 30
+const MAX_RECORDING_MS = 30_000
 
 const MONO = "var(--font-space-mono), ui-monospace, SFMono-Regular, Menlo, monospace"
 
@@ -1214,6 +1220,13 @@ function useMicCapture({
         }
       }
       rec.start(250)
+      // Keep uploads small: the server rejects long recordings anyway.
+      setTimeout(() => {
+        if (rec.state !== 'inactive') {
+          try { rec.requestData() } catch { /* not all browsers */ }
+          rec.stop()
+        }
+      }, MAX_RECORDING_MS)
       setIsRecording(true)
       onListeningStart?.()
     } catch (err) {
@@ -2330,6 +2343,7 @@ function ChatbotWidget({
         >
           <textarea
             ref={inputRef}
+            maxLength={MAX_MESSAGE_CHARS}
             value={state.input}
             onChange={(e) => dispatch({ type: 'SET_INPUT', value: e.target.value })}
             onKeyDown={(e) => {
@@ -2532,7 +2546,7 @@ export function AmpDemoClient() {
     'your-agent' | 'bakery' | 'porter' | null
   >(null)
   /**
-   * Latest voice.utterance transcript shown as a caption under the orbs.
+   * Latest voice-utterance transcript shown as a caption under the orbs.
    * Local because it's purely visual (the overlay caption). The shared
    * rolling log lives in state.spokenLog and is consumed by every
    * surface (chat thread, protocol timeline, voice overlay).
@@ -2714,7 +2728,8 @@ export function AmpDemoClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: state.conversationHistory,
+          // The server accepts a bounded history; send the recent part.
+          history: state.conversationHistory.slice(-MAX_HISTORY_SENT),
           isFirstTurn,
           targetAgent: state.awaitingAgent ?? 'bakery',
           porterActive: state.porterActive,
@@ -2762,14 +2777,14 @@ export function AmpDemoClient() {
               const sender = ((p.data.sender as string) || '').replace('agent://', '').toLowerCase()
               const recipient = ((p.data.recipient as string) || '').replace('agent://', '').toLowerCase()
 
-              if (bt === 'discovery.query') {
+              if (bt === DIRECTORY_QUERY) {
                 dispatch({
                   type: 'ADD_THINKING_STEP',
                   agent: 'your-agent',
                   label: 'Discovering bakery agents in the mesh...',
                   status: 'active',
                 })
-              } else if (bt === 'discovery.response') {
+              } else if (bt === DIRECTORY_RESPONSE) {
                 dispatch({
                   type: 'ADD_THINKING_STEP',
                   agent: 'your-agent',
@@ -2779,7 +2794,7 @@ export function AmpDemoClient() {
                 dispatch({
                   type: 'ADD_THINKING_STEP',
                   agent: 'your-agent',
-                  label: 'Delegation chain signed via AMP',
+                  label: 'Task handed to Sunny Bakery (signed envelope)',
                   status: 'complete',
                 })
               } else if (bt === 'task.create') {
@@ -3190,7 +3205,7 @@ export function AmpDemoClient() {
           body: JSON.stringify({
             answer,
             brief: decision.brief,
-            history: decision.history,
+            history: (decision.history ?? []).slice(-MAX_HISTORY_SENT),
           }),
         })
         if (!res.ok) {

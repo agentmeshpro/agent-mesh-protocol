@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { AmpDemoClient } from './amp-demo-client'
 import { useAmpTheme } from './theme'
 import { TicketVisual } from './components/ticket-visual'
+import { DemoNote, INSTALL_CMD, LandingSections, REPO_URL } from './landing-sections'
 
 const MONO = "var(--font-space-mono), ui-monospace, SFMono-Regular, Menlo, monospace"
 const SERIF = "var(--font-newsreader), 'Newsreader', Georgia, serif"
@@ -187,7 +188,7 @@ export function AmpPageShell() {
 
       {/* ── NAV ── morphs in place */}
       <nav
-        className="grid items-center px-8"
+        className="grid items-center gap-4 px-4 sm:px-8"
         style={{
           gridTemplateColumns: '1fr auto 1fr',
           paddingTop: isMachine ? 20 : 24,
@@ -211,19 +212,19 @@ export function AmpPageShell() {
         >
           AMP
         </span>
-        <div className="flex items-center justify-end gap-6">
+        <div className="flex items-center justify-end gap-3 sm:gap-6">
           {(['Docs', 'Demo', 'GitHub'] as const).map((label) => (
             <a
               key={label}
               href={
                 label === 'GitHub'
-                  ? 'https://github.com/vesakri/agent-mesh-protocol'
+                  ? REPO_URL
                   : label === 'Docs'
-                    ? 'https://github.com/vesakri/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md'
+                    ? '#docs'
                     : '#demo'
               }
-              target={label === 'Demo' ? undefined : '_blank'}
-              rel={label === 'Demo' ? undefined : 'noopener noreferrer'}
+              target={label === 'GitHub' ? '_blank' : undefined}
+              rel={label === 'GitHub' ? 'noopener noreferrer' : undefined}
               style={{
                 fontFamily: isMachine ? MONO : undefined,
                 fontSize: isMachine ? 10 : 14,
@@ -273,7 +274,10 @@ export function AmpPageShell() {
         >
           <AmpDemoClient />
         </motion.div>
+        <DemoNote />
       </section>
+
+      <LandingSections />
 
       {/* ── TAGLINE ── only renders in user mode (collapses smoothly) */}
       <motion.section
@@ -294,7 +298,7 @@ export function AmpPageShell() {
             color: '#4A3A31',
           }}
         >
-          An open protocol so your AI agents can talk to each other.
+          An open protocol so your AI agents can talk to each other, over AMP, A2A, PACT and MCP.
         </p>
       </motion.section>
 
@@ -347,7 +351,7 @@ function UserHero() {
         AMP
       </h1>
       <p
-        className="mt-6 max-w-md text-center"
+        className="mt-6 max-w-xl text-center"
         style={{
           fontFamily: SERIF,
           fontSize: 21,
@@ -355,20 +359,29 @@ function UserHero() {
           color: '#4A3A31',
         }}
       >
-        The open standard for agent-to-agent communication
+        An open protocol for agent-to-agent communication: trust, delegation and compliance
+        built in, and interoperable with A2A, PACT and MCP.
       </p>
       <div
-        className="mt-8 px-4 py-[6px]"
+        className="mt-8 max-w-full px-4 py-[6px]"
         style={{
           backgroundColor: '#E7E5E4',
           color: '#57534E',
-          borderRadius: 9999,
+          borderRadius: 18,
         }}
       >
-        <code style={{ fontFamily: MONO, fontSize: 13, fontWeight: 500 }}>
-          pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+        <code
+          style={{ fontFamily: MONO, fontSize: 12, fontWeight: 500, overflowWrap: 'anywhere' }}
+        >
+          {INSTALL_CMD}
         </code>
       </div>
+      <p className="mt-3 text-center" style={{ fontSize: 13, color: '#78716C' }}>
+        Release 0.4.0 · installs from GitHub (repository access required) ·{' '}
+        <a href="#interop" style={{ color: '#C86948' }}>
+          What&apos;s new
+        </a>
+      </p>
       <a
         href="#demo"
         className="mt-6 inline-flex items-center px-4 py-[10px]"
@@ -441,7 +454,7 @@ function MachineHero() {
               opacity: 0.5,
             }}
           >
-            O P E N &nbsp; S T A N D A R D
+            O P E N &nbsp; P R O T O C O L
           </span>
         </div>
         <TicketVisual />
@@ -468,7 +481,8 @@ function MachineHero() {
         >
           {[
             ['TYPE', 'OPEN PROTOCOL'],
-            ['TRANSPORT', 'HTTP / WS / SSE'],
+            ['TRANSPORT', 'HTTP + SSE'],
+            ['INTEROP', 'A2A 1.0 / PACT / MCP'],
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'contents' }}>
               <div style={{ opacity: 0.55, textTransform: 'uppercase' }}>{k}</div>
@@ -478,7 +492,8 @@ function MachineHero() {
           ))}
           <div style={{ height: '8px', gridColumn: '1 / -1' }} />
           {[
-            ['VERSION', 'v0.2.1'],
+            ['RELEASE', 'v0.4.0'],
+            ['PROTOCOL', '1.0.0'],
             ['LICENSE', 'APACHE 2.0'],
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'contents' }}>
@@ -489,7 +504,7 @@ function MachineHero() {
           ))}
           <div style={{ opacity: 0.55, textTransform: 'uppercase' }}>INSTALL</div>
           <div style={{ opacity: 0.4 }}>&gt;</div>
-          <div style={{ opacity: 0.9 }}>pip install git+https://github.com/vesakri/agent-mesh-protocol.git</div>
+          <div style={{ opacity: 0.9, overflowWrap: 'anywhere' }}>{INSTALL_CMD}</div>
         </div>
 
         <div
