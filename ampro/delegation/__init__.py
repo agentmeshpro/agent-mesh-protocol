@@ -19,10 +19,15 @@ from ampro.delegation.cost_receipt import (
 )
 from ampro.delegation.tracing import (
     TraceContext,
+    TraceContextError,
+    TraceParent,
     extract_trace_context,
+    format_traceparent,
     generate_span_id,
     generate_trace_id,
     inject_trace_headers,
+    parse_traceparent,
+    parse_tracestate,
     sign_trace_context,
     verify_trace_context,
 )
@@ -59,4 +64,7 @@ __all__ = [
     "TraceContext", "generate_trace_id", "generate_span_id",
     "inject_trace_headers", "extract_trace_context",
     "sign_trace_context", "verify_trace_context",
+    # W3C Trace Context
+    "TraceParent", "TraceContextError", "parse_traceparent", "parse_tracestate",
+    "format_traceparent",
 ]
