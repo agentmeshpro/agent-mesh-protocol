@@ -11,7 +11,7 @@
  */
 
 import { ensureDemoKeys, listPublicKeys } from '@/demo/trust/keystore'
-import { jsonError, logError } from '@/lib/api-guard'
+import { demoDisabled, jsonError, logError } from '@/lib/api-guard'
 
 const YOUR_AGENT = 'agent://you@example.com'
 const SUNNY_BAKERY = 'agent://sunny-bakery.example.com'
@@ -21,6 +21,8 @@ const DIRECTORY = 'agent://directory.amp.example.com'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  const disabled = demoDisabled()
+  if (disabled) return disabled
   try {
     await ensureDemoKeys([YOUR_AGENT, SUNNY_BAKERY, PORTER_DELIVERY, DIRECTORY])
     const keys = await listPublicKeys()

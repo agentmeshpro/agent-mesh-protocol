@@ -12,6 +12,12 @@
  */
 
 import { LIMITS } from './limits'
+import { DEMO_ENABLED } from './site'
+
+/** 404 for every demo API route while the demo is switched off (see DEMO_ENABLED). */
+export function demoDisabled(): Response | null {
+  return DEMO_ENABLED ? null : jsonError(404, 'Not found.')
+}
 
 // ---------------------------------------------------------------------------
 // JSON errors. Messages are fixed strings: no exception text, stack traces
@@ -150,6 +156,8 @@ export type Guard = { release: () => void }
  * called when the request (including any stream) finishes.
  */
 export function guardRequest(request: Request, opts: GuardOptions): Response | Guard {
+  const disabled = demoDisabled()
+  if (disabled) return disabled
   if (!isSameOrigin(request)) return jsonError(403, 'Cross-site requests are not allowed')
 
   const now = Date.now()

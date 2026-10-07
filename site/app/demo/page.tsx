@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { AmpClientRoot } from '@/demo/amp-client-root'
+import { DEMO_ENABLED } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'Live demo · Agent Mesh Protocol',
@@ -8,6 +10,7 @@ export const metadata: Metadata = {
 }
 
 export default function DemoPage() {
+  if (!DEMO_ENABLED) notFound()
   return (
     <div className="h-dvh">
       <AmpClientRoot />

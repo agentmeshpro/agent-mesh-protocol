@@ -12,7 +12,6 @@ export default function NotFound() {
         </PageHeader>
         <div className="mx-auto flex max-w-5xl flex-wrap gap-3 px-4 pb-20 sm:px-8">
           <ButtonLink href="/" primary>Home</ButtonLink>
-          <ButtonLink href="/demo">Demo</ButtonLink>
           <ButtonLink href="/protocol">Why AMP</ButtonLink>
           <ButtonLink href="/docs">Docs</ButtonLink>
           <ButtonLink href="/releases">Releases</ButtonLink>

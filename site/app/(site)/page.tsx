@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ButtonLink, Code, Eyebrow, MUTED, Panel, TEXT } from '@/components/content'
-import { ACCENT, BLOB, INSTALL_CMD, MONO, RELEASE, REPO_URL, SERIF } from '@/lib/site'
+import { ACCENT, BLOB, DEMO_ENABLED, INSTALL_CMD, MONO, RELEASE, REPO_URL, SERIF } from '@/lib/site'
 
 const PILLARS: Array<{ title: string; body: string; href: string }> = [
   {
@@ -53,10 +53,14 @@ export default function HomePage() {
           in, and interoperable with A2A, PACT and MCP.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <ButtonLink href="/demo" primary>
-            Try the live demo →
+          {DEMO_ENABLED && (
+            <ButtonLink href="/demo" primary>
+              Try the live demo →
+            </ButtonLink>
+          )}
+          <ButtonLink href="/docs" primary={!DEMO_ENABLED}>
+            Read the docs
           </ButtonLink>
-          <ButtonLink href="/docs">Read the docs</ButtonLink>
           <ButtonLink href={REPO_URL} external>
             View on GitHub
           </ButtonLink>
@@ -93,6 +97,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      {DEMO_ENABLED && (
       <section className="mx-auto max-w-5xl px-4 py-12 sm:px-8">
         <div
           className="grid gap-8 p-6 sm:p-10 md:grid-cols-[1.2fr_1fr] md:items-center"
@@ -134,6 +139,7 @@ export default function HomePage() {
           </ul>
         </div>
       </section>
+      )}
 
       <section className="mx-auto max-w-5xl px-4 pt-6 pb-20 sm:px-8">
         <Eyebrow>Start here</Eyebrow>

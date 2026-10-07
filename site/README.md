@@ -2,7 +2,7 @@
 
 Website and interactive demo for the Agent Mesh Protocol.
 
-Pages: `/` (home), `/demo` (the live demo, with its Chat, Protocol and Voice views), `/protocol` (how AMP compares, interop guides, security), `/docs` (install, quickstart, links to the spec and guides) and `/releases` (what changed in each release). Shared copy and links live in `lib/site.ts`; update `RELEASE` and the `/releases` page when a version ships.
+Pages: `/` (home), `/demo` (the live demo, with its Chat, Protocol and Voice views; off unless enabled, see below), `/protocol` (how AMP compares, interop guides, security), `/docs` (install, quickstart, links to the spec and guides) and `/releases` (what changed in each release). Shared copy and links live in `lib/site.ts`; update `RELEASE` and the `/releases` page when a version ships.
 
 This directory is a standalone Next.js app. The Python package at the repository root is not part of it. Model calls go through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) using AI SDK 7 (`gateway` from `ai`); there is no separate provider client.
 
@@ -28,6 +28,8 @@ npm run build                # needs no environment variables
 `npm run build` works with no secrets. Configuration is read at request time. Until it is set, the API routes answer `503 {"error": "The demo is not configured on this deployment."}` and the landing page still works.
 
 ## Environment variables
+
+**The demo is off by default.** `/demo` returns 404, it is not linked anywhere, and every `/api/amp-demo` route answers `404 {"error": "Not found."}` before doing any work, so nothing spends gateway credit. To turn it back on, set `NEXT_PUBLIC_AMP_DEMO_ENABLED=true` and redeploy (the value is read at build time), along with the variables below.
 
 Required at request time:
 
