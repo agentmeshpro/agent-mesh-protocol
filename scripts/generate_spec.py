@@ -39,6 +39,13 @@ from ampro.streaming.events import StreamingEventType  # noqa: E402
 from ampro.wire.body_type_map import BODY_TYPE_BINDINGS  # noqa: E402
 from ampro.wire.endpoints import ALL_ENDPOINTS  # noqa: E402
 from ampro.wire.errors import ErrorType  # noqa: E402
+from ampro.wire.extensions import (  # noqa: E402
+    RESERVED_NAMESPACES,
+    extension_error_type_error,
+    extension_header_error,
+    extension_name_error,
+    extension_uri_error,
+)
 from ampro.wire.schemas import (  # noqa: E402
     SPEC_BASE,
     body_schema_path,
@@ -194,10 +201,55 @@ EXTENSIONS: list[dict[str, Any]] = [
     },
 ]
 
-RESERVED_BODY_TYPE_NAMESPACES = [
-    "agent", "audit", "data", "encryption", "erasure", "identity", "key", "message",
-    "notification", "registry", "session", "stream", "task", "tool", "trust",
-]
+RESERVED_BODY_TYPE_NAMESPACES = sorted(RESERVED_NAMESPACES)
+
+#: Hand-maintained third-party registrations (docs/EXTENSIONS.md).
+THIRD_PARTY = SPEC_DIR / "third-party.json"
+_THIRD_PARTY_SECTIONS = {
+    "body_types": ("name", extension_name_error),
+    "stream_events": ("name", extension_name_error),
+    "headers": ("name", extension_header_error),
+    "error_types": ("type", extension_error_type_error),
+    "extension_uris": ("uri", extension_uri_error),
+}
+_THIRD_PARTY_REQUIRED = ("owner", "contact", "spec", "description")
+
+
+def load_third_party(path: Path = THIRD_PARTY) -> dict[str, list[dict[str, Any]]]:
+    """Load and validate third-party registrations; exit on any violation."""
+    if not path.exists():
+        return {k: [] for k in _THIRD_PARTY_SECTIONS}
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    out: dict[str, list[dict[str, Any]]] = {}
+    for section, (key, rule) in _THIRD_PARTY_SECTIONS.items():
+        entries = doc.get(section, [])
+        seen: set[str] = set()
+        for i, entry in enumerate(entries):
+            name = entry.get(key, "")
+            where = f"{path.name}:{section}[{i}] {name!r}"
+            why = rule(name)
+            if why:
+                problems.append(f"{where}: {why}")
+            missing = [f for f in _THIRD_PARTY_REQUIRED if not entry.get(f)]
+            if missing:
+                problems.append(f"{where}: missing {missing}")
+            if name in seen:
+                problems.append(f"{where}: duplicate")
+            seen.add(name)
+            if section == "error_types" and not isinstance(entry.get("status"), int):
+                problems.append(f"{where}: missing integer status")
+        out[section] = sorted(entries, key=lambda e: e.get(key, ""))
+    unknown = set(doc) - set(_THIRD_PARTY_SECTIONS) - {"description", "$comment"}
+    if unknown:
+        problems.append(f"{path.name}: unknown sections {sorted(unknown)}")
+    if problems:
+        raise SystemExit("generate_spec: invalid third-party registration\n" + "\n".join(problems))
+    return out
+
+
+def _registered(entry: dict[str, Any]) -> dict[str, Any]:
+    return {**entry, "status": "registered"}
 
 
 # ---------------------------------------------------------------------------
@@ -389,11 +441,30 @@ def build_registries(wb: dict[str, Any], schemas: dict[str, Any]) -> dict[str, d
             "status": "stable",
         })
 
+    third = load_third_party()
+    std_names = (
+        {e["name"] for e in body_entries}
+        | {e["name"] for e in header_entries}
+        | {e["name"] for e in event_entries}
+    )
+    clashes = [
+        e.get("name") for s in ("body_types", "headers", "stream_events") for e in third[s]
+        if e.get("name") in std_names
+    ]
+    if clashes:
+        raise SystemExit(f"generate_spec: third-party names clash with AMP names: {clashes}")
+    body_entries += [_registered(e) for e in third["body_types"]]
+    header_entries += [{**_registered(e), "locations": e.get("locations", ["envelope"])}
+                       for e in third["headers"]]
+    error_entries += [_registered(e) for e in third["error_types"]]
+    event_entries += [_registered(e) for e in third["stream_events"]]
+    extension_entries = list(EXTENSIONS) + [_registered(e) for e in third["extension_uris"]]
+
     return {
         "body-types.json": _registry_doc(
             "body-types",
-            "Canonical AMP body types (WIRE-BINDING section 16). Receivers MUST accept "
-            "unknown body types (section 5.1.4).",
+            "AMP body types (WIRE-BINDING section 16) and registered third-party body "
+            "types. Receivers MUST accept unknown body types (section 5.1.4).",
             body_entries,
             reserved_namespaces=RESERVED_BODY_TYPE_NAMESPACES,
         ),
@@ -412,9 +483,9 @@ def build_registries(wb: dict[str, Any], schemas: dict[str, Any]) -> dict[str, d
         ),
         "extensions.json": _registry_doc(
             "extensions",
-            "Extension URIs assigned by AMP. Third-party extensions are registered per "
-            "docs/EXTENSIONS.md.",
-            EXTENSIONS,
+            "Extension URIs assigned by AMP and registered by third parties "
+            "(docs/EXTENSIONS.md).",
+            extension_entries,
         ),
         "stream-events.json": _registry_doc(
             "stream-events",

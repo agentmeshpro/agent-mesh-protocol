@@ -59,8 +59,9 @@ AMP uses forward-compatible schemas. Every body type uses
 - Narrowing the domain of an enum or `Literal`
 
 Receivers MUST tolerate unknown keys. Senders SHOULD NOT emit
-unknown keys unless they are documented as extensions (see the
-`X-AMP-Ext-*` header convention in `docs/WIRE-BINDING.md`).
+unknown keys unless they are documented as extensions, named in a
+namespace the sender controls (see `docs/EXTENSIONS.md`; the `X-AMP-`
+header prefix is reserved for AMP).
 
 **Required fields.** A body that lacks a required field MUST be
 rejected with a body-validation error (HTTP 400), never processed with

@@ -3525,10 +3525,17 @@ headers:
 
 ## 18. Extensibility
 
+The full extension contract, covering naming rules for body types,
+headers, problem types, stream events, extension URIs and `agent.json`
+members, and the optional registration in `spec/third-party.json`, is in
+`docs/EXTENSIONS.md`. How the protocol itself changes is described in
+`GOVERNANCE.md`.
+
 ### 18.1 Custom Body Types
 
 Implementations MAY define custom body types using reverse-domain
-notation:
+notation (or, for experiments, `x-<vendor>.<name>`, or an absolute
+`https` URI the implementer controls):
 
 ```
 com.acme.custom.order_confirmation

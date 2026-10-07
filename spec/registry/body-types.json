@@ -1,11 +1,12 @@
 {
   "$id": "https://github.com/CatlystAI/agent-mesh-protocol/spec/registry/body-types.json",
   "registry": "body-types",
-  "description": "Canonical AMP body types (WIRE-BINDING section 16). Receivers MUST accept unknown body types (section 5.1.4).",
+  "description": "AMP body types (WIRE-BINDING section 16) and registered third-party body types. Receivers MUST accept unknown body types (section 5.1.4).",
   "protocol_version": "1.0.0",
   "change_process": "GOVERNANCE.md; third-party registrations per docs/EXTENSIONS.md",
   "reserved_namespaces": [
     "agent",
+    "amp",
     "audit",
     "data",
     "encryption",
