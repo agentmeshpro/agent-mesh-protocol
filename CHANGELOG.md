@@ -44,7 +44,7 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
   new `rfc9421.json` and `session_binding.json`.
 - `@app.tool(name, description=, input_schema=, scopes=)` metadata;
   `AMPContext.principal`, `.scopes`, `.protocol`, `.metadata`.
-- Extras: `server`, `a2a`, `pact`, `mcp`, `flask`, `all`.
+- Extras: `server`, `a2a`, `pact`, `mcp`, `redis`, `conformance`, `flask`, `all`.
 - **Machine-readable specification** in `spec/`:
   - JSON Schema 2020-12 for the envelope, every registered body type,
     `agent.json`, health, RFC 7807 problem details, the encrypted body and
@@ -80,6 +80,35 @@ interoperate with 0.3.x peers on those features; see "Changed" below.
 - HTTP bindings for `registry.federation_revoke`, `registry.federation_sync`,
   `registry.federation_sync_response` and `agent.metadata_invalidate`.
   `ProblemDetail` now carries `max_bytes` (413) and `supported_versions` (406).
+- **Multi-worker deployments** (`ampro.stores.redis`, extra `redis`): a Redis
+  implementation of every stateful store, wired with one call,
+  `configure(server, url=..., prefix=...)`, or `ampro-server --store redis://...`
+  (`AMPRO_REDIS_URL`). It covers RFC 9421 and DID-proof replay caches, rate
+  and concurrency limits, AMP response dedup, A2A tasks, contexts,
+  idempotent replies and a cross-worker task broker (subscribe fan-out,
+  cancellation, busy lock), MCP sessions, and every PACT store (device
+  codes, grants, refresh-token rotation with reuse detection, consent
+  sessions, nonces, attempt limiters, contexts, receipts, PA registry). All
+  operations are atomic (`SET NX PX`, Lua, `GETDEL`), values are JSON, and
+  keys are namespaced with TTLs. See `docs/SCALING.md`.
+- Protocols for state that had none: `ReplayCache`, `RateLimiterBackend`,
+  `ConcurrencyBackend`, `SenderTrackerBackend`, `ApiKeyFailureTracker`,
+  `FederationNonceCache`, `ChannelRegistryBackend`, A2A `TaskBroker`, PACT
+  `ReceiptStore`. Setters for process-wide caches:
+  `rfc9421.set_default_nonce_tracker`, `resolver.set_did_proof_nonce_tracker`,
+  `resolver.set_api_key_failure_tracker`, `register_federation_nonce_cache`.
+  `A2AAdapter(task_broker=)` and `PACTProvider(receipt_store=, a2a_stores=)`.
+  `AuditLogger` now chains from the storage's tail, not a hash cached per
+  process, so workers sharing one `AuditStorage` extend a single chain;
+  storages with `append_at` get compare-and-append retries.
+- `GET /agent/ready` readiness endpoint (503 while draining or when a
+  `server.readiness_checks` entry fails) and graceful shutdown:
+  `AgentServer.aclose()` runs on ASGI lifespan shutdown and gives A2A
+  background runs a grace period, then cancels them into a terminal state.
+- `docs/SCALING.md`: inventory of all server-side state (what breaks
+  per-process, interface, shared backend), what still runs in one process
+  and why, and a deployment guide (uvicorn/gunicorn workers, Kubernetes
+  probes, graceful shutdown, Redis requirements).
 
 ### Fixed
 - `ampro-server` / `AgentServer.from_app` could not run AMPI handlers

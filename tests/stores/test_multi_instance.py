@@ -424,3 +424,15 @@ async def test_readiness_reflects_redis_and_draining(redis_backend):
     assert status == 503 and json.loads(body)["reason"] == "draining"
     # Liveness is unaffected by dependencies or draining.
     assert (await server.route("GET", "/agent/health"))[0] == 200
+
+
+async def test_graceful_shutdown_leaves_no_task_stuck_working(redis_backend, a2a_state):
+    w1, w2 = a2a_worker(redis_backend, a2a_state), a2a_worker(redis_backend, a2a_state)
+    async with client(w1, "alice") as a1, client(w2, "alice") as a2:
+        task = (await a1.post("/a2a/message:send",
+                              json=user_message("forever", returnImmediately=True))).json()["task"]
+        await asyncio.wait_for(a2a_state["started"].wait(), 5)
+        await w1.adapters[0].aclose(grace=0.1)  # what lifespan shutdown does on worker 1
+        state = (await a2.get(f"/a2a/tasks/{task['id']}")).json()["status"]["state"]
+        assert state == "TASK_STATE_CANCELED"
+        assert not await w2.adapters[0].broker.is_live(task["id"])

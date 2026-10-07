@@ -149,7 +149,7 @@ Checklist:
 
 - **Require authentication** (`SecurityPolicy.production`, `require_auth=True` on the A2A/MCP adapters) before binding beyond loopback.
 - **Register your key infrastructure:** `register_public_key_resolver`, a `RevocationStore`, and API keys via `register_api_key`.
-- **Share state across workers:** every store (dedup, rate limits, tasks, contexts, sessions, grants) is a small protocol with a bounded in-memory default. Plug in Redis or a database when you run more than one process.
+- **Share state across workers:** every store (replay caches, dedup, rate limits, tasks, contexts, sessions, grants) is a small protocol with a bounded in-memory default that is correct only for one process. With more than one worker, call `ampro.stores.redis.configure(server, url="redis://...")` (or run `ampro-server --store redis://...`). See [docs/SCALING.md](docs/SCALING.md) for the full inventory, readiness and graceful shutdown, and Kubernetes / gunicorn deployment.
 - **Terminate TLS** in front of the server, and set `public_url` so signatures and Agent Cards use your external origin.
 - Read [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md): what the protocol guarantees, and what it leaves to you.
 
