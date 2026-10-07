@@ -5,7 +5,7 @@ import { ACCENT, BLOB, INSTALL_CMD, MONO, RELEASE, REPO_URL, SERIF } from '@/lib
 const PILLARS: Array<{ title: string; body: string; href: string }> = [
   {
     title: 'Signed delegation',
-    body: 'Who may act for whom, how far a delegation reaches and what it may spend, carried in signed multi-hop chains.',
+    body: 'Who may act for whom, how far a delegation reaches and what it may spend, carried in fully signed multi-hop chains whose limits only narrow.',
     href: '/protocol#security',
   },
   {
@@ -30,6 +30,14 @@ export default function HomePage() {
   return (
     <>
       <section className="mx-auto max-w-5xl px-4 pt-16 pb-12 sm:px-8 sm:pt-24">
+        <Link
+          href="/releases"
+          className="mb-6 inline-flex items-center gap-2 px-3 py-1 transition-colors hover:border-[#C86948]"
+          style={{ border: '1px solid #E7E5E4', borderRadius: 9999, fontSize: 13, color: MUTED }}
+        >
+          <span style={{ fontFamily: MONO, fontSize: 11, color: ACCENT }}>NEW</span>
+          {RELEASE}: delegation links v2 and safeguards for bridging protocols →
+        </Link>
         <Eyebrow>Open protocol · release {RELEASE}</Eyebrow>
         <h1
           className="mt-4 text-[44px] sm:text-[72px]"
@@ -58,7 +66,7 @@ export default function HomePage() {
             {INSTALL_CMD}
           </Code>
           <p className="mt-3" style={{ fontSize: 13, color: '#A8A29E' }}>
-            Python 3.11+. Installs from the public GitHub repository.{' '}
+            Python 3.11+. On PyPI as <code style={{ fontFamily: MONO }}>ampro</code>.{' '}
             <Link href="/docs#install" style={{ color: ACCENT }}>
               Install options
             </Link>

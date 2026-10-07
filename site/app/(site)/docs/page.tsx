@@ -1,6 +1,17 @@
 import type { Metadata } from 'next'
 import { BORDER, C, Code, ExtLink, MUTED, P, PageHeader, PageLink, PANEL, Section, TEXT } from '@/components/content'
-import { BLOB, INSTALL_CMD, MONO, RELEASE, REPO_URL, SERIF, TREE } from '@/lib/site'
+import {
+  BLOB,
+  INSTALL_ALL_CMD,
+  INSTALL_CMD,
+  INSTALL_MAIN_CMD,
+  MONO,
+  PYPI_URL,
+  RELEASE,
+  REPO_URL,
+  SERIF,
+  TREE,
+} from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'Docs · Agent Mesh Protocol',
@@ -57,7 +68,7 @@ const DOC_GROUPS: Array<{ title: string; items: Array<[string, string, string]> 
     items: [
       ['Security model', `${BLOB}/docs/SECURITY-MODEL.md`, 'What the protocol guarantees, and what it leaves to you'],
       ['Reporting a vulnerability', `${BLOB}/SECURITY.md`, 'How to report security issues'],
-      ['Changelog', `${BLOB}/CHANGELOG.md`, `What changed in ${RELEASE}, including breaking wire changes`],
+      ['Changelog', `${BLOB}/CHANGELOG.md`, 'Every change, release by release'],
       ['Contributing', `${BLOB}/CONTRIBUTING.md`, 'How to propose changes'],
       ['Governance', `${BLOB}/GOVERNANCE.md`, 'How the spec evolves'],
     ],
@@ -99,10 +110,14 @@ export default function DocsPage() {
           {INSTALL_CMD}
         </Code>
         <P>
-          <C>ampro</C> installs from the public GitHub repository, not from PyPI. It requires Python
-          3.11+. The core package depends only on pydantic, cryptography, base58 and httpx. Pre-1.0, the
-          wire format may still change between minor versions.
+          <C>ampro</C> is on <ExtLink href={PYPI_URL}>PyPI</ExtLink> and requires Python 3.11+. The core
+          package depends only on pydantic, cryptography, base58 and httpx. Pre-1.0, the wire format may
+          still change between minor versions: see <PageLink href="/releases">releases</PageLink> for
+          what changed. To add every optional integration:
         </P>
+        <Code label="shell" copy>
+          {INSTALL_ALL_CMD}
+        </Code>
         <div
           className="mt-6 max-w-3xl overflow-hidden"
           style={{ border: `1px solid ${BORDER}`, borderRadius: 18, backgroundColor: PANEL }}
@@ -124,6 +139,12 @@ export default function DocsPage() {
             </tbody>
           </table>
         </div>
+        <P>
+          To try unreleased changes, install from the main branch on GitHub instead:
+        </P>
+        <Code label="shell" copy>
+          {INSTALL_MAIN_CMD}
+        </Code>
       </Section>
 
       <Section id="quickstart" eyebrow="Quickstart" title="Your first agent in two files">

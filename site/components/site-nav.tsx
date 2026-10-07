@@ -61,7 +61,13 @@ export function SiteNav({ dark = false }: { dark?: boolean }) {
               </Link>
             )
           })}
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" style={linkStyle(false)}>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:inline"
+            style={linkStyle(false)}
+          >
             GitHub
           </a>
         </div>

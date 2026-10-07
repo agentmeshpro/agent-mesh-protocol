@@ -129,7 +129,7 @@ function DemoNote({ isMachine }: { isMachine: boolean }) {
         fontFamily: isMachine ? MONO : undefined,
       }}
     >
-      The bakery and delivery agents are played by a language model. Envelopes use the AMP 0.4.0
+      The bakery and delivery agents are played by a language model. Envelopes use the AMP envelope
       shape and are signed with Ed25519 and checked in your browser, but with a simplified scheme
       (canonical JSON in X-Signature headers). Real AMP peers sign each HTTP request with the RFC 9421
       profile in{' '}

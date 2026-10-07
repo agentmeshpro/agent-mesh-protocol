@@ -1,8 +1,8 @@
 # AMP site
 
-Website and interactive demo for the Agent Mesh Protocol (release 0.4.0).
+Website and interactive demo for the Agent Mesh Protocol.
 
-Pages: `/` (home), `/demo` (the live demo, with its Chat, Protocol and Voice views), `/protocol` (how AMP compares, interop guides, security) and `/docs` (install, quickstart, links to the spec and guides). Shared copy and links live in `lib/site.ts`.
+Pages: `/` (home), `/demo` (the live demo, with its Chat, Protocol and Voice views), `/protocol` (how AMP compares, interop guides, security), `/docs` (install, quickstart, links to the spec and guides) and `/releases` (what changed in each release). Shared copy and links live in `lib/site.ts`; update `RELEASE` and the `/releases` page when a version ships.
 
 This directory is a standalone Next.js app. The Python package at the repository root is not part of it. Model calls go through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) using AI SDK 7 (`gateway` from `ai`); there is no separate provider client.
 

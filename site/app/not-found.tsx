@@ -15,6 +15,7 @@ export default function NotFound() {
           <ButtonLink href="/demo">Demo</ButtonLink>
           <ButtonLink href="/protocol">Why AMP</ButtonLink>
           <ButtonLink href="/docs">Docs</ButtonLink>
+          <ButtonLink href="/releases">Releases</ButtonLink>
         </div>
       </main>
       <SiteFooter />

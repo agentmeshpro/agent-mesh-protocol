@@ -38,8 +38,12 @@ const COMPARISON: Array<[string, string, string, string, string]> = [
 
 const SECURITY: Array<[string, string]> = [
   [
-    'Fully signed delegation chains',
-    'Every field of a delegation link is signed. Children cannot raise max_depth, and fan-out and budgets are enforced.',
+    'Delegation links v2',
+    'The whole link is signed, extensions included, with a crit list a verifier must honour. Limits only narrow down the chain, trust never rises, money is typed with a currency, lifetimes are capped and a chain is bound to its holder.',
+  ],
+  [
+    'Key compromise semantics',
+    'A key revoked for compromise invalidates every signature it made, whatever timestamp the signature claims. A rotated key keeps the signatures it made before rotation.',
   ],
   [
     'X25519 session key agreement',
@@ -168,7 +172,8 @@ export default function ProtocolPage() {
             <P>
               Serve any <C>AgentApp</C> as an A2A agent (Agent Card, HTTP+JSON and JSON-RPC, SSE
               streaming, tasks) and call A2A agents with <C>A2AClient</C>. Delegation and compliance data
-              ride in the AMP extension <C>{EXT_URI}</C>. Verified against the official <C>a2a-sdk</C>{' '}
+              ride in the AMP extension <C>{EXT_URI}</C>; configure <C>chain_verifier=</C> to accept a
+              delegation chain. Verified against the official <C>a2a-sdk</C>{' '}
               client.
             </P>
             <Code>{`from ampro.interop.a2a import A2AClient
@@ -218,7 +223,7 @@ claude mcp add --transport http travel http://127.0.0.1:8000/mcp`}</Code>
         </div>
       </Section>
 
-      <Section id="security" eyebrow="Security" title={`Hardened for production in ${RELEASE}`}>
+      <Section id="security" eyebrow="Security" title="Hardened for production">
         <div className="grid gap-4 md:grid-cols-2">
           {SECURITY.map(([t, d]) => (
             <Panel key={t}>
@@ -243,11 +248,11 @@ claude mcp add --transport http travel http://127.0.0.1:8000/mcp`}</Code>
           style={{ borderLeft: `3px solid ${ACCENT}`, padding: '4px 0 4px 16px' }}
         >
           <p style={{ fontSize: 15, lineHeight: 1.6, color: MUTED }}>
-            <strong style={{ color: TEXT }}>Breaking wire changes in {RELEASE}:</strong> session binding,
-            delegation links, federation proofs and RFC 9421 verification rules changed, so {RELEASE} peers
-            do not interoperate with 0.3.x peers on those features. Read the{' '}
-            <ExtLink href={`${BLOB}/docs/SECURITY-MODEL.md`}>security model</ExtLink> and the{' '}
-            <ExtLink href={`${BLOB}/CHANGELOG.md`}>changelog</ExtLink>.
+            <strong style={{ color: TEXT }}>Breaking changes in {RELEASE}:</strong> <C>validate_chain</C>{' '}
+            refuses v1 delegation chains unless <C>allow_v1=True</C>, and the A2A adapter only exposes a
+            delegation chain it has verified. See <PageLink href="/releases">releases</PageLink> for every
+            change, and read the{' '}
+            <ExtLink href={`${BLOB}/docs/SECURITY-MODEL.md`}>security model</ExtLink>.
           </p>
         </div>
       </Section>
