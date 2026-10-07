@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+First release published on PyPI (`pip install ampro`).
+
 Foundational safeguards for bridging AMP to other agent protocols (A2A,
 MCP, PACT, Personal Agent Protocol, ACP, AP2, UCP, card-network agent
 tokens, x402, Web Bot Auth, AAuth, ANP). **Breaking:** see the first two

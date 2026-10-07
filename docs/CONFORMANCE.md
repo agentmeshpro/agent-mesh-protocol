@@ -14,7 +14,7 @@ This document covers `ampro-conformance`, the black-box suite.
 ## Install and run
 
 ```bash
-pip install "ampro[conformance] @ git+https://github.com/agentmeshpro/agent-mesh-protocol.git"
+pip install "ampro[conformance]"
 
 ampro-conformance --url https://agent.example.com
 ```

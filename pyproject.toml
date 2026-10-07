@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ampro"
-version = "0.4.0"
+version = "0.5.0"
 description = "An open protocol for agent-to-agent communication: trust, delegation and compliance built in, interoperable with A2A, PACT and MCP"
 readme = "README.md"
 license = "Apache-2.0"
