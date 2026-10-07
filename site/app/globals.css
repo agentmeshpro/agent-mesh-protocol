@@ -2,6 +2,7 @@
 
 @source "../demo";
 @source "../lib";
+@source "../components";
 
 html,
 body {
