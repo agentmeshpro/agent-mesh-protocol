@@ -1,0 +1,511 @@
+{
+  "description": "RFC 9421 HTTP Message Signatures profile (WIRE-BINDING section 12.15). Each case pins the content-digest (RFC 9530), the signature base, Signature-Input and the deterministic Ed25519 signature, then states whether a verifier running at verify.at (unix seconds) with a fresh replay cache MUST accept it. 'expect' as a list means: verify that many times in a row with the same replay cache.",
+  "keys": {
+    "ed25519-a": {
+      "type": "Ed25519",
+      "private_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "source": "RFC 8032 section 7.1 TEST 1 secret key"
+    },
+    "ed25519-b": {
+      "type": "Ed25519",
+      "private_seed_hex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "public_hex": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+      "source": "RFC 8032 section 7.1 TEST 2 secret key"
+    }
+  },
+  "profile": {
+    "algorithm": "ed25519",
+    "max_age_seconds": 300,
+    "required_params": [
+      "created",
+      "keyid",
+      "nonce"
+    ],
+    "signature_label": "sig1"
+  },
+  "vectors": [
+    {
+      "name": "post-json-body",
+      "description": "POST with JSON body: content-digest and content-type covered, nonce present",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "POST",
+      "url": "https://bakery.example.com/agent/message",
+      "headers": {
+        "Content-Type": "application/json",
+        "content-digest": "sha-256=:fAkuZwvuyUURsjOnGP7aJHj1SMThvo6KzjGOQF5HoH8=:"
+      },
+      "body": "{\"sender\":\"agent://alice.example.com\",\"recipient\":\"agent://bakery.example.com\",\"body_type\":\"message\",\"body\":{\"text\":\"hi\"}}",
+      "created": 1775743200,
+      "nonce": "n-7f3c1a9e5b2d4c60",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-digest",
+        "content-type"
+      ],
+      "expected": {
+        "content_digest": "sha-256=:fAkuZwvuyUURsjOnGP7aJHj1SMThvo6KzjGOQF5HoH8=:",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://bakery.example.com/agent/message\n\"@authority\": bakery.example.com\n\"content-digest\": sha-256=:fAkuZwvuyUURsjOnGP7aJHj1SMThvo6KzjGOQF5HoH8=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-7f3c1a9e5b2d4c60\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-7f3c1a9e5b2d4c60\"",
+        "signature": "sig1=:hmmboKHLvPhvwTpoDfk3F9gXHKOxWXnV3bSRLGcinaM4YO/yG/0Q1YtVBra367TrNVFctOB6tKYSSwOFlGP0DQ==:"
+      },
+      "verify": {
+        "at": 1775743210,
+        "expect": true
+      }
+    },
+    {
+      "name": "get-no-body",
+      "description": "GET without a body: only the derived components are covered",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/tasks/t-42?view=full",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-0b6e2d9a71c84f35",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/tasks/t-42?view=full\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-0b6e2d9a71c84f35\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-0b6e2d9a71c84f35\"",
+        "signature": "sig1=:ZGwiIk7BDCZ+B6Rrzvwhsnv3qJ3X/YWSvebqkvCylsipATGCJE9gAc5M7wCjXcTFhOBrnq9ru1ymXRn/wqrQCg==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": true
+      }
+    },
+    {
+      "name": "authority-non-default-port",
+      "description": "@authority keeps a non-default port and lowercases the host",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "POST",
+      "url": "https://API.Example.com:8443/agent/message",
+      "headers": {
+        "Content-Type": "application/json",
+        "content-digest": "sha-256=:Z6uazDSk2mblew4A8xW079NVL125Lf98HX8Sj0uLxic=:"
+      },
+      "body": "{\"text\":\"port\"}",
+      "created": 1775743200,
+      "nonce": "n-port-8443-000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-digest",
+        "content-type"
+      ],
+      "expected": {
+        "content_digest": "sha-256=:Z6uazDSk2mblew4A8xW079NVL125Lf98HX8Sj0uLxic=:",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://API.Example.com:8443/agent/message\n\"@authority\": api.example.com:8443\n\"content-digest\": sha-256=:Z6uazDSk2mblew4A8xW079NVL125Lf98HX8Sj0uLxic=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-port-8443-000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-port-8443-000001\"",
+        "signature": "sig1=:MNSwxuLvtoJawOBgxh0fdIywbCq9GUHTxi92dzv7wikMLPovxsKi4Ac3FSrotlTO3S5J0zenloroCHX94AlwAg==:",
+        "authority": "api.example.com:8443"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": true
+      }
+    },
+    {
+      "name": "authority-default-port-dropped",
+      "description": "@authority omits the scheme's default port and strips userinfo",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://user@bakery.example.com:443/agent.json",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-port-443-000002",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://user@bakery.example.com:443/agent.json\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-port-443-000002\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-port-443-000002\"",
+        "signature": "sig1=:w+s7iAI1mfPksIToojEKyqUCXoPLIEdUn8Mnr9tXW97KscRwwS3Ptu1FMUMF5smsktvuo33u/CX2eEi2WAxvCw==:",
+        "authority": "bakery.example.com"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": true
+      }
+    },
+    {
+      "name": "freshness-boundary",
+      "description": "created exactly 300 s before verification is still fresh",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-fresh-boundary-01",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-fresh-boundary-01\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-fresh-boundary-01\"",
+        "signature": "sig1=:ZxOf/CwDNJHUzq7w7M4vu2E/EVkuvNqwEJumS07IYPb1QW1UBe5rQFpwh2aQeybt73/Xaway7uErnjwKxfoVAg==:"
+      },
+      "verify": {
+        "at": 1775743500,
+        "expect": true
+      }
+    },
+    {
+      "name": "stale-signature",
+      "description": "created more than 300 s before verification is rejected",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-stale-000000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-stale-000000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-stale-000000001\"",
+        "signature": "sig1=:2OeNuktcoCdnyBedqLIY+bkCsT78Je9m3KO/f+wWG+9HFkfleIv7qbQ5KVczzM+vFMFFYLVwltfDT57vgeOOBw==:"
+      },
+      "verify": {
+        "at": 1775743501,
+        "expect": false,
+        "reason": "created outside the 300 s window"
+      }
+    },
+    {
+      "name": "future-signature",
+      "description": "created more than 300 s in the future is rejected",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-future-00000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-future-00000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-future-00000001\"",
+        "signature": "sig1=:2Q8pDPYA2al7Mw6HxPxH4buggoxkgSlMGWGvDIfpmlPW+sNigjDcOEP/7NDEr1rG11Qe0Z/4RDn1D6UllXlFBQ==:"
+      },
+      "verify": {
+        "at": 1775742899,
+        "expect": false,
+        "reason": "created outside the 300 s window"
+      }
+    },
+    {
+      "name": "missing-nonce",
+      "description": "a signature without a nonce parameter is rejected",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": null,
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\"",
+        "signature": "sig1=:z/BZOWtoJLooGGWePFpeSpoE6zyoN8h9eNdrL/Pj8eFYm2H0EkCx8gaMkxfv7CssVpYAOF5WzUIuUur7ZbMjCQ==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "reason": "nonce is REQUIRED"
+      }
+    },
+    {
+      "name": "body-tampered",
+      "description": "the verifier receives a different body than the one digested",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "POST",
+      "url": "https://bakery.example.com/agent/message",
+      "headers": {
+        "Content-Type": "application/json",
+        "content-digest": "sha-256=:KkfozrTkk9cmFiW6FYjEaIA6RvXTQ2HP0iMiotNvTXg=:"
+      },
+      "body": "{\"text\":\"pay 10\"}",
+      "created": 1775743200,
+      "nonce": "n-tamper-00000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-digest",
+        "content-type"
+      ],
+      "expected": {
+        "content_digest": "sha-256=:KkfozrTkk9cmFiW6FYjEaIA6RvXTQ2HP0iMiotNvTXg=:",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://bakery.example.com/agent/message\n\"@authority\": bakery.example.com\n\"content-digest\": sha-256=:KkfozrTkk9cmFiW6FYjEaIA6RvXTQ2HP0iMiotNvTXg=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-tamper-00000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-tamper-00000001\"",
+        "signature": "sig1=:Kw17X0aAili55JI6OmOKlKUdczGTa798BCF/EsO9wlg79S8wfghNl6JpxQt7fpLVWV7rKzxj7fwzk2VaghEWAg==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "body": "{\"text\":\"pay 99\"}",
+        "reason": "content-digest does not match the body"
+      }
+    },
+    {
+      "name": "body-not-digest-covered",
+      "description": "a request with a body whose signature does not cover content-digest is rejected",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "POST",
+      "url": "https://bakery.example.com/agent/message",
+      "headers": {
+        "Content-Type": "application/json",
+        "content-digest": "sha-256=:Cnj1jT+wfvLyACs+Fw4nlz+meOtfdxmcyrhToPysA60=:"
+      },
+      "body": "{\"text\":\"unbound\"}",
+      "created": 1775743200,
+      "nonce": "n-nodigest-000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-type"
+      ],
+      "expected": {
+        "content_digest": "sha-256=:Cnj1jT+wfvLyACs+Fw4nlz+meOtfdxmcyrhToPysA60=:",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://bakery.example.com/agent/message\n\"@authority\": bakery.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-nodigest-000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-nodigest-000001\"",
+        "signature": "sig1=:IbB3Je+4Zv5eZ7XDK1g7Uf4LOBRYgm2DeYa1bA5MtS/hd0gc5hQn/iiM4VJrZlNWbpxJ+LDQLUBMwHaZv0dQDw==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "reason": "content-digest MUST be covered when a body is present"
+      }
+    },
+    {
+      "name": "unsupported-alg",
+      "description": "Signature-Input declaring an algorithm other than ed25519 is rejected",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-alg-00000000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-alg-00000000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"rsa-v1_5-sha256\";nonce=\"n-alg-00000000001\"",
+        "signature": "sig1=:N1LeIQ5TJxJmoNNh5OnzchsAFGTMDzNVwyTynAqsKdRyNBIxxwHViS4lXTPqOwpTEg/g1zPx2opX/w9oluROBg==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "reason": "alg allow-list is {ed25519}"
+      }
+    },
+    {
+      "name": "covered-header-stripped",
+      "description": "a covered header removed in transit fails verification (absent is not empty)",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "POST",
+      "url": "https://bakery.example.com/agent/message",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Amp-Tenant": "t-01",
+        "content-digest": "sha-256=:tUpyoZoi5qhKPrkH5XnBa+fnAmJ/rUbIXjYTfTUXwu0=:"
+      },
+      "body": "{\"text\":\"tenant\"}",
+      "created": 1775743200,
+      "nonce": "n-strip-000000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-digest",
+        "content-type",
+        "x-amp-tenant"
+      ],
+      "expected": {
+        "content_digest": "sha-256=:tUpyoZoi5qhKPrkH5XnBa+fnAmJ/rUbIXjYTfTUXwu0=:",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://bakery.example.com/agent/message\n\"@authority\": bakery.example.com\n\"content-digest\": sha-256=:tUpyoZoi5qhKPrkH5XnBa+fnAmJ/rUbIXjYTfTUXwu0=:\n\"content-type\": application/json\n\"x-amp-tenant\": t-01\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"x-amp-tenant\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-strip-000000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"x-amp-tenant\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-strip-000000001\"",
+        "signature": "sig1=:Mf/IZ5OZaXnEzuNBEc2lTaGZetqIpCIRXHeRbWGuOlnUdxrO+Src3cWXLStvdWBAR0tvbgYxnd0Jh0NypHpaAQ==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "strip_headers": [
+          "X-Amp-Tenant"
+        ],
+        "reason": "covered component absent"
+      }
+    },
+    {
+      "name": "method-changed",
+      "description": "replaying the signature with a different method fails",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "POST",
+      "url": "https://bakery.example.com/agent/message",
+      "headers": {
+        "Content-Type": "application/json",
+        "content-digest": "sha-256=:/1XC/v9sdcjEOKqU4wS4ysC9kqxk3t3NC+MhCEVPmLY=:"
+      },
+      "body": "{\"text\":\"m\"}",
+      "created": 1775743200,
+      "nonce": "n-method-00000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-digest",
+        "content-type"
+      ],
+      "expected": {
+        "content_digest": "sha-256=:/1XC/v9sdcjEOKqU4wS4ysC9kqxk3t3NC+MhCEVPmLY=:",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://bakery.example.com/agent/message\n\"@authority\": bakery.example.com\n\"content-digest\": sha-256=:/1XC/v9sdcjEOKqU4wS4ysC9kqxk3t3NC+MhCEVPmLY=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-method-00000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-method-00000001\"",
+        "signature": "sig1=:hWTIHPrZp2piHeT/HxSQpdPe+TvHAHYmcPuJpeM37VqBZtTmFcra1WIrq6G/coTH7Z7/UyJ7HygItgrfdaWRDw==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "method": "PUT",
+        "reason": "@method mismatch"
+      }
+    },
+    {
+      "name": "wrong-key",
+      "description": "verifying under a different public key fails",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-wrongkey-000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-wrongkey-000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-wrongkey-000001\"",
+        "signature": "sig1=:seZEKcs+67ezQL6O4wGFIuuuQHoThCpghMq+69Qb7DDq8nvVISuyoKRaYUMQOrGZYee5iI6+s0fPt5Nv0XjCBg==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "verify_key": "ed25519-b",
+        "reason": "signature invalid"
+      }
+    },
+    {
+      "name": "derived-components-not-covered",
+      "description": "a signature whose covered set omits @method, @target-uri and @authority MUST be rejected (it would verify for any method and URL)",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-nocover-0000001",
+      "covered": [],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@signature-params\": ();created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-nocover-0000001\"",
+        "signature_input": "sig1=();created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-nocover-0000001\"",
+        "signature": "sig1=:UNx1IKFnbqE6cse+DBOrv9SAyid983e4LCYlOmpmx41YgI7N7qgQO/+QP2nYWIK5JT0tMYrAf5lfik0JaRa3Cg==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": false,
+        "method": "DELETE",
+        "reason": "required covered components missing"
+      }
+    },
+    {
+      "name": "nonce-replay",
+      "description": "the same (keyid, nonce) is accepted once; the second verification is a replay",
+      "key": "ed25519-a",
+      "keyid": "agent://alice.example.com#key-1",
+      "method": "GET",
+      "url": "https://bakery.example.com/agent/health",
+      "headers": {},
+      "body": null,
+      "created": 1775743200,
+      "nonce": "n-replay-00000001",
+      "covered": [
+        "@method",
+        "@target-uri",
+        "@authority"
+      ],
+      "expected": {
+        "content_digest": null,
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://bakery.example.com/agent/health\n\"@authority\": bakery.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-replay-00000001\"",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1775743200;keyid=\"agent://alice.example.com#key-1\";alg=\"ed25519\";nonce=\"n-replay-00000001\"",
+        "signature": "sig1=:BXHl2X0N2/lKr1M3HeasbgG+xpp/I1viNf8Sb7m897LpHpS1dHz2tXSOBJQdoWPuhea8skgSAuSaeZE7Nl4KCQ==:"
+      },
+      "verify": {
+        "at": 1775743200,
+        "expect": [
+          true,
+          false
+        ],
+        "reason": "nonce replay (scoped per keyid)"
+      }
+    }
+  ]
+}

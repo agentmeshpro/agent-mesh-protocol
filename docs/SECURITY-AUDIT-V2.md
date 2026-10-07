@@ -37,6 +37,9 @@ ipaddress.ip_address() raises ValueError → exception caught → PASSES validat
 ```
 **Status**: SSRF to localhost still works via percent-encoding.
 
+**Update (0.4.0)**: Fixed. All outbound URL checks now go through the shared `ampro.security.ssrf` guard. It rejects percent-encoded hostnames outright, and rejects any
+literal or resolved address in a blocked range.
+
 ### 2. SSRF: Octal/Hex/Decimal IP Bypass (I1 fix bypassed)
 ```
 https://0177.0.0.1/    → octal loopback, not parsed by ipaddress
@@ -44,6 +47,10 @@ https://0x7f000001/    → hex loopback, not parsed by ipaddress
 https://2130706433/    → decimal loopback, not parsed by ipaddress
 ```
 **Status**: All bypass SSRF validation.
+
+**Update (0.4.0)**: Fixed. All outbound URL checks now go through the shared `ampro.security.ssrf` guard. It parses every numeric form that `inet_aton` accepts (octal,
+hex, single-integer and shortened dotted forms) before the blocked-range
+check (`parse_ip_literal`).
 
 ### 3. RFC 9421: Encoded Newline Bypass (I4 fix bypassed)
 ```
@@ -59,6 +66,14 @@ HEAD request resolves DNS → passes validation
 POST request re-resolves DNS → different IP
 ```
 **Status**: Vulnerability fully intact. Fix was documentation, not code.
+
+**Update (0.4.0)**: Fixed. All outbound URL checks now go through the shared `ampro.security.ssrf` guard with DNS pinning. `validate_url` / `validate_url_async` resolve
+the hostname once and check every returned address.
+`pinned_async_transport` then dials only those pinned addresses, while
+the `Host` header and TLS SNI and certificate verification stay bound to
+the original hostname. A second DNS answer can therefore not redirect
+the request. Callback delivery (`ampro.transport.callback`) uses the
+pinned transport.
 
 ### 5. Registry Resolve SSRF (I7 fix = docstring only)
 ```
@@ -142,9 +157,9 @@ LRU eviction in dedup/nonce stores removes entries still within their TTL window
 | C7: Constant-time compare | ✓ | Correct but O(n) iteration | **REGRESSION** |
 | C9: Cross-verify fail-closed | ✓ | No path returns true without check | **EFFECTIVE** |
 | C13: Whitespace strip | ✓ | Correct, null bytes not covered | **EFFECTIVE** |
-| I1: IPv6 zone ID | ✓ | Bypassed by percent-encoding, octal, hex | **BYPASSED** |
+| I1: IPv6 zone ID | ✓ | Bypassed by percent-encoding, octal, hex | **BYPASSED** (bypasses fixed in 0.4.0, `ampro.security.ssrf`) |
 | I2: ::1 added | ✓ | Correct | **EFFECTIVE** |
-| I3: DNS rebinding | Docstring | Vulnerability intact | **NOT FIXED** |
+| I3: DNS rebinding | Docstring | Vulnerability intact | ~~NOT FIXED~~ **FIXED in 0.4.0** (shared `ampro.security.ssrf` guard with DNS pinning) |
 | I4: Newline reject | ✓ | Bypassed by %0a, U+2028 | **BYPASSED** |
 | I7: Registry SSRF | Docstring | Vulnerability intact | **NOT FIXED** |
 | D1: Dedup bounded | ✓ | CPU DoS + legitimate data loss | **PARTIAL** |
@@ -173,9 +188,9 @@ LRU eviction in dedup/nonce stores removes entries still within their TTL window
 - Attack cost: flood with 100K+1 unique IDs
 
 ### SSRF: Multiple bypass routes
-- Percent-encoded IPs
-- Octal/hex/decimal IPs  
-- DNS rebinding
+- Percent-encoded IPs (fixed in 0.4.0)
+- Octal/hex/decimal IPs (fixed in 0.4.0)
+- DNS rebinding (fixed in 0.4.0: DNS pinning)
 - Registry resolve URL
 
 ---

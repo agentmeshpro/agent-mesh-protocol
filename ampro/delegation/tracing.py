@@ -46,6 +46,25 @@ class TraceContext:
     trace_flags: int = 1  # 1 = sampled
     signature: str | None = None
 
+    def __post_init__(self) -> None:
+        # IDs are W3C trace-context shaped: lowercase hex, not all zeros.
+        # Validating them also keeps the ``|``-separated canonical form
+        # used for signing unambiguous.
+        _check_hex_id("trace_id", self.trace_id, 32)
+        _check_hex_id("span_id", self.span_id, 16)
+        if self.parent_span_id is not None:
+            _check_hex_id("parent_span_id", self.parent_span_id, 16)
+
+
+def _check_hex_id(name: str, value: str, length: int) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != length
+        or any(c not in "0123456789abcdef" for c in value)
+        or set(value) == {"0"}
+    ):
+        raise ValueError(f"{name} must be {length} lowercase hex characters, not all zero")
+
 
 # ---------------------------------------------------------------------------
 # Canonical form for signing

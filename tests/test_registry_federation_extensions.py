@@ -161,9 +161,10 @@ class TestFederationConflictResolution:
         assert resolve_federation_conflict(same_tier_older, same_tier_newer) == "remote"
         assert resolve_federation_conflict(same_tier_newer, same_tier_older) == "local"
 
-        # (3) Tier equal, last_seen equal → LOCAL wins. The previous lex
-        # tiebreaker let an attacker pick a registry_id that sorted earlier
-        # to win pure ties; "local wins ties" is the safer default.
+        # (3) Tier equal, last_seen equal → deterministic URI fallback
+        # (PROTOCOL-CONTRACTS §4): the lexicographically smaller URI wins
+        # on both sides, so registries converge. A remote that wins this
+        # way still cannot raise its tier (merge_federation_record caps it).
         left = self._record(
             trust_tier="verified",
             last_seen="2026-04-10T00:00:00+00:00",
@@ -175,7 +176,7 @@ class TestFederationConflictResolution:
             agent_uri="agent://b.example.com",
         )
         assert resolve_federation_conflict(left, right) == "local"
-        assert resolve_federation_conflict(right, left) == "local"
+        assert resolve_federation_conflict(right, left) == "remote"
 
     def test_handles_attribute_records(self):
         class Rec:

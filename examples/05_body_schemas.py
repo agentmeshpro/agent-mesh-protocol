@@ -4,12 +4,13 @@
 Demonstrates typed validation for all protocol body types.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/05_body_schemas.py
 """
 
-from ampro import validate_body
 from pydantic import ValidationError
+
+from ampro import validate_body
 
 # --- Valid body types ---
 print("=== Valid Body Types ===\n")

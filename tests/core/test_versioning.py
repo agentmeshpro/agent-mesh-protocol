@@ -48,8 +48,7 @@ class TestCheckVersion:
         assert "Unsupported" in str(exc.value)
 
     def test_check_version_semver_with_prerelease_shape_accepted(self):
-        # Pre-release shape is well-formed but not in SUPPORTED_VERSIONS →
-        # gets the "Unsupported" error (not "Malformed").
-        with pytest.raises(ValueError) as exc:
-            check_version("1.0.0-beta")
-        assert "Unsupported" in str(exc.value)
+        # Pre-release shape is well-formed and shares MAJOR 1 with a
+        # supported version → accepted (contract: reject only on MAJOR
+        # mismatch); the server speaks its own 1.x version.
+        assert check_version("1.0.0-beta") == "1.0.0"

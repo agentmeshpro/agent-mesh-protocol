@@ -20,7 +20,7 @@ import logging
 from enum import Enum
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,14 @@ class KeyRevocationBody(BaseModel):
     reason: str = Field(
         description="Revocation reason (key_compromise, key_rotation, agent_decommissioned)",
     )
+
+    @field_validator("reason")
+    @classmethod
+    def _known_reason(cls, value: str) -> str:
+        allowed = {r.value for r in RevocationReason}
+        if value not in allowed:
+            raise ValueError(f"reason must be one of {sorted(allowed)}")
+        return value
     replacement_key_id: str | None = Field(
         default=None,
         description="Replacement key ID, if key was rotated",
@@ -107,7 +115,11 @@ def validate_revocation_signature(body: KeyRevocationBody, public_key_bytes: byt
     canonical = {
         k: v for k, v in body.model_dump(mode="json").items() if k != "signature"
     }
-    message = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    # Same canonical JSON as every other signed AMP artefact: sorted keys,
+    # compact separators, UTF-8 (no \\u escaping).
+    message = json.dumps(
+        canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
 
     try:
         import base64
@@ -168,8 +180,10 @@ class RevocationStore(Protocol):
 
     Implementations plug in via :func:`register_revocation_store`. Callers
     should query :func:`should_reject_cached_key` before trusting any
-    cached public key material. The default store is a NoOp that returns
-    False for every key.
+    cached public key material. The default (unconfigured) store is
+    permissive — it returns False for every key — and logs a one-time
+    warning. If a store's ``is_revoked`` raises, the key is treated as
+    revoked (fail closed).
     """
 
     def is_revoked(self, key_id: str) -> bool:
@@ -252,14 +266,20 @@ def should_reject_cached_key(key_id: str) -> bool:
     Receivers holding a cached public key MUST consult this helper before
     verifying signatures; revoked keys MUST NOT be trusted even if the
     signature math checks out. Thin wrapper around the registered
-    :class:`RevocationStore` so the default (unconfigured) behaviour is
-    safe.
+    :class:`RevocationStore`.
+
+    Fail-closed: if the store raises (backend unavailable, timeout, bug),
+    the key is treated as revoked. An outage of the revocation backend must
+    never silently re-enable a compromised key.
     """
     try:
         return bool(_revocation_store.is_revoked(key_id))
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("RevocationStore.is_revoked raised: %s", exc)
-        return False
+    except Exception as exc:
+        logger.error(
+            "RevocationStore.is_revoked raised for %s — treating key as "
+            "revoked (fail closed): %s", key_id, exc,
+        )
+        return True
 
 
 def revocation_verify_cached_key(key_id: str) -> bool:

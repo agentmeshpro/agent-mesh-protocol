@@ -6,18 +6,18 @@ between agents operating under incompatible regulatory frameworks, and
 task rejection when jurisdiction constraints are violated.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/23_jurisdiction.py
 """
 
 from ampro import (
     AgentMessage,
+    JurisdictionInfo,
     TaskCreateBody,
     TaskRejectBody,
-    JurisdictionInfo,
-    validate_jurisdiction_code,
     check_jurisdiction_conflict,
     validate_body,
+    validate_jurisdiction_code,
 )
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ reject_msg = AgentMessage(
     body=reject_body.model_dump(),
 )
 
-print(f"\n  Rejection:")
+print("\n  Rejection:")
 print(f"    From:           {reject_msg.sender}")
 print(f"    To:             {reject_msg.recipient}")
 print(f"    Body type:      {reject_msg.body_type}")
@@ -135,7 +135,7 @@ has_conflict_ac, detail_ac = check_jurisdiction_conflict(jurisdiction_a, jurisdi
 
 print(f"  Has conflict: {has_conflict_ac}")
 print(f"  Detail:       {detail_ac}")
-print(f"  Compatible:   Both operate under GDPR")
+print("  Compatible:   Both operate under GDPR")
 
 # Agent A sends the same task to Agent C successfully
 create_msg_c = AgentMessage(
@@ -150,12 +150,12 @@ create_msg_c = AgentMessage(
     body=create_body.model_dump(),
 )
 
-print(f"\n  Task routed to Agent C:")
+print("\n  Task routed to Agent C:")
 print(f"    From:      {create_msg_c.sender}")
 print(f"    To:        {create_msg_c.recipient}")
 print(f"    Body type: {create_msg_c.body_type}")
 print(f"    Task ID:   {create_body.task_id}")
-print(f"    Status:    Accepted (no jurisdiction conflict)")
+print("    Status:    Accepted (no jurisdiction conflict)")
 
 # ---------------------------------------------------------------------------
 # Step 4: Validate jurisdiction codes
@@ -205,7 +205,7 @@ print(f"  Agent D: primary={jurisdiction_d.primary}, frameworks={jurisdiction_d.
 print(f"  Agent E: primary={jurisdiction_e.primary}, frameworks={jurisdiction_e.frameworks}")
 print(f"  Has conflict: {has_conflict_de}")
 print(f"  Detail:       {detail_de}")
-print(f"  Rule:         Same primary jurisdiction -> no conflict regardless of frameworks")
+print("  Rule:         Same primary jurisdiction -> no conflict regardless of frameworks")
 
 # ---------------------------------------------------------------------------
 # Summary

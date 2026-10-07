@@ -1,0 +1,133 @@
+{
+  "description": "Session binding key agreement (WIRE-BINDING sections 9.2-9.3). key = HKDF-SHA256(ikm = X25519(priv, peer_pub), salt = client_nonce || 0x00 || server_nonce, info = 'ampro-session-binding-v1' || 0x00 || session_id || 0x00 || client_pub || 0x00 || server_pub, L = 32), lowercase hex. binding_proof = HMAC-SHA256(key = UTF-8 bytes of the hex key, msg = confirm_transcript). Session-Binding = HMAC-SHA256(same key, session_id || 0x00 || message_id || 0x00 || hex(SHA-256(canonical JSON body))). Public keys are raw 32-byte X25519 keys, base64url without padding, and enter HKDF/HMAC inputs in that encoded form. All strings are UTF-8; 0x00 is a single NUL byte.",
+  "keys": {
+    "x25519-client": {
+      "type": "X25519",
+      "private_hex": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+      "public_hex": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+      "public_b64url": "hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo",
+      "source": "RFC 7748 section 6.1 Alice's private key"
+    },
+    "x25519-server": {
+      "type": "X25519",
+      "private_hex": "07394528923a61c754295f86f9f707f36139b1a0fb554d9f019b2048ae21cdfd",
+      "public_hex": "6246b2cb1e471890e8a5766a4772001b709118ba81c0444fefcda6c68837825b",
+      "public_b64url": "Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls",
+      "source": "SHA-256(\"ampro test vector x25519 server\")"
+    }
+  },
+  "vectors": [
+    {
+      "name": "basic",
+      "client_key": "x25519-client",
+      "server_key": "x25519-server",
+      "session_id": "sess-a1b2c3d4",
+      "client_nonce": "8f5d0e1c8e2cd9f75cc226ba5bd868d8323fde87fa49fa1008738307507a5bfe",
+      "server_nonce": "e9aed25045fd43347c57f716a640e6508743d63c8a09e9c94d7401d7e8032af6",
+      "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181",
+      "session_init": {
+        "proposed_capabilities": [
+          "messaging",
+          "tools"
+        ],
+        "proposed_version": "1.0.0",
+        "client_nonce": "8f5d0e1c8e2cd9f75cc226ba5bd868d8323fde87fa49fa1008738307507a5bfe",
+        "client_ephemeral_key": "hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo"
+      },
+      "session_established": {
+        "session_id": "sess-a1b2c3d4",
+        "negotiated_capabilities": [
+          "messaging",
+          "tools"
+        ],
+        "negotiated_version": "1.0.0",
+        "trust_tier": "verified",
+        "trust_score": 650,
+        "session_ttl_seconds": 3600,
+        "server_nonce": "e9aed25045fd43347c57f716a640e6508743d63c8a09e9c94d7401d7e8032af6",
+        "server_ephemeral_key": "Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls",
+        "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181",
+        "resumed": false
+      },
+      "session_confirm": {
+        "session_id": "sess-a1b2c3d4",
+        "binding_proof": "fc57566f1a61e05b450302906987f4961d1ebea4db7fc887fb5f0f68f39a0f1c",
+        "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181"
+      },
+      "expected": {
+        "x25519_shared_secret_hex": "345973fd1c7fcb22e108f553e25e40e1ef082110a09203bab1d91f09498f954e",
+        "hkdf_salt": "8f5d0e1c8e2cd9f75cc226ba5bd868d8323fde87fa49fa1008738307507a5bfe\u0000e9aed25045fd43347c57f716a640e6508743d63c8a09e9c94d7401d7e8032af6",
+        "hkdf_info": "ampro-session-binding-v1\u0000sess-a1b2c3d4\u0000hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo\u0000Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls",
+        "binding_key_hex": "3f866e202d33baa56a5c45282fee3a3ede673b6043ea1b5c2bacce0e76602007",
+        "confirm_transcript": "ampro-session-confirm-v1\u0000sess-a1b2c3d4\u00008f5d0e1c8e2cd9f75cc226ba5bd868d8323fde87fa49fa1008738307507a5bfe\u0000e9aed25045fd43347c57f716a640e6508743d63c8a09e9c94d7401d7e8032af6\u000088f0ced1ef92f170bf4375795c8d8181\u0000hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo\u0000Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls",
+        "binding_proof": "fc57566f1a61e05b450302906987f4961d1ebea4db7fc887fb5f0f68f39a0f1c"
+      },
+      "messages": [
+        {
+          "message_id": "msg-0001",
+          "body": {
+            "text": "hello"
+          },
+          "body_canonical_json": "{\"text\":\"hello\"}",
+          "body_sha256_hex": "cbbbdcd27692344de5dbab3abcaba413fb0f45307267de7081401576df1cb176",
+          "hmac_input": "sess-a1b2c3d4\u0000msg-0001\u0000cbbbdcd27692344de5dbab3abcaba413fb0f45307267de7081401576df1cb176",
+          "session_binding": "b36e15904722e4aad03ac53f5ab57ef129f30292e72455798c6f826ce9a2eefb"
+        },
+        {
+          "message_id": "msg-0002",
+          "body": {
+            "description": "Bake 12 croissants",
+            "priority": "high"
+          },
+          "body_canonical_json": "{\"description\":\"Bake 12 croissants\",\"priority\":\"high\"}",
+          "body_sha256_hex": "68c67520e2942153215f32638ff6e2cfe6c39139db6a21c00ddf4d7e6a83c4bc",
+          "hmac_input": "sess-a1b2c3d4\u0000msg-0002\u000068c67520e2942153215f32638ff6e2cfe6c39139db6a21c00ddf4d7e6a83c4bc",
+          "session_binding": "5355cb4a0a8ae73a2a3a9306e515058e2e81d1931482767ab96cd85c53bb06e4"
+        },
+        {
+          "message_id": "msg-0003",
+          "body": null,
+          "body_canonical_json": "null",
+          "body_sha256_hex": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "hmac_input": "sess-a1b2c3d4\u0000msg-0003\u000074234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "session_binding": "92374b60c71833e3953c02003f78bdef8c5feddf3d23b3d38bf0872c7ce72fd0"
+        },
+        {
+          "message_id": "msg-0004",
+          "body": {
+            "text": "café ☕",
+            "n": [
+              1,
+              2,
+              3
+            ]
+          },
+          "body_canonical_json": "{\"n\":[1,2,3],\"text\":\"café ☕\"}",
+          "body_sha256_hex": "788655307a62c90a51b6ff4ee29bde4d095c4b655cf2f7b72c033c6f59839465",
+          "hmac_input": "sess-a1b2c3d4\u0000msg-0004\u0000788655307a62c90a51b6ff4ee29bde4d095c4b655cf2f7b72c033c6f59839465",
+          "session_binding": "4152d2e99b31b43c6130e6fdc5f0aab1ba1805c259deffe3bdc0cebaebb26a32"
+        }
+      ]
+    }
+  ],
+  "negative_vectors": [
+    {
+      "name": "low-order-peer-key",
+      "description": "an all-zero X25519 public key yields an all-zero shared secret and MUST be rejected",
+      "peer_public_b64url": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expect_error": true
+    },
+    {
+      "name": "short-peer-key",
+      "description": "a peer key that is not 32 bytes MUST be rejected",
+      "peer_public_b64url": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expect_error": true
+    },
+    {
+      "name": "established-without-server-key",
+      "description": "clients MUST refuse session.established without server_ephemeral_key",
+      "drop_field": "server_ephemeral_key",
+      "expect_error": true
+    }
+  ]
+}

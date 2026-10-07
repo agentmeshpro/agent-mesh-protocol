@@ -344,17 +344,58 @@ class TestFromApp:
         assert server.agent_id == "agent://test.com"
         assert "task.create" in server._handlers
 
-    def test_from_app_copies_error_handler(self):
+    async def test_from_app_calls_handler_with_ctx(self):
+        """AMPI handlers take (msg, ctx); the server must supply ctx."""
+        from ampro.ampi.app import AgentApp
+
+        app = AgentApp("agent://ctx.example.com", "https://ctx.example.com")
+
+        @app.on("task.create")
+        async def handle(msg, ctx):
+            return {"tier": ctx.trust_tier.value, "agent": ctx.agent_address}
+
+        server = AgentServer.from_app(app)
+        status, _, body = await server.route("POST", "/agent/message", {
+            "sender": "agent://caller.example.com",
+            "recipient": "agent://ctx.example.com",
+            "body_type": "task.create",
+            "body": {"description": "hi"},
+        })
+        assert status == 202
+        payload = json.loads(body)
+        # The reference server does not authenticate, so callers are EXTERNAL.
+        assert payload == {"tier": "external", "agent": "agent://ctx.example.com"}
+
+    async def test_from_app_runs_middleware_and_error_hook(self):
         from ampro.ampi.app import AgentApp
 
         app = AgentApp("agent://err.example.com", "https://err.example.com")
+        seen = []
+
+        @app.middleware
+        async def mw(msg, ctx, nxt):
+            seen.append("mw")
+            return await nxt(msg, ctx)
+
+        @app.on("task.create")
+        async def handle(msg, ctx):
+            raise RuntimeError("boom")
 
         @app.on_error
-        async def on_err(msg, ctx):
-            return {"error": True}
+        async def on_err(exc, msg, ctx):
+            return {"error": str(exc)}
 
         server = AgentServer.from_app(app)
-        assert server._default_handler is on_err
+        assert server.app is app
+        status, _, body = await server.route("POST", "/agent/message", {
+            "sender": "agent://a.example.com",
+            "recipient": "agent://err.example.com",
+            "body_type": "task.create",
+            "body": {"description": "hi"},
+        })
+        assert status == 202
+        assert json.loads(body) == {"error": "boom"}
+        assert seen == ["mw"]
 
     def test_from_app_preserves_agent_json(self):
         from ampro.ampi.app import AgentApp

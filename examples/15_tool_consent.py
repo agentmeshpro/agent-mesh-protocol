@@ -6,17 +6,17 @@ requests consent to use a sensitive tool, the owner grants it with
 restrictions, and the caller checks consent before invoking.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/15_tool_consent.py
 """
 
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ampro import (
     AgentMessage,
-    ToolConsentRequestBody,
     ToolConsentGrantBody,
+    ToolConsentRequestBody,
     ToolDefinition,
     validate_body,
 )

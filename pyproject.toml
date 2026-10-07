@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ampro"
-version = "0.3.4"
+version = "0.4.0"
 description = "Universal agent-to-agent communication protocol — agent:// addressing, trust tiers, delegation chains, compliance"
 readme = "README.md"
 license = "Apache-2.0"
@@ -28,23 +28,45 @@ dependencies = [
     "pydantic>=2.0,<3.0",
     "cryptography>=41.0",
     "base58>=2.1",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
+server = [
+    "uvicorn>=0.29",
+]
+flask = [
+    "flask>=3.0",
+]
+a2a = [
+    "pyjwt[crypto]>=2.8",
+]
+pact = [
+    "pyjwt[crypto]>=2.8",
+]
+mcp = []
+all = [
+    "ampro[server,a2a,pact,mcp]",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
-    "httpx>=0.27",
+    "ruff>=0.5",
+    "uvicorn>=0.29",
+    "fastapi>=0.110",
+    "pyjwt[crypto]>=2.8",
+    "a2a-sdk>=1.0",
+    "mcp>=2.0",
 ]
 
 [project.scripts]
 ampro-server = "ampro.server.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/vesakri/agent-mesh-protocol"
-Repository = "https://github.com/vesakri/agent-mesh-protocol"
-Issues = "https://github.com/vesakri/agent-mesh-protocol/issues"
-Documentation = "https://github.com/vesakri/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
+Homepage = "https://github.com/CatlystAI/agent-mesh-protocol"
+Repository = "https://github.com/CatlystAI/agent-mesh-protocol"
+Issues = "https://github.com/CatlystAI/agent-mesh-protocol/issues"
+Documentation = "https://github.com/CatlystAI/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ampro"]

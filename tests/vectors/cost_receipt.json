@@ -1,5 +1,13 @@
 {
-  "description": "Test vectors for CostReceipt, CostReceiptChain, and task.complete with cost_receipt field (AMP v0.1.3). Covers single-hop, multi-hop, full breakdown, and round-trip through task.complete.",
+  "description": "Test vectors for CostReceipt, CostReceiptChain, and task.complete with cost_receipt field (AMP v0.1.3). Covers single-hop, multi-hop, full breakdown, and round-trip through task.complete. Receipts are signed with Ed25519 (base64url, no padding) over canonical JSON of agent_id, task_id, cost_usd, currency, issued_at and nonce (sorted keys, ',' ':' separators, UTF-8). cost_usd is serialised as a JSON number exactly as Python's json module renders the float (e.g. 0.005, 5.0): other languages MUST reproduce that rendering.",
+  "keys": {
+    "ed25519-b": {
+      "type": "Ed25519",
+      "private_seed_hex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "public_hex": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+      "source": "RFC 8032 section 7.1 TEST 2 secret key"
+    }
+  },
   "vectors": [
     {
       "description": "Single-hop receipt — minimal fields",
@@ -10,8 +18,17 @@
         "task_id": "task-001",
         "cost_usd": 0.005,
         "currency": "USD",
-        "issued_at": "2026-04-09T14:00:00Z"
-      }
+        "issued_at": "2026-04-09T14:00:00Z",
+        "nonce": "rcpt-nonce-0001",
+        "signature": "Um2WMxlAGR7djvUjrv09bbPzNo6LJCGhiC3L4BlCurStyC6DB3w_P7710wgW2EFnXddNs2HHscVptMfKLC4BDQ"
+      },
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://simple-agent.example.com\",\"cost_usd\":0.005,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:00Z\",\"nonce\":\"rcpt-nonce-0001\",\"task_id\":\"task-001\"}"
+      ]
     },
     {
       "description": "Single-hop receipt — full breakdown and token_usage",
@@ -32,9 +49,17 @@
           "output": 1450
         },
         "duration_seconds": 4.7,
-        "signature": "base64url-ed25519-sig-cost-receipt-aabbccdd",
-        "issued_at": "2026-04-09T14:01:00Z"
-      }
+        "signature": "A86WYkX3Q2p7jtBbwAzrMi9NxKgsyfk2KoNLixJfjTuSvnmaFzt66A250_7XhU5wym0SprVPnKg5w0VnYsLoAQ",
+        "issued_at": "2026-04-09T14:01:00Z",
+        "nonce": "rcpt-nonce-0002"
+      },
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://analytics-agent.example.com\",\"cost_usd\":0.042,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:01:00Z\",\"nonce\":\"rcpt-nonce-0002\",\"task_id\":\"task-002\"}"
+      ]
     },
     {
       "description": "Multi-hop chain — 3 receipts with running total",
@@ -56,7 +81,9 @@
               "output": 120
             },
             "duration_seconds": 1.2,
-            "issued_at": "2026-04-09T14:00:01Z"
+            "issued_at": "2026-04-09T14:00:01Z",
+            "nonce": "rcpt-nonce-0003",
+            "signature": "87yga1b4nHAkXkoCaGsvvvExKS3xR2B8V5dcobDAguoo9xkMuj9NvLNON1RhmNQoOJ1b6jyX4I_edjnuhKevBg"
           },
           {
             "agent_id": "agent://specialist.example.com",
@@ -64,7 +91,7 @@
             "cost_usd": 0.012,
             "currency": "USD",
             "breakdown": {
-              "llm_inference": 0.010,
+              "llm_inference": 0.01,
               "tool_execution": 0.002
             },
             "token_usage": {
@@ -72,7 +99,9 @@
               "output": 850
             },
             "duration_seconds": 3.8,
-            "issued_at": "2026-04-09T14:00:03Z"
+            "issued_at": "2026-04-09T14:00:03Z",
+            "nonce": "rcpt-nonce-0004",
+            "signature": "m995mv4uO9GsN9mmYnfcXYua9Br66QoBKPO-bQAla5CShAdon0NdlbZECzBdt3eUu5X5JQ8GzmWXSMWz6gxDAw"
           },
           {
             "agent_id": "agent://gateway.example.com",
@@ -88,12 +117,24 @@
               "output": 200
             },
             "duration_seconds": 0.5,
-            "issued_at": "2026-04-09T14:00:05Z"
+            "issued_at": "2026-04-09T14:00:05Z",
+            "nonce": "rcpt-nonce-0005",
+            "signature": "axwuRII_I_mLYNIiXu0JAcao9uwriH-iYCBhKj8-q3P38jQJIGWcE8wSd0wj6QuNxuAg8rTTnHFsC0VptUr4BQ"
           }
         ],
-        "total_cost_usd": 0.020
+        "total_cost_usd": 0.02
       },
-      "note": "Total is sum of all 3 hop costs: 0.003 + 0.012 + 0.005 = 0.020 USD."
+      "note": "Total is sum of all 3 hop costs: 0.003 + 0.012 + 0.005 = 0.020 USD.",
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "expected_total_cost_usd": "0.020",
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://tool-runner.example.com\",\"cost_usd\":0.003,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:01Z\",\"nonce\":\"rcpt-nonce-0003\",\"task_id\":\"task-003\"}",
+        "{\"agent_id\":\"agent://specialist.example.com\",\"cost_usd\":0.012,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:03Z\",\"nonce\":\"rcpt-nonce-0004\",\"task_id\":\"task-003\"}",
+        "{\"agent_id\":\"agent://gateway.example.com\",\"cost_usd\":0.005,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:05Z\",\"nonce\":\"rcpt-nonce-0005\",\"task_id\":\"task-003\"}"
+      ]
     },
     {
       "description": "task.complete with embedded cost_receipt chain",
@@ -105,7 +146,7 @@
           "summary": "Analysis complete",
           "findings": 3
         },
-        "cost_usd": 0.020,
+        "cost_usd": 0.02,
         "duration_seconds": 5.5,
         "cost_receipt": {
           "receipts": [
@@ -123,7 +164,9 @@
                 "output": 120
               },
               "duration_seconds": 1.2,
-              "issued_at": "2026-04-09T14:00:01Z"
+              "issued_at": "2026-04-09T14:00:01Z",
+              "nonce": "rcpt-nonce-0006",
+              "signature": "CFLriyRriQhBqcpyUS69twtW1cL9aymv6fkdQsnPuLdw32grKoOv5iYYiOjFsHeST_8gTOA2rF12w1xb3lKyBA"
             },
             {
               "agent_id": "agent://specialist.example.com",
@@ -131,7 +174,7 @@
               "cost_usd": 0.012,
               "currency": "USD",
               "breakdown": {
-                "llm_inference": 0.010,
+                "llm_inference": 0.01,
                 "tool_execution": 0.002
               },
               "token_usage": {
@@ -139,7 +182,9 @@
                 "output": 850
               },
               "duration_seconds": 3.8,
-              "issued_at": "2026-04-09T14:00:03Z"
+              "issued_at": "2026-04-09T14:00:03Z",
+              "nonce": "rcpt-nonce-0007",
+              "signature": "HT9aD9Z84WQBvAlVF_PKVUeQR4XBePiCffIBlbSP-M2hpAQtkzCQye-Rtb6FcuLZIaqsUUS4r7U6mcK4-N9YBA"
             },
             {
               "agent_id": "agent://gateway.example.com",
@@ -155,16 +200,27 @@
                 "output": 200
               },
               "duration_seconds": 0.5,
-              "issued_at": "2026-04-09T14:00:05Z"
+              "issued_at": "2026-04-09T14:00:05Z",
+              "nonce": "rcpt-nonce-0008",
+              "signature": "NzgnwZB8Fh7PhMWB11LzaT9tqlTh46e-jTzrzoeSxNrnsPtq1iby3uI2P-4-SDpLXm86VKVk7jDLuiCKYR9mAA"
             }
           ],
-          "total_cost_usd": 0.020
+          "total_cost_usd": 0.02
         },
         "metadata": {
           "hops": 3
         }
       },
-      "note": "The cost_receipt field carries the full CostReceiptChain inside task.complete for end-to-end cost attribution."
+      "note": "The cost_receipt field carries the full CostReceiptChain inside task.complete for end-to-end cost attribution.",
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://tool-runner.example.com\",\"cost_usd\":0.003,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:01Z\",\"nonce\":\"rcpt-nonce-0006\",\"task_id\":\"task-004\"}",
+        "{\"agent_id\":\"agent://specialist.example.com\",\"cost_usd\":0.012,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:03Z\",\"nonce\":\"rcpt-nonce-0007\",\"task_id\":\"task-004\"}",
+        "{\"agent_id\":\"agent://gateway.example.com\",\"cost_usd\":0.005,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:05Z\",\"nonce\":\"rcpt-nonce-0008\",\"task_id\":\"task-004\"}"
+      ]
     },
     {
       "description": "Single-hop receipt — optional fields explicitly null",
@@ -178,9 +234,17 @@
         "breakdown": null,
         "token_usage": null,
         "duration_seconds": null,
-        "signature": null,
-        "issued_at": "2026-04-09T15:00:00Z"
-      }
+        "signature": "ViWZYKhlxojgfQtQ2q8QBwHhUoKx4vDmrcPkz8dcAQ-4uP1eEnZsDNUAPvyMxOh5i0C_J4YWfGSnNwwZZvDUCw",
+        "issued_at": "2026-04-09T15:00:00Z",
+        "nonce": "rcpt-nonce-0009"
+      },
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://minimal-agent.example.com\",\"cost_usd\":0.001,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T15:00:00Z\",\"nonce\":\"rcpt-nonce-0009\",\"task_id\":\"task-005\"}"
+      ]
     },
     {
       "description": "Empty chain — no receipts yet",
@@ -204,9 +268,18 @@
           "llm_inference": 0.015,
           "tool_execution": 0.003
         },
-        "issued_at": "2026-04-09T16:00:00Z"
+        "issued_at": "2026-04-09T16:00:00Z",
+        "nonce": "rcpt-nonce-0010",
+        "signature": "KnmVuiEBoKyqDaRk7Jm0NSc2krdf1sej8op-iNnnMxpLxfvcYJxExuQuis_Gg6jcHbVLcYWsrAXamqIBvW1RDA"
       },
-      "note": "cost_usd still reports the USD-equivalent amount even when currency is non-USD."
+      "note": "cost_usd still reports the USD-equivalent amount even when currency is non-USD.",
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://eu-processor.example.com\",\"cost_usd\":0.018,\"currency\":\"EUR\",\"issued_at\":\"2026-04-09T16:00:00Z\",\"nonce\":\"rcpt-nonce-0010\",\"task_id\":\"task-006\"}"
+      ]
     },
     {
       "description": "Invalid receipt — missing agent_id (required)",
@@ -217,7 +290,9 @@
         "task_id": "task-bad-001",
         "cost_usd": 0.005,
         "currency": "USD",
-        "issued_at": "2026-04-09T14:00:00Z"
+        "issued_at": "2026-04-09T14:00:00Z",
+        "nonce": "rcpt-nonce-0011",
+        "signature": ""
       }
     },
     {
@@ -229,7 +304,9 @@
         "agent_id": "agent://broken.example.com",
         "task_id": "task-bad-002",
         "cost_usd": 0.005,
-        "currency": "USD"
+        "currency": "USD",
+        "nonce": "rcpt-nonce-0012",
+        "signature": ""
       }
     },
     {
@@ -241,8 +318,75 @@
         "agent_id": "agent://broken.example.com",
         "cost_usd": 0.005,
         "currency": "USD",
+        "issued_at": "2026-04-09T14:00:00Z",
+        "nonce": "rcpt-nonce-0013",
+        "signature": ""
+      }
+    },
+    {
+      "description": "Invalid receipt — missing nonce (required for replay defence)",
+      "schema": "cost_receipt",
+      "valid": false,
+      "expected_error": "nonce",
+      "body": {
+        "agent_id": "agent://simple-agent.example.com",
+        "task_id": "task-001",
+        "cost_usd": 0.005,
+        "currency": "USD",
+        "signature": "x",
         "issued_at": "2026-04-09T14:00:00Z"
       }
+    },
+    {
+      "description": "Invalid receipt — negative cost",
+      "schema": "cost_receipt",
+      "valid": false,
+      "expected_error": "cost_usd",
+      "body": {
+        "agent_id": "agent://simple-agent.example.com",
+        "task_id": "task-001",
+        "cost_usd": -0.5,
+        "currency": "USD",
+        "nonce": "rcpt-neg",
+        "signature": "x",
+        "issued_at": "2026-04-09T14:00:00Z"
+      }
+    },
+    {
+      "description": "Chain rejects a replayed receipt nonce",
+      "schema": "cost_receipt_chain",
+      "valid": true,
+      "expect_chain_error": "already consumed",
+      "sign": {
+        "kind": "cost_receipt",
+        "key": "ed25519-b"
+      },
+      "body": {
+        "receipts": [
+          {
+            "agent_id": "agent://tool-runner.example.com",
+            "task_id": "task-009",
+            "cost_usd": 0.01,
+            "currency": "USD",
+            "nonce": "rcpt-replayed",
+            "signature": "qRsyf-_85QqkCDBKfCGzG_ry9wmOdZcX7fNK1vZwHdN5s5WnjbZ8V9weJuD4w2LFPd6Zdf7rOXxOnelOoKJwAg",
+            "issued_at": "2026-04-09T14:00:01Z"
+          },
+          {
+            "agent_id": "agent://tool-runner.example.com",
+            "task_id": "task-009",
+            "cost_usd": 0.01,
+            "currency": "USD",
+            "nonce": "rcpt-replayed",
+            "signature": "qRsyf-_85QqkCDBKfCGzG_ry9wmOdZcX7fNK1vZwHdN5s5WnjbZ8V9weJuD4w2LFPd6Zdf7rOXxOnelOoKJwAg",
+            "issued_at": "2026-04-09T14:00:01Z"
+          }
+        ]
+      },
+      "expected_canonical": [
+        "{\"agent_id\":\"agent://tool-runner.example.com\",\"cost_usd\":0.01,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:01Z\",\"nonce\":\"rcpt-replayed\",\"task_id\":\"task-009\"}",
+        "{\"agent_id\":\"agent://tool-runner.example.com\",\"cost_usd\":0.01,\"currency\":\"USD\",\"issued_at\":\"2026-04-09T14:00:01Z\",\"nonce\":\"rcpt-replayed\",\"task_id\":\"task-009\"}"
+      ]
     }
   ]
 }

@@ -2,6 +2,92 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-07
+
+Interoperability and production-hardening release. **Breaking:** several
+signed wire artefacts changed (session binding, delegation links,
+federation proofs, RFC 9421 verification rules). 0.4.0 peers do not
+interoperate with 0.3.x peers on those features; see "Changed" below.
+
+### Added
+- **A2A 1.0** (`ampro.interop.a2a`): serve any `AgentApp` as an A2A agent
+  (Agent Card, HTTP+JSON and JSON-RPC bindings, SSE streaming, tasks,
+  cancel, subscribe) and call A2A agents with `A2AClient`. AMP delegation
+  and compliance data travel through the A2A extension
+  `https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1`. Verified
+  against the official `a2a-sdk` client. See `docs/INTEROP-A2A.md`.
+- **PACT** (`ampro.interop.pact`): host Brands as a PACT Provider —
+  personal-agent JWT identity (ES256/RS256 via JWKS), OAuth 2.0 device-code
+  delegation (RFC 8628, RFC 8414 metadata), consent pages, scopes and
+  step-up, refresh-token rotation with reuse detection, signed receipts;
+  plus a personal-agent client (`PASigner`, `PACTClient`). Passes the
+  official PACT conformance suite (Identity 10/10, Delegated 9/9);
+  `scripts/run_pact_conformance.py` reproduces the run. See
+  `docs/INTEROP-PACT.md`.
+- **MCP** (`ampro.interop.mcp`): expose `@tool`s (and an `amp_task` bridge)
+  over Streamable HTTP to MCP clients, and import tools from remote MCP
+  servers with `MCPToolSource`. Verified against the official `mcp` SDK.
+  See `docs/INTEROP-MCP.md`.
+- `ampro-server --protocols amp,a2a,mcp` serves one agent over several
+  protocols; framework-free ASGI binding (`AgentServer.asgi()`).
+- Security pipeline for `POST /agent/message` (WIRE-BINDING Appendix D):
+  pluggable authenticators (`SignatureAuthenticator`,
+  `TrustResolverAuthenticator`), `SecurityPolicy.production()`, per-caller
+  rate limiting, sender binding, recipient check, loop detection,
+  caller-scoped deduplication with response replay, concurrency limits,
+  handler timeouts, Origin guard, JSON content-type enforcement.
+- `ampro.security.ssrf`: one SSRF guard (DNS resolution of every address,
+  CGNAT/NAT64/6to4/IPv4-mapped forms, numeric host forms) with DNS-pinned
+  connections, used by the client, callbacks, JWKS and interop clients.
+- Conformance vectors are now executed by `tests/test_vectors.py` with real,
+  deterministically regenerated signatures (`tests/vectors/_generate.py`);
+  new `rfc9421.json` and `session_binding.json`.
+- `@app.tool(name, description=, input_schema=, scopes=)` metadata;
+  `AMPContext.principal`, `.scopes`, `.protocol`, `.metadata`.
+- Extras: `server`, `a2a`, `pact`, `mcp`, `flask`, `all`.
+
+### Fixed
+- `ampro-server` / `AgentServer.from_app` could not run AMPI handlers
+  (they were called without `ctx`); app middleware and `@on_error` now run.
+- Client handshake omitted `confirm_nonce`, so `connect()` always failed.
+- Examples 08, 10 and 27 crashed; every example now runs in CI.
+- `check_version` rejected same-major versions such as `1.0.1`.
+- Federation conflict resolution crashed on naive timestamps.
+
+### Security
+- Delegation links sign every field (previously `trust_tier`,
+  `chain_budget`, `jwks_url` and `max_fan_out` were unsigned and could be
+  escalated by a relay); children cannot raise `max_depth`; fan-out and
+  budgets are enforced; naive timestamps are rejected.
+- Session binding key is derived with X25519 + HKDF on both sides and never
+  transmitted; the server verifies `binding_proof`; per-message HMAC covers
+  the body; resume tokens expire.
+- RFC 9421: signature verified before the nonce is recorded (no nonce
+  burning or tracker exhaustion); a body requires a covered, matching
+  `content-digest`; `@method`, `@target-uri` and `@authority` must be
+  covered; missing covered headers fail; malformed input never raises.
+- did:key proofs require `exp`/`aud`/`jti` and are bound to the sender;
+  key revocation fails closed on store errors; bounded public-key cache;
+  API keys stored hashed with per-key owner identities; mTLS only from a
+  transport-verified certificate.
+- Federation trust proofs carry audience, timestamp and single-use nonce;
+  revocations are signature-checked; a remote record cannot raise its own
+  trust tier.
+- DNS rebinding and SSRF bypasses closed in callbacks and the client.
+
+### Changed
+- Wire format: `session.init.client_ephemeral_key`,
+  `session.established.server_ephemeral_key` (`binding_token` deprecated and
+  never sent); new session-binding and delegation-link signature payloads;
+  new federation proof and revoke payloads. See WIRE-BINDING §9, §11.11,
+  §12 and PROTOCOL-CONTRACTS.
+- `create_message_binding` / `verify_message_binding` require `body=`.
+- `resolve_trust_tier` takes `sender_id`, `audience`, `sender_linked_dids`,
+  `client_cert_identity`; DID auth without `audience` and `sender_id`
+  resolves to EXTERNAL.
+- The server binds to `127.0.0.1` by default; `--host` is honoured.
+- `httpx` is now a runtime dependency.
+
 ## [0.3.4] - 2026-05-26
 
 ### Security
@@ -198,6 +284,10 @@
 - `CheckpointBody.state_snapshot` rejects payloads > 1 MiB.
 
 
+
+## [0.3.2]
+
+Not released — the version number was skipped.
 
 ## [0.3.1] — 2026-04-20
 

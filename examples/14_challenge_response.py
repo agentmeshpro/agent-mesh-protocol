@@ -6,13 +6,13 @@ to a new sender, and the sender solving it. Shows the full message
 flow with AgentMessage envelopes.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/14_challenge_response.py
 """
 
 import hashlib
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ampro import (
     AgentMessage,

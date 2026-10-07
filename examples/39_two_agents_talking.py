@@ -6,27 +6,41 @@ via httpx, and prints the full request/response cycle. No external
 dependencies beyond ampro + fastapi + uvicorn.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
     python examples/39_two_agents_talking.py
 """
 
-import json
-import time
+# requires: fastapi, uvicorn  (tests/test_examples_run.py skips this example if missing)
 import asyncio
+import json
 import threading
+import time
 
 import httpx
 
-from ampro.server import AgentServer
 from ampro import AgentMessage
+from ampro.server import AgentServer
+
 
 # ---------------------------------------------------------------------------
-# Agent A: "Echo" server — listens on port 8001
+def _free_port() -> int:
+    """Pick an unused loopback port so the example never collides."""
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+PORT = _free_port()
+BASE_URL = f"http://127.0.0.1:{PORT}"
+
+# Agent A: "Echo" server — listens on a free loopback port
 # ---------------------------------------------------------------------------
 
 echo_server = AgentServer(
     agent_id="agent://echo.example.com",
-    endpoint="http://localhost:8001",
+    endpoint=f"{BASE_URL}/agent/message",
 )
 
 
@@ -68,10 +82,9 @@ def handle_task(msg: AgentMessage) -> dict:
 # ---------------------------------------------------------------------------
 
 CLIENT_ID = "agent://client.example.com"
-BASE_URL = "http://localhost:8001"
 
 
-def wait_for_health(url: str, retries: int = 20, delay: float = 0.25) -> bool:
+def wait_for_health(url: str, retries: int = 60, delay: float = 0.25) -> bool:
     """Poll the health endpoint until the server is ready."""
     for _ in range(retries):
         try:
@@ -184,7 +197,7 @@ def main() -> None:
     # Start the server in a background thread
     server_thread = threading.Thread(
         target=echo_server.run,
-        kwargs={"port": 8001},
+        kwargs={"port": PORT},
         daemon=True,
     )
     server_thread.start()
@@ -192,7 +205,7 @@ def main() -> None:
     # Wait for the server to be ready
     if not wait_for_health(BASE_URL):
         print("\n  ERROR: Server did not start in time.")
-        return
+        raise SystemExit(1)
 
     print(f"\n  Server ready at {BASE_URL}")
 

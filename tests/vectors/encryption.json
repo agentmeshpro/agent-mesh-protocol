@@ -1,5 +1,12 @@
 {
-  "description": "Test vectors for EncryptedBody and Content-Encryption header (AMP v0.1.9). Covers A256GCM and A128CBC-HS256 algorithms, envelope wrapping, and invalid payloads.",
+  "description": "Test vectors for EncryptedBody and Content-Encryption header (AMP v0.1.9). Covers A256GCM and A128CBC-HS256 algorithms, envelope wrapping, and invalid payloads. When the Content-Encryption header is present the envelope body is an EncryptedBody, not the typed body for body_type. A256GCM cases carry real AES-256-GCM output (key 'a256gcm', 96-bit IV, no AAD, plaintext = canonical JSON of sign.plaintext; ciphertext/iv/tag base64url without padding). ampro only defines the EncryptedBody container; key agreement and AAD are not specified by the protocol.",
+  "keys": {
+    "a256gcm": {
+      "type": "AES-256",
+      "key_hex": "cb04380f5b433354eda9f3cf1734d4c89dd55094be3658de6668a04f67d1c278",
+      "source": "SHA-256(\"ampro test vector a256gcm key\")"
+    }
+  },
   "vectors": [
     {
       "description": "Encrypted envelope — A256GCM algorithm",
@@ -15,14 +22,22 @@
           "Content-Encryption": "A256GCM"
         },
         "body": {
-          "ciphertext": "dGhpcyBpcyBhIHNpbXVsYXRlZCBjaXBoZXJ0ZXh0IGJsb2I=",
-          "iv": "AAAAAAAAAAAAAAAAAAAAAA==",
-          "tag": "kMbTHlCzQ3GP9v7NrF2xYQ==",
+          "ciphertext": "-zg9LU1NX7sCqGTyo-YC7HLU66hefM4mkuJHu8FMwOZnmt8",
+          "iv": "AAAAAAAAAAAAAAAB",
+          "tag": "SV_tJ3rhtm0BrbjfsuVTuA",
           "algorithm": "A256GCM",
           "recipient_key_id": "key-executor-2026-04"
         }
       },
-      "note": "When Content-Encryption header is present, body contains EncryptedBody instead of the typed body payload."
+      "note": "When Content-Encryption header is present, body contains EncryptedBody instead of the typed body payload.",
+      "sign": {
+        "kind": "a256gcm",
+        "key": "a256gcm",
+        "iv_hex": "000000000000000000000001",
+        "plaintext": {
+          "text": "hello from the requester"
+        }
+      }
     },
     {
       "description": "Encrypted envelope — A128CBC-HS256 algorithm",
@@ -45,17 +60,27 @@
           "recipient_key_id": "key-worker-2026-03"
         }
       },
-      "note": "A128CBC-HS256 uses AES-CBC with HMAC-SHA-256 for authentication."
+      "note": "A128CBC-HS256 uses AES-CBC with HMAC-SHA-256 for authentication. Ciphertext is illustrative (not decryptable): ampro carries EncryptedBody but does not implement A128CBC-HS256."
     },
     {
       "description": "EncryptedBody standalone — A256GCM with long ciphertext",
       "valid": true,
       "encrypted_body": {
-        "ciphertext": "U2ltdWxhdGVkIGxvbmcgY2lwaGVydGV4dCBibG9iIGZvciB0ZXN0aW5nIHB1cnBvc2VzIG9ubHk=",
-        "iv": "AgICAgICAgICAgICAgICAg==",
-        "tag": "pQrStUvWxYz0123456789A==",
+        "ciphertext": "OWzOPcplebmoEDxtW60pQkISMZQZoj7LLHlAPMm_swPFktZWFZXsyDURJwtcbnJYdbS0wO_B0ux5uuFhr5kPu8VxSaYi",
+        "iv": "AAAAAAAAAAAAAAAC",
+        "tag": "Nw8LcL8F0dylVfLMJMSWeg",
         "algorithm": "A256GCM",
         "recipient_key_id": "key-recipient-long-001"
+      },
+      "sign": {
+        "kind": "a256gcm",
+        "key": "a256gcm",
+        "iv_hex": "000000000000000000000002",
+        "plaintext": {
+          "description": "Summarise the attached logs",
+          "priority": "high",
+          "n": 2
+        }
       }
     },
     {
@@ -67,7 +92,8 @@
         "tag": "AbCdEfGhIjKlMnOpQrStUv==",
         "algorithm": "A128CBC-HS256",
         "recipient_key_id": "key-recipient-cbc-002"
-      }
+      },
+      "note": "Ciphertext is illustrative (not decryptable): ampro carries EncryptedBody but does not implement A128CBC-HS256."
     },
     {
       "description": "Decrypted envelope — plaintext body after decryption",
@@ -84,7 +110,10 @@
         "body": {
           "description": "Find the nearest available courier",
           "priority": "high",
-          "tools_required": ["routing", "dispatch"],
+          "tools_required": [
+            "routing",
+            "dispatch"
+          ],
           "timeout_seconds": 120
         }
       },

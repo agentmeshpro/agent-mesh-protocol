@@ -8,8 +8,10 @@ from pydantic import ValidationError
 
 class TestImports:
     def test_version(self):
+        from importlib.metadata import version
+
         import ampro
-        assert ampro.__version__ == "0.3.1"
+        assert ampro.__version__ == version("ampro")
 
     def test_all_exports(self):
         import ampro
@@ -271,8 +273,8 @@ class TestAgentJson:
 
 
 class TestCrossVerification:
-    def test_did_key_not_verified_without_implementation(self):
-        """C9: did:key cross-verification is fail-closed until key extraction is implemented."""
+    def test_invalid_did_key_not_verified(self):
+        """C9: a malformed did:key never cross-verifies (fail-closed)."""
         import asyncio
 
         from ampro import cross_verify_identifiers
@@ -281,15 +283,17 @@ class TestCrossVerification:
             expected_endpoint="https://example.com/agent/message",
         ))
         assert results[0].verified is False
-        assert "not yet implemented" in results[0].reason
+        assert "invalid did:key" in results[0].reason.lower()
 
 
 class TestV011Imports:
     """Verify all v0.1.1 types are importable from ampro."""
 
     def test_version_bumped(self):
+        from importlib.metadata import version
+
         import ampro
-        assert ampro.__version__ == "0.3.1"
+        assert ampro.__version__ == version("ampro")
 
     def test_handshake_imports(self):
         from ampro import (
@@ -347,8 +351,10 @@ class TestV012Imports:
     """Verify all v0.1.2 types are importable from ampro."""
 
     def test_version_is_016(self):
+        from importlib.metadata import version
+
         import ampro
-        assert ampro.__version__ == "0.3.1"
+        assert ampro.__version__ == version("ampro")
 
     def test_key_revocation_imports(self):
         from ampro import RevocationReason
@@ -901,12 +907,16 @@ class TestDelegationSignatures:
         return seed, pub
 
     def _make_signed_link(self, private_seed, delegator, delegate, scopes,
-                          max_depth=3, created_at=None, expires_at=None,
+                          max_depth=None, created_at=None, expires_at=None,
                           parent_delegate=None):
         """Create a DelegationLink with a real Ed25519 signature."""
         from datetime import datetime, timedelta
 
         from ampro.delegation.chain import DelegationLink, sign_delegation
+
+        if max_depth is None:
+            # Children must decrement max_depth (root=3, child=2).
+            max_depth = 3 if parent_delegate is None else 2
 
         now = datetime.now(UTC)
         created = created_at or now

@@ -28,7 +28,9 @@ protocol siblings -- it is protocol-pure.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
+import json
 import re
 import time
 from typing import TYPE_CHECKING
@@ -96,6 +98,25 @@ def _content_digest_sha256(body: bytes) -> str:
 # Derived components start with "@"
 _DERIVED_COMPONENTS = {"@method", "@target-uri", "@authority"}
 
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _authority(url: str) -> str:
+    """Return the ``@authority`` value per RFC 9421 §2.2.3.
+
+    ``host[:port]`` — lowercased, userinfo stripped, and the port omitted
+    when it is the default for the scheme. Raises ``ValueError`` for an
+    invalid port.
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if ":" in host:  # IPv6 literal — urlparse strips the brackets
+        host = f"[{host}]"
+    port = parsed.port  # raises ValueError when out of range
+    if port is not None and port != _DEFAULT_PORTS.get(parsed.scheme.lower()):
+        return f"{host}:{port}"
+    return host
+
 
 def create_signature_base(
     method: str,
@@ -142,7 +163,6 @@ def create_signature_base(
     if created is None:
         created = int(time.time())
 
-    parsed = urlparse(url)
     # Case-insensitive header lookup
     lower_headers = {k.lower(): v for k, v in headers.items()}
 
@@ -153,12 +173,16 @@ def create_signature_base(
         elif comp == "@target-uri":
             lines.append(f'"@target-uri": {url}')
         elif comp == "@authority":
-            authority = parsed.netloc or parsed.hostname or ""
-            lines.append(f'"@authority": {authority}')
+            lines.append(f'"@authority": {_authority(url)}')
         else:
-            # Regular header field
-            value = lower_headers.get(comp.lower(), "")
-            lines.append(f'"{comp}": {value}')
+            # Regular header field. RFC 9421 §2.5: a covered component that
+            # is absent from the message MUST cause signing/verification to
+            # fail — treating it as "" would let an attacker strip a header
+            # whose signed value was empty (or drop one entirely).
+            key = comp.lower()
+            if key not in lower_headers:
+                raise ValueError(f"covered component {comp!r} is not present")
+            lines.append(f'"{comp}": {lower_headers[key]}')
 
     # Build @signature-params
     comp_list = " ".join(f'"{c}"' for c in covered_components)
@@ -284,18 +308,20 @@ def verify_request(
     Parses ``Signature-Input`` to determine the covered components,
     reconstructs the signature base, and verifies the Ed25519 signature.
 
-    If *body* is provided and ``content-digest`` is among the covered
-    components, the digest is recomputed and compared before signature
-    verification proceeds.
+    If a non-empty *body* is provided, ``content-digest`` MUST be among
+    the covered components and MUST match the body; otherwise the request
+    is rejected. A covered header that is absent fails verification.
+    Malformed input always yields ``False`` (never raises).
 
     Freshness and replay:
       * When ``max_age_seconds`` is not ``None`` the verifier rejects any
         signature whose ``created`` timestamp is older than, or more than
         ``max_age_seconds`` in the future of, the current wall clock.
         Passing ``None`` disables the check (fixture-only usage).
-      * When a ``nonce_tracker`` is supplied the signature **must** carry
-        a ``nonce`` parameter, and reusing a previously-seen nonce causes
-        rejection.
+      * The signature **must** carry a ``nonce`` parameter (unless
+        ``max_age_seconds`` is ``None``). After the signature verifies, the
+        ``(keyid, nonce)`` pair is recorded in ``nonce_tracker`` (or a
+        process-wide default) and reuse causes rejection.
 
     Args:
         public_key_bytes: Raw 32-byte Ed25519 public key.
@@ -348,51 +374,70 @@ def verify_request(
         if skew > max_age_seconds:
             return False
 
-    # Replay cache — verifiers replay-check every signature that carries a
-    # nonce, using either the caller-supplied tracker or a module-level
-    # default. The previous behaviour (``nonce_tracker=None`` ⇒ no replay
-    # check) made replay protection opt-in, which is fail-open by API.
-    effective_tracker = nonce_tracker if nonce_tracker is not None else _get_default_nonce_tracker()
-    if nonce is None:
-        # A signature with no nonce parameter cannot be replay-protected.
-        # Reject unless caller has explicitly disabled replay checks by
-        # passing ``max_age_seconds=None`` (fixture-only usage).
-        if max_age_seconds is not None:
-            return False
-    elif effective_tracker.is_replay(nonce):
+    # A signature with no nonce parameter cannot be replay-protected.
+    # Reject unless caller has explicitly disabled replay checks by
+    # passing ``max_age_seconds=None`` (fixture-only usage).
+    if nonce is None and max_age_seconds is not None:
         return False
 
     # Parse covered components: "comp1" "comp2" ...
     covered = re.findall(r'"([^"]+)"', components_str)
 
-    # If body provided and content-digest is covered, verify digest first
-    if body is not None and "content-digest" in covered:
+    # The signature must bind the request line and the target, otherwise a
+    # signature captured on one route or agent could be replayed on another.
+    if not {"@method", "@target-uri", "@authority"} <= set(covered):
+        return False
+
+    # Body integrity. A non-empty body is only authenticated when
+    # ``content-digest`` is covered by the signature AND matches the body;
+    # otherwise an attacker could swap the body of a signed request.
+    if body:
+        if "content-digest" not in covered:
+            return False
         expected_digest = _content_digest_sha256(body)
         actual_digest = lower_headers.get("content-digest", "")
         if actual_digest != expected_digest:
             return False
-
-    # Reconstruct signature base
-    sig_base = create_signature_base(
-        method=method,
-        url=url,
-        headers=headers,
-        covered_components=covered,
-        created=created,
-        keyid=keyid,
-        nonce=nonce,
-    )
+    elif body is not None and "content-digest" in covered:
+        if lower_headers.get("content-digest", "") != _content_digest_sha256(body):
+            return False
 
     # Extract signature bytes: sig1=:<base64>:
-    sig_match = re.match(r"sig1=:([A-Za-z0-9+/=]+):", sig_raw)
+    sig_match = re.fullmatch(r"sig1=:([A-Za-z0-9+/=]+):", sig_raw.strip())
     if not sig_match:
         return False
-    sig_bytes = base64.b64decode(sig_match.group(1))
-
-    # Verify with Ed25519
     try:
+        sig_bytes = base64.b64decode(sig_match.group(1), validate=True)
+    except (binascii.Error, ValueError):
+        return False
+
+    # Reconstruct signature base and verify. Any malformed input (bad URL,
+    # missing covered header, invalid port) yields False — never raises.
+    try:
+        sig_base = create_signature_base(
+            method=method,
+            url=url,
+            headers=headers,
+            covered_components=covered,
+            created=created,
+            keyid=keyid,
+            nonce=nonce,
+        )
         public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
         public_key.verify(sig_bytes, sig_base.encode("utf-8"))
-        return True
     except Exception:
         return False
+
+    # Replay cache — consulted only AFTER the signature verified, so a
+    # forged request can neither burn a legitimate request's nonce nor
+    # fill the cache. Nonces are scoped per keyid. Verifiers replay-check
+    # every signature that carries a nonce, using either the
+    # caller-supplied tracker or a module-level default.
+    if nonce is not None:
+        effective_tracker = (
+            nonce_tracker if nonce_tracker is not None else _get_default_nonce_tracker()
+        )
+        if effective_tracker.is_replay(json.dumps([keyid, nonce])):
+            return False
+
+    return True

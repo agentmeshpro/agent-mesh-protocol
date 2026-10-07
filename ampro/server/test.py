@@ -17,16 +17,23 @@ No HTTP, no network. Just: build context, call handler, return result.
 
 from __future__ import annotations
 
-import inspect
-import uuid
 from typing import Any
 
 from ampro.ampi.app import AgentApp
 from ampro.ampi.context import AMPContext
-from ampro.ampi.errors import AMPError
+from ampro.ampi.dispatch import build_context, dispatch, run_hooks
 from ampro.core.envelope import AgentMessage
-from ampro.delegation.tracing import generate_span_id, generate_trace_id
 from ampro.trust.tiers import TrustTier
+
+
+def _app_from_dict(spec: dict) -> AgentApp:
+    app = AgentApp(spec.get("agent_id", "agent://test"), spec.get("endpoint", "http://localhost"))
+    app.handlers.update(spec.get("handlers", {}))
+    app.middleware_chain.extend(spec.get("middleware", []))
+    app.startup_hooks.extend(spec.get("startup", []))
+    app.shutdown_hooks.extend(spec.get("shutdown", []))
+    app.error_handler = spec.get("error_handler")
+    return app
 
 
 class TestServer:
@@ -38,77 +45,21 @@ class TestServer:
         *,
         trust_tier: TrustTier = TrustTier.VERIFIED,
     ) -> None:
-        if isinstance(app, dict):
-            self._handlers = app.get("handlers", {})
-            self._middleware: list = app.get("middleware", [])
-            self._startup: list = app.get("startup", [])
-            self._shutdown: list = app.get("shutdown", [])
-            self._error_handler = app.get("error_handler")
-            self._agent_id = app.get("agent_id", "agent://test")
-            self._streaming: set = set()
-        else:
-            self._handlers = app.handlers
-            self._middleware = app.middleware_chain
-            self._startup = app.startup_hooks
-            self._shutdown = app.shutdown_hooks
-            self._error_handler = app.error_handler
-            self._agent_id = app.agent_id
-            self._streaming = app.streaming_handlers
+        self._app = _app_from_dict(app) if isinstance(app, dict) else app
+        self._agent_id = self._app.agent_id
         self._trust_tier = trust_tier
 
     def _build_context(self, message: AgentMessage) -> AMPContext:
-        return AMPContext(
-            agent_address=self._agent_id,
-            sender_address=message.sender or "agent://unknown",
-            request_id=message.id or str(uuid.uuid4()),
-            trust_tier=self._trust_tier,
-            trace_id=generate_trace_id(),
-            span_id=generate_span_id(),
-            headers=dict(message.headers) if message.headers else {},
-        )
+        return build_context(self._agent_id, message, trust_tier=self._trust_tier)
 
     async def send(self, message: AgentMessage) -> Any:
         """Dispatch *message* through middleware and handler. Returns handler result."""
-        ctx = self._build_context(message)
-        handler = self._handlers.get(message.body_type)
-        if handler is None:
-            raise AMPError(
-                "no_handler",
-                f"No handler for body_type '{message.body_type}'",
-            )
-
-        # Terminal handler (always async-safe).
-        async def call_handler(msg: AgentMessage, c: AMPContext) -> Any:
-            result = handler(msg, c)
-            if inspect.isawaitable(result):
-                result = await result
-            return result
-
-        # Build middleware chain inside-out so the first-registered
-        # middleware runs first (outermost wrapper).
-        chain = call_handler
-        for mw in reversed(self._middleware):
-            prev = chain  # capture current chain for this closure
-
-            def _wrap(m: Any = mw, nxt: Any = prev) -> Any:
-                async def wrapped(msg: AgentMessage, c: AMPContext) -> Any:
-                    return await m(msg, c, nxt)
-                return wrapped
-
-            chain = _wrap()
-
-        return await chain(message, ctx)
+        return await dispatch(self._app, message, self._build_context(message))
 
     async def startup(self) -> None:
         """Run all registered startup hooks."""
-        for hook in self._startup:
-            result = hook()
-            if inspect.isawaitable(result):
-                await result
+        await run_hooks(self._app.startup_hooks)
 
     async def shutdown(self) -> None:
         """Run all registered shutdown hooks."""
-        for hook in self._shutdown:
-            result = hook()
-            if inspect.isawaitable(result):
-                await result
+        await run_hooks(self._app.shutdown_hooks)

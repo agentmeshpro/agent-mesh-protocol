@@ -35,42 +35,41 @@ class NonceTracker:
         for k in expired:
             del self._seen[k]
 
-    def _make_room(self) -> bool:
-        """Make room for one new entry without evicting still-fresh nonces.
+    def _make_room(self) -> None:
+        """Make room for one new entry.
 
-        Returns True if there is now space (or already was), False if the
-        cache is full of still-in-window entries and accepting the new
-        nonce would require dropping one that is still within its replay
-        protection window — which would reopen the replay window.
-
-        Drops only expired entries. If after expiring there is still no
-        room, returns False so the caller fails closed.
+        Expired entries are dropped first. If the cache is still full of
+        in-window entries, the OLDEST entry is evicted (dicts preserve
+        insertion order). Denying every new nonce when full — the previous
+        behaviour — let anyone who could get ~``max_size`` nonces recorded
+        lock out all legitimate traffic. Callers such as
+        :func:`ampro.security.rfc9421.verify_request` only record a nonce
+        after the signature has verified and the request is inside its
+        (much shorter) freshness window, so an attacker must hold a valid
+        key to evict entries, and evicted nonces belong to signatures that
+        the freshness check rejects anyway once ``max_size`` is sized for
+        the request rate.
         """
         if len(self._seen) < self._max_size:
-            return True
-        now = time.monotonic()
-        expired = [k for k, v in self._seen.items() if now - v > self._window]
-        for k in expired:
-            del self._seen[k]
-        return len(self._seen) < self._max_size
+            return
+        self._cleanup()
+        while len(self._seen) >= self._max_size:
+            oldest = next(iter(self._seen))
+            del self._seen[oldest]
 
     def is_replay(self, nonce: str) -> bool:
         """Check if nonce was already seen. Returns True if replay detected.
 
-        When the tracker is full of still-in-window entries (an attacker
-        flooded with unique nonces), this method REJECTS the new nonce as
-        if it were a replay. That is fail-closed: we'd rather refuse a
-        legitimate request than silently shrink the replay window by
-        evicting a previously-recorded nonce.
+        The nonce is recorded atomically when it is new. When the tracker
+        is full, expired entries are dropped first and then the oldest
+        entry is evicted, so a flood of unique nonces can never make the
+        tracker reject every request.
         """
         with self._lock:
             self._cleanup()
             if nonce in self._seen:
                 return True
-            if not self._make_room():
-                # Cache full of unexpired nonces. Fail-closed: treat the
-                # incoming nonce as a replay rather than evict a real one.
-                return True
+            self._make_room()
             self._seen[nonce] = time.monotonic()
             return False
 

@@ -2,7 +2,7 @@
 
     Version: 1.0.0
     Status: Normative
-    Date: 2026-04-10
+    Date: 2026-10-07 (security revision for ampro 0.4.0)
     Authors: AMP Contributors
     Specification URI: https://amp-protocol.dev/spec/wire-binding/1.0
 
@@ -1366,7 +1366,8 @@ Content-Type: application/json
   "body": {
     "proposed_capabilities": ["messaging", "tools", "streaming"],
     "proposed_version": "1.0.0",
-    "client_nonce": "a3f2b8c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1",
+    "client_nonce": "8f5d0e1c8e2cd9f75cc226ba5bd868d8323fde87fa49fa1008738307507a5bfe",
+    "client_ephemeral_key": "hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo",
     "conversation_id": "conv-bakery-order-001",
     "previous_session_id": null
   }
@@ -1377,6 +1378,20 @@ Content-Type: application/json
 - MUST be a 256-bit (64 hex character) cryptographically random value.
 - MUST be globally unique.
 - Implementations SHOULD use `secrets.token_hex(32)` or equivalent.
+
+**`client_ephemeral_key` requirements:**
+- The client's ephemeral X25519 public key (RFC 7748): the raw 32-byte
+  key, base64url-encoded without padding (43 characters).
+- MUST be generated fresh for every handshake, and the private half
+  MUST NOT be reused or persisted.
+- REQUIRED for an explicit handshake. A server MUST reject a
+  `session.init` that lacks a valid `client_ephemeral_key` (in the
+  reference implementation, `server_accept_init` raises
+  `SessionBindingError`).
+
+The handshake examples in this section use the values from
+`tests/vectors/session_binding.json`, so every derived value below can
+be checked.
 
 #### 9.2.2 Phase 2: Established
 
@@ -1402,8 +1417,9 @@ Content-Type: application/json
     "trust_tier": "verified",
     "trust_score": 650,
     "session_ttl_seconds": 3600,
-    "server_nonce": "b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5",
-    "binding_token": "hmac-sha256-derived-token-here",
+    "server_nonce": "e9aed25045fd43347c57f716a640e6508743d63c8a09e9c94d7401d7e8032af6",
+    "server_ephemeral_key": "Ykayyx5HGJDopXZqR3IAG3CRGLqBwERP782mxog3gls",
+    "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181",
     "resumed": false
   }
 }
@@ -1412,9 +1428,29 @@ Content-Type: application/json
 The `negotiated_capabilities` field contains the intersection of the
 client's proposed capabilities and the server's supported capabilities.
 
+The server:
+
+- MUST generate a fresh `server_nonce` (256-bit, 64 hex characters).
+- MUST generate a fresh ephemeral X25519 key pair and send the public
+  key as `server_ephemeral_key` (raw 32 bytes, base64url without
+  padding).
+- MUST issue a single-use, unpredictable `confirm_nonce`. The reference
+  implementation uses 128 bits, as 32 hex characters.
+- MUST derive the binding key itself (Section 9.3.1) and MUST NOT send
+  it.
+
+`binding_token` is a **deprecated** field. It used to carry the binding
+secret in the clear. Servers MUST NOT send it, and clients MUST ignore
+it if it is present.
+
+Clients MUST refuse a `session.established` that has no
+`server_ephemeral_key`, and MUST abort the handshake. Such a response
+comes from an unbound or legacy cleartext-token server.
+
 #### 9.2.3 Phase 3: Confirm
 
-The client proves possession of the binding token:
+The client derives the binding key (Section 9.3.1) and proves that it
+holds the key:
 
 ```http
 POST /agent/message HTTP/1.1
@@ -1431,47 +1467,116 @@ Content-Type: application/json
   },
   "body": {
     "session_id": "sess-a1b2c3d4",
-    "binding_proof": "hmac-sha256-proof-of-binding-token"
+    "binding_proof": "fc57566f1a61e05b450302906987f4961d1ebea4db7fc887fb5f0f68f39a0f1c",
+    "confirm_nonce": "88f0ced1ef92f170bf4375795c8d8181"
   }
 }
 ```
 
-After the server validates the binding proof, the session transitions
-to ACTIVE.
+`session.confirm` MUST echo the `confirm_nonce` from
+`session.established`. Before the session moves to CONFIRMED, the
+server MUST check, in this order:
 
-### 9.3 Session Binding (HMAC-SHA256)
+1. `session_id` equals the session it established.
+2. `confirm_nonce` equals the nonce it issued for this session.
+3. `binding_proof` verifies (Section 9.3.1), compared in constant time.
+4. The confirm nonce has not been consumed before. The server then
+   consumes it, so that it can never be used again.
 
-Session binding prevents session hijacking by requiring the client to
-prove it participated in the handshake.
+If any check fails, the server MUST reject the confirm and MUST NOT
+advance the session. A replayed or unknown `confirm_nonce` is a replay
+attempt. A session MUST NOT become ACTIVE without a verified
+`binding_proof`.
 
-#### 9.3.1 Token Derivation
+### 9.3 Session Binding (X25519 + HKDF-SHA256 + HMAC-SHA256)
 
-Both parties compute:
+Session binding prevents session hijacking. Knowing the session ID is
+not enough to send messages in the session. Because the binding key is
+agreed with ephemeral X25519 and never sent, a passive observer of the
+handshake cannot compute it either, even without TLS.
+
+The key agreement itself is unauthenticated. To stop an active
+man-in-the-middle, the handshake messages MUST be authenticated, either
+by the transport (TLS with a verified server certificate, Section 3.5)
+or by message signatures (Section 12.15).
+
+Notation in this section:
+
+- `||` is concatenation.
+- `0x00` is a single NUL byte.
+- Every string is encoded as UTF-8.
+- `client_pub` and `server_pub` are `client_ephemeral_key` and
+  `server_ephemeral_key` exactly as sent, as base64url strings.
+
+#### 9.3.1 Binding Key and Binding Proof
+
+Each peer computes the X25519 shared secret from its own ephemeral
+private key and the peer's ephemeral public key. It then derives the
+binding key:
 
 ```
-binding_token = HMAC-SHA256(
-  key   = shared_secret,
-  msg   = client_nonce + "\x00" + server_nonce + "\x00" + session_id
-)
+shared = X25519(own_private_key, peer_public_key)       ; 32 bytes
+key    = lowercase-hex( HKDF-SHA256(
+           ikm  = shared,
+           salt = client_nonce || 0x00 || server_nonce,
+           info = "ampro-session-binding-v1" || 0x00 || session_id || 0x00 ||
+                  client_pub || 0x00 || server_pub,
+           L    = 32) )                                  ; 64 hex characters
 ```
 
-Where `shared_secret` is a pre-shared key established out-of-band or
-derived from the authentication process.
+Peers MUST reject:
+
+- a peer public key that does not decode to exactly 32 bytes;
+- an all-zero shared secret, which comes from a low-order point.
+
+The key is never transmitted.
+
+The client proves possession of the key in `session.confirm`:
+
+```
+binding_proof = lowercase-hex( HMAC-SHA256(
+  key = UTF-8(key),                 ; the 64-character hex string, not the raw 32 bytes
+  msg = "ampro-session-confirm-v1" || 0x00 || session_id || 0x00 ||
+        client_nonce || 0x00 || server_nonce || 0x00 || confirm_nonce || 0x00 ||
+        client_pub || 0x00 || server_pub ) )
+```
+
+The server MUST recompute this value and verify it before CONFIRMED
+(Section 9.2.3). For the example handshake above, the binding key is
+`3f866e202d33baa56a5c45282fee3a3ede673b6043ea1b5c2bacce0e76602007`.
+
+Note on pre-shared keys: deployments that already share a secret
+out-of-band MAY derive a token as
+`HMAC-SHA256(psk, client_nonce || 0x00 || server_nonce || 0x00 || session_id)`
+(reference: `derive_binding_token`). This derivation is not part of the
+handshake, and it is only as secret as the PSK.
 
 #### 9.3.2 Per-Message Binding
 
 Every message within a bound session includes a `Session-Binding`
-header containing:
+header:
 
 ```
-Session-Binding = HMAC-SHA256(
-  key   = binding_token,
-  msg   = session_id + "\x00" + message_id
-)
+Session-Binding = lowercase-hex( HMAC-SHA256(
+  key = UTF-8(key),
+  msg = session_id || 0x00 || message_id || 0x00 ||
+        lowercase-hex( SHA-256( canonical_json(body) ) ) ) )
 ```
 
-The receiver MUST verify this HMAC using constant-time comparison to
-prevent timing side-channel attacks.
+- `message_id` is the envelope `id`.
+- `body` is the envelope `body` as sent. A `null` or absent body hashes
+  as the four bytes `null`.
+- `canonical_json` sorts object keys and uses the separators `,` and `:`
+  with no other whitespace.
+- Non-ASCII characters are emitted as raw UTF-8, not `\u` escapes.
+- `NaN` and `Infinity` are not allowed.
+
+Because the body digest is covered, a captured `Session-Binding` value
+cannot be reused with a different body.
+
+The receiver MUST verify this HMAC using constant-time comparison. It
+MUST reject a message in a bound session whose `Session-Binding` is
+missing or invalid.
 
 ### 9.4 Session State Machine
 
@@ -1572,8 +1677,22 @@ Active sessions are kept alive via ping/pong messages:
 ```
 
 If a `resume_token` was issued during pause, it MUST be provided
-during resume. Implementations SHOULD reject resume attempts without
-a valid token when one was issued.
+during resume. Implementations MUST reject resume attempts without a
+valid token when one was issued.
+
+Resume tokens:
+
+- MUST expire. The default maximum age is 3,600 s (1 hour) from
+  creation. Tokens whose creation time is more than 30 s in the future
+  MUST also be rejected.
+- MUST be integrity-protected with a key held only by the server. The
+  reference tokens are HMAC-SHA256 signed, and unsigned tokens are
+  rejected unless explicitly enabled for tests.
+- MUST stay server-side. The reference `create_resume_token` embeds the
+  session binding key in its payload, which is signed but not
+  encrypted. Servers MUST NOT send such a token to the peer or log it.
+  The `resume_token` value on the wire SHOULD be an opaque random
+  handle that the server maps to the stored token.
 
 ### 9.7 Session Close
 
@@ -2058,44 +2177,114 @@ sub-agents:
     "description": "Search for bakeries within 5km",
     "delegation_chain": [
       {
-        "delegator": "agent://alice@registry.example.com",
-        "delegate": "agent://bakery.example.com",
-        "scopes": ["tool:search_bakeries", "tool:place_order"],
+        "delegator": "agent://owner.example.com",
+        "delegate": "agent://manager.example.com",
+        "scopes": ["task:*", "data:read"],
         "max_depth": 3,
-        "created_at": "2026-04-10T14:30:00Z",
-        "expires_at": "2026-04-10T15:30:00Z",
-        "signature": "base64-ed25519-signature",
+        "created_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:00:00Z",
         "max_fan_out": 3,
         "trust_tier": "verified",
-        "chain_budget": "remaining=5.00USD;max=10.00USD"
+        "jwks_url": "https://owner.example.com/.well-known/jwks.json",
+        "chain_budget": "remaining=5.00USD;max=5.00USD",
+        "signature": "1JGqdDKauHr2uaNhTzcC9irBaGzTFAA8jmO6ZifwHQoBErLhfcQBh+J6Jwv9LLdv3QyP58GNUAxAhj7N7ipkBQ=="
       }
     ]
   }
 }
 ```
 
+This link is the root of the second case in
+`tests/vectors/delegation_chain.json`. It is signed with the RFC 8032
+TEST 1 key.
+
+A link has the following fields. Defaults apply when a field is absent,
+and the defaults are signed too:
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `delegator` | string | required | Agent granting authority (signs the link) |
+| `delegate` | string | required | Agent receiving authority |
+| `scopes` | string[] | required | Granted scopes |
+| `max_depth` | integer | `3` | Maximum number of links, including this one, from this link onward |
+| `created_at` | RFC 3339 timestamp | required | MUST carry `Z` or an explicit offset |
+| `expires_at` | RFC 3339 timestamp | required | MUST carry `Z` or an explicit offset |
+| `max_fan_out` | integer 1..10 | `3` | Maximum sub-delegations issued under this link |
+| `trust_tier` | string | `"external"` | Effective trust tier at this link |
+| `jwks_url` | string | `""` | Where the delegator's key is published |
+| `chain_budget` | string | `""` | `remaining=<n>USD;max=<n>USD`, or empty for no budget |
+| `signature` | string | `""` | Standard base64 (with padding) Ed25519 signature by the delegator |
+
+Unknown fields are ignored and are **not** covered by the signature.
+
 #### 11.11.1 Delegation Chain Validation
 
-Receivers MUST validate each link in a delegation chain:
+**Canonical form.** The delegator signs, with Ed25519, the UTF-8 bytes
+of a canonical JSON object. That object contains every field in the
+table above except `signature`, with defaults filled in, plus:
 
-1. **Public key lookup**: The delegator's public key MUST be available
+- `parent_delegate`: the `delegate` of the previous link, or `null` for
+  the root link. This binds the signature to one position in one chain,
+  so a link cannot be moved into another chain.
+
+The object is serialised as follows:
+
+- Keys are sorted, and the separators are `,` and `:` with no other
+  whitespace.
+- Non-ASCII characters are emitted as raw UTF-8, not `\u` escapes.
+- `scopes` is sorted lexicographically.
+- `created_at` and `expires_at` are converted to UTC and rendered as
+  `YYYY-MM-DDTHH:MM:SSZ`. When the microsecond component is not zero,
+  they are rendered as `YYYY-MM-DDTHH:MM:SS.ffffffZ` (exactly 6
+  fractional digits).
+
+Timestamps without a UTC offset (naive timestamps) MUST be rejected.
+
+The verifier rebuilds these bytes from the link it received. The exact
+signed strings for every vector case are in `signed_canonical`.
+
+Receivers MUST reject an empty chain, and MUST reject a chain with more
+links than the **root** link's `max_depth`. They MUST then validate each
+link, in order, and reject the chain at the first failure:
+
+1. **Self-delegation**: `delegator` MUST differ from `delegate`.
+2. **Public key lookup**: The delegator's public key MUST be available
    (via JWKS or pre-registered).
-2. **Signature verification**: The Ed25519 signature over the canonical
-   JSON (sorted keys, no whitespace, excluding the `signature` field)
-   MUST be valid.
-3. **Expiry check**: The link MUST NOT be expired (with clock skew
-   tolerance of 30 seconds).
-4. **Depth check**: The hop index MUST NOT exceed the parent link's
-   `max_depth`.
-5. **Scope narrowing**: Each link's scopes MUST be a subset of the
-   parent link's scopes. Wildcard matching is supported (e.g.,
-   `tool:*` allows `tool:read`).
-6. **Chain continuity**: Each link's `delegator` MUST equal the
+3. **Signature verification**: The signature MUST verify over the
+   canonical form above.
+4. **Expiry check**: `expires_at` MUST be later than now minus 30 s, and
+   `created_at` MUST NOT be later than now plus 30 s (30 s is the clock
+   skew tolerance).
+5. **Depth check**: `max_depth` MUST be at least 1. Every child link MUST
+   have `max_depth` ≤ the parent's `max_depth` − 1.
+6. **Scope narrowing**: Each child scope MUST be allowed by the parent's
+   scopes. A parent scope `*` allows any scope. A parent scope
+   `prefix:*` allows any scope that starts with `prefix:`. Any other
+   parent scope allows only an exact match. A child link MUST have at
+   least one scope. Parent and child scope lists are each limited to
+   100 entries.
+7. **Chain continuity**: Each link's `delegator` MUST equal the
    previous link's `delegate`.
-7. **Temporal nesting**: Each link's validity window MUST be within
-   the parent link's window (with clock skew tolerance).
-8. **Self-delegation**: A link MUST NOT have the same agent as both
-   `delegator` and `delegate`.
+8. **Temporal nesting**: A child's `created_at` MUST NOT be more than
+   30 s earlier than its parent's. A child's `expires_at` MUST NOT be
+   more than 30 s later than its parent's.
+9. **Fan-out**: A receiver that records how many sub-delegations have
+   been issued under each link MUST reject the chain when any
+   non-terminal link's count is already ≥ its `max_fan_out`. After
+   accepting the chain, it increments the count. The reference
+   implementation keys counts by `delegation_link_id`: SHA-256 over the
+   root-position canonical bytes || `0x00` || signature. A stateless
+   validator cannot enforce fan-out.
+10. **Budget**: A non-empty `chain_budget` MUST match the regular
+    expression `remaining=(\d+(?:\.\d+)?)USD;max=(\d+(?:\.\d+)?)USD`
+    in full, with no prefix or suffix. It MUST satisfy
+    0 < `remaining` ≤ `max`. Along the chain, a child's `remaining` MUST
+    NOT exceed its parent's `remaining`, and a child's `max` MUST NOT
+    exceed its parent's `max`. Once a link carries a budget, every
+    descendant MUST carry one, so a child cannot drop its parent's
+    budget.
+
+`tests/vectors/delegation_chain.json` has a case for each rule.
 
 ### 11.12 Task Redirect
 
@@ -2137,7 +2326,12 @@ Authentication is OPTIONAL. An agent with no authentication requirement
 treats all senders as EXTERNAL trust tier.
 
 Implementations that require authentication MUST support at least one
-of the following methods.
+of the following methods, or the RFC 9421 HTTP message signatures in
+Section 12.15.
+
+A credential that is present but invalid MUST cause the request to be
+rejected with HTTP 401. It MUST NOT be silently downgraded to an
+anonymous EXTERNAL caller.
 
 #### 12.1.1 Bearer JWT
 
@@ -2155,12 +2349,36 @@ Authorization: Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...
 #### 12.1.2 DID Proof
 
 ```http
-Authorization: DID did:web:alice.example.com:proof:abc123
+Authorization: DID <base64url(header)>.<base64url(payload)>.<base64url(signature)>
 ```
 
-- The proof MUST be a verifiable presentation per the W3C DID
-  specification.
-- Valid DID authentication resolves to trust tier VERIFIED.
+The credential is a compact JWS signed by the key of a `did:key` DID.
+
+- The header MUST contain `"alg": "EdDSA"`.
+- The signature is Ed25519 over the ASCII bytes of
+  `<header_b64> "." <payload_b64>`, and MUST verify under the Ed25519
+  public key embedded in the DID. The DID uses multibase `z` (base58btc)
+  followed by the multicodec prefix `0xed 0x01` and the 32-byte key.
+- The payload MUST contain these claims:
+
+| Claim | Requirement |
+|-------|-------------|
+| `did` | The `did:key` DID being proven. Other DID methods are not supported and resolve to EXTERNAL. |
+| `aud` | The receiving agent's identifier, as a string or an array that contains it. A receiver with no configured audience MUST reject every DID proof. |
+| `iat`, `exp` | Numeric Unix timestamps. `exp` ≥ `iat`, and `exp` − `iat` ≤ 300 s. Rejected if `exp` + 30 s is in the past, or if `iat` is more than 30 s in the future. |
+| `jti` | A non-empty string, accepted once per `(did, jti)`. Receivers MUST remember it for at least the proof lifetime plus the skew allowance. The reference implementation keeps it for 360 s. |
+
+- The DID MUST be bound to the envelope `sender`. Either the sender is
+  that DID (`did:key:…` or `agent://did:key:…`), or the sender is a
+  non-DID address whose DIDs the receiver has verified out of band
+  (for example through an `identity.link_proof`) and the proof's DID is
+  among them.
+- A bare DID with no proof (`Authorization: DID did:key:…`) proves
+  nothing and resolves to EXTERNAL.
+- The `jti` is recorded only after every other check has passed.
+- Valid DID authentication resolves to trust tier VERIFIED. A
+  DID-authenticated principal is bound to the sender address, and the
+  sender-binding check in Appendix D applies.
 
 #### 12.1.3 API Key
 
@@ -2169,15 +2387,31 @@ Authorization: ApiKey sk-abc123def456
 ```
 
 - API keys MUST be transmitted only over HTTPS.
-- Implementations SHOULD hash stored API keys.
-- Valid API key authentication resolves to trust tier VERIFIED.
+- Keys are allow-listed out of band. In the reference implementation,
+  keys are registered with `register_api_key`, or a host store
+  implementing `ApiKeyValidator` is injected.
+- Receivers MUST store only a hash of each key (the reference stores
+  the SHA-256 digest), and MUST compare keys in constant time.
+- An API key MUST NOT confer a trust tier above VERIFIED. Registering a
+  key at OWNER or INTERNAL is an error.
+- Receivers SHOULD throttle failed attempts per client address. The
+  reference blocks an address for 900 s after 10 failures.
+- An API key authenticates the caller but not the envelope `sender`
+  field.
 
 #### 12.1.4 Mutual TLS (mTLS)
 
-- mTLS authentication is implicit -- the client presents a certificate
-  during TLS handshake.
-- No `Authorization` header is needed.
-- Valid mTLS authentication resolves to trust tier VERIFIED.
+- The client presents a certificate during the TLS handshake. No
+  `Authorization` header is needed.
+- The identity MUST come only from a client certificate that the
+  transport (TLS terminator or server) has verified. The transport
+  passes this identity to the application out of band. The reference
+  implementation reads it from `HTTPRequest.client_cert_identity`.
+- Receivers MUST NOT derive an mTLS identity from request headers or
+  from any other value the client controls.
+- Valid mTLS authentication resolves to at least trust tier VERIFIED.
+  The certificate identity becomes the principal and is bound to the
+  envelope `sender`.
 
 #### 12.1.5 No Authentication
 
@@ -2193,7 +2427,7 @@ determines which security checks apply.
 |------------|--------------------------------------------------|--------------------------------|
 | INTERNAL   | Same organization, same platform                 | Platform-internal mechanism    |
 | OWNER      | The agent's registered owner/operator            | Valid JWT from registered owner |
-| VERIFIED   | Authenticated agent, not owner                   | Valid DID, API key, or mTLS    |
+| VERIFIED   | Authenticated agent, not owner                   | Valid DID proof, API key, mTLS, or RFC 9421 signature |
 | EXTERNAL   | Unknown or unauthenticated agent                 | No valid credentials           |
 
 #### 12.2.1 Trust Tier Properties
@@ -2265,21 +2499,44 @@ X-RateLimit-Reset: 1712765400
 
 Implementations SHOULD track message IDs for deduplication.
 
+- The dedup key MUST include the **authenticated caller**: the
+  principal established by Section 12.1 or 12.15, or, for an anonymous
+  caller, a shared anonymous identity. The reference key is
+  `principal_id || 0x00 || sender || 0x00 || id`.
+- Deduplication MUST run **after** authentication (Appendix D).
 - The RECOMMENDED dedup window is 300 seconds.
 - The RECOMMENDED maximum tracked IDs is 100,000.
-- When a duplicate message is detected, the implementation SHOULD
-  return the original response rather than reprocessing.
+- When a duplicate from the same caller is detected, the implementation
+  SHOULD return the original response rather than reprocessing.
+- A duplicate that arrives while the first copy is still being
+  processed SHOULD receive HTTP 409.
+- Responses with a 5xx status SHOULD NOT be cached, so that a retry is
+  processed again.
 - Implementations MUST NOT reject a message solely because the dedup
-  store is full; when the store is full, the oldest entries SHOULD be
+  store is full. When the store is full, the oldest entries SHOULD be
   evicted.
 
 ### 12.6 Nonce Replay Protection
 
 Implementations SHOULD track nonces for replay protection.
 
-- The RECOMMENDED nonce window is 300 seconds (5 minutes). This aligns with industry standards (OWASP, OAuth2). Deployments on slow networks MAY increase this value.
-- When a replayed nonce is detected, the implementation MUST reject the
-  message with HTTP 409 and an error body per Section 7.2.7.
+- The nonce window MUST be at least as long as the freshness window of
+  the artefact that carries the nonce. That window is 300 s for RFC 9421
+  signatures and federation proofs, and the proof lifetime plus clock
+  skew for DID proofs. The reference RFC 9421 tracker keeps nonces for
+  3,600 s.
+- Nonces MUST be recorded only after the signature that carries them
+  has verified. Otherwise a forged request could burn a legitimate
+  nonce.
+- When the RFC 9421 nonce tracker is full, it evicts expired entries
+  first and then the oldest live entry, so it does not fail closed. Size
+  it for at least the peak verified-request rate × 300 s. The
+  federation nonce cache is the exception: when it is full of live
+  entries it rejects new proofs.
+- A replayed nonce in a message signature fails authentication (HTTP
+  401, Section 12.15). For other nonce-bearing artefacts, the
+  implementation MUST reject the message, with HTTP 409 and an error
+  body per Section 7.2.7.
 
 ### 12.7 Sender Tracking
 
@@ -2361,19 +2618,43 @@ message:
 {
   "body_type": "key.revocation",
   "body": {
-    "key_id": "key-2025-12",
-    "reason": "compromised",
-    "revoked_at": "2026-04-10T14:00:00Z",
-    "replacement_key_id": "key-2026-04",
-    "signed_by": "key-2026-04"
+    "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+    "revoked_key_id": "kid-ed25519-2026-04-01",
+    "revoked_at": "2026-04-09T14:30:00Z",
+    "reason": "key_compromise",
+    "replacement_key_id": "kid-ed25519-2026-04-09",
+    "jwks_url": "https://registry.amp-protocol.dev/.well-known/jwks.json",
+    "signature": "W8kMAdUC98k2Tq44G_DjAIMvU_iWMjzQlo7FRCV-V5JuIHGYq5hvoaUI3UlUY8LQR5OfnYfyOATxlzM55hM1BQ"
   }
 }
 ```
 
-Valid revocation reasons: `compromised`, `superseded`, `retired`.
+Revocation reasons: `key_compromise`, `key_rotation`,
+`agent_decommissioned`. `replacement_key_id` and `jwks_url` are
+optional.
 
-The receiver MUST validate that the revocation message is signed by a
-non-revoked key.
+`signature` is an Ed25519 signature, base64url-encoded without padding,
+by the revoking agent's key. It is computed over a canonical JSON
+object with these properties:
+
+- It contains every body field except `signature`.
+- Absent optional fields are included as `null`.
+- Keys are sorted, the separators are `,` and `:`, and non-ASCII
+  characters are escaped as `\uXXXX`.
+
+For the example above, the signed string is:
+
+```
+{"agent_id":"agent://compromise-victim@registry.amp-protocol.dev","jwks_url":"https://registry.amp-protocol.dev/.well-known/jwks.json","reason":"key_compromise","replacement_key_id":"kid-ed25519-2026-04-09","revoked_at":"2026-04-09T14:30:00Z","revoked_key_id":"kid-ed25519-2026-04-01"}
+```
+
+This example is signed with the RFC 8032 TEST 1 key (see
+`tests/vectors/key_revocation.json`).
+
+The receiver MUST verify the signature against a non-revoked key of
+`agent_id` before acting on the revocation, and MUST discard unverified
+revocations. Once a key is revoked, verifiers MUST stop accepting it
+immediately, including from caches (Section 12.15).
 
 ### 12.13 Anti-Abuse Challenges
 
@@ -2423,6 +2704,239 @@ boundaries.
   SHOULD create a new span with the received span as parent.
 - When initiating a message with no existing trace context, the sender
   SHOULD generate new trace and span IDs.
+
+### 12.15 HTTP Message Signatures (RFC 9421 Profile)
+
+This section is NORMATIVE for every implementation that authenticates
+requests with HTTP message signatures. It profiles RFC 9421 and
+RFC 9530. The reference implementation is `ampro.security.rfc9421`
+(`sign_request` and `verify_request`), wired into the reference server
+by `ampro.server.auth.SignatureAuthenticator`. Conformance vectors:
+`tests/vectors/rfc9421.json`.
+
+#### 12.15.1 Headers
+
+```http
+Content-Digest: sha-256=:fAkuZwvuyUURsjOnGP7aJHj1SMThvo6KzjGOQF5HoH8=:
+Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-digest" "content-type");created=1775743200;keyid="agent://alice.example.com#key-1";alg="ed25519";nonce="n-7f3c1a9e5b2d4c60"
+Signature: sig1=:hmmboKHLvPhvwTpoDfk3F9gXHKOxWXnV3bSRLGcinaM4YO/yG/0Q1YtVBra367TrNVFctOB6tKYSSwOFlGP0DQ==:
+```
+
+- The signature label is `sig1`.
+- `Signature-Input` lists the covered components and then the
+  parameters, in this order: `created` (integer Unix seconds), `keyid`
+  (quoted string), `alg` (quoted string), and `nonce` (quoted string).
+- `Signature` carries the standard base64 encoding of the 64-byte
+  Ed25519 signature, between colons.
+- **Algorithm**: `alg` MUST be `"ed25519"` (Ed25519, RFC 8032).
+  Verifiers MUST reject any other value, which prevents algorithm
+  confusion.
+- **Required parameters**: `created`, `keyid`, and `nonce` are all
+  REQUIRED. A signature without `nonce` MUST be rejected.
+
+#### 12.15.2 Covered Components
+
+- Signers MUST cover `@method`, `@target-uri`, and `@authority`.
+- When the request has a body, signers MUST cover `content-digest`.
+- When a `content-type` header is present, signers SHOULD cover it.
+- Component names are lowercase.
+- Verifiers MUST reject a signature whose covered components omit
+  `@method`, `@target-uri`, or `@authority`.
+
+- **Content-Digest (RFC 9530)**: the header value is
+  `sha-256=:<base64(SHA-256(body))>:`.
+- When the request body is non-empty, verifiers MUST reject the request
+  unless `content-digest` is covered **and** equals the digest of the
+  body actually received.
+- When `content-digest` is covered and the body is empty, the digest
+  MUST still match.
+- A covered header that is absent from the request MUST cause
+  verification to fail. An absent header is not treated as an empty
+  string.
+
+#### 12.15.3 Signature Base
+
+The signature base follows RFC 9421 section 2.5:
+
+- It has one line per covered component, in the order listed, of the
+  form `"<component>": <value>`.
+- The last line is
+  `"@signature-params": (<components>);created=<created>;keyid="<keyid>";alg="ed25519";nonce="<nonce>"`.
+- Lines are joined with a single LF, with no trailing newline.
+
+Component values:
+
+| Component | Value |
+|-----------|-------|
+| `@method` | The request method, uppercased |
+| `@target-uri` | The full request URL as the client addressed it |
+| `@authority` | See below |
+| header fields | The header value as received (header names are matched case-insensitively) |
+
+`@authority` is built from the target URI:
+
+- Take the host, lowercase it, and drop any userinfo.
+- Keep IPv6 literals in brackets.
+- Append `:<port>` only when the port is not the scheme's default (80
+  for `http`, 443 for `https`).
+
+For example, `https://user@API.Example.com:443/x` gives
+`api.example.com`, and `https://API.Example.com:8443/x` gives
+`api.example.com:8443`.
+
+Target URIs that contain CR, LF, `%0a`, `%0d`, U+2028, U+2029, or NUL
+MUST be rejected.
+
+The reference server rebuilds `@target-uri` from its configured public
+base URL plus the request path and query. Signers MUST therefore sign
+the externally visible URL, not an internal one behind a proxy.
+
+The example in 12.15.1 is the `post-json-body` vector. Its signature
+base is:
+
+```
+"@method": POST
+"@target-uri": https://bakery.example.com/agent/message
+"@authority": bakery.example.com
+"content-digest": sha-256=:fAkuZwvuyUURsjOnGP7aJHj1SMThvo6KzjGOQF5HoH8=:
+"content-type": application/json
+"@signature-params": ("@method" "@target-uri" "@authority" "content-digest" "content-type");created=1775743200;keyid="agent://alice.example.com#key-1";alg="ed25519";nonce="n-7f3c1a9e5b2d4c60"
+```
+
+#### 12.15.4 Freshness and Replay
+
+- **Max age**: verifiers MUST reject a signature when
+  |now − `created`| > 300 s. This bound applies in both directions:
+  signatures too far in the past and too far in the future are both
+  rejected.
+- **Replay**: after the signature has verified, and never before,
+  verifiers MUST record the pair `(keyid, nonce)` and MUST reject any
+  later request that presents the same pair while it is remembered.
+  Nonces are scoped per `keyid`. The replay cache window MUST be at
+  least the 300 s freshness window. When the cache is full it evicts
+  rather than rejecting (Section 12.6).
+- Malformed input never raises. It fails verification.
+
+#### 12.15.5 Keys and Outcome
+
+- `keyid` is resolved to a raw 32-byte Ed25519 public key through a
+  host-registered resolver. An unknown or revoked key MUST fail
+  verification. Verifiers MUST consult the revocation store on every
+  lookup, including cache hits.
+- If the revocation store errors, the key MUST be treated as revoked.
+- When `keyid` is owned by an agent address, the envelope `sender` MUST
+  equal that address, or the request is rejected with HTTP 403
+  (sender binding, Appendix D).
+- A request that carries `Signature` / `Signature-Input` but fails any
+  check in this section MUST be rejected with HTTP 401.
+- A successful verification resolves to trust tier VERIFIED, unless the
+  deployment configures a different tier.
+
+### 12.16 Registry Federation
+
+Registries federate by exchanging signed messages. The body schemas are
+listed in Section 16.1.10, and the sync and conflict semantics are in
+`docs/PROTOCOL-CONTRACTS.md` section 4. Conformance vectors:
+`tests/vectors/registry_federation.json`.
+
+Common rules for the signed messages below:
+
+- Signatures are Ed25519, encoded as standard base64.
+- The receiver resolves the signer's public key from an out-of-band
+  trust source, such as a signed federation directory or a DNS-anchored
+  key list. A receiver with no key source MUST reject every federation
+  signature.
+- Timestamps in the signed payloads are rendered as RFC 3339 UTC with
+  `Z`. A fraction is included only when it is non-zero, and then with
+  exactly 6 digits.
+- Canonical JSON means sorted keys, the separators `,` and `:`, and
+  UTF-8 with no `\u` escaping.
+
+#### 12.16.1 Federation Request (Trust Proof)
+
+```json
+{
+  "body_type": "registry.federation_request",
+  "body": {
+    "registry_id": "agent://registry.alpha.example.com",
+    "capabilities": ["resolve", "search"],
+    "audience": "agent://registry.home.example.com",
+    "issued_at": "2026-04-09T14:00:00Z",
+    "nonce": "fed-nonce-01-k3Jp9wQz",
+    "trust_proof": "hbjqUEdqaI0FzWLxsik8/JgzvyELRM5dPP9MssTebHCNvejbEH1Pkype2c7jyuxyRm33WPA07TgyZ07v/uOBDA=="
+  }
+}
+```
+
+Field limits:
+
+- `capabilities`: 1 to 64 entries. Each entry is 1 to 128 characters,
+  with no control characters.
+- `nonce`: 16 to 256 characters.
+- `trust_proof`: at least 64 characters.
+
+`trust_proof` is the signature by `registry_id`'s key over canonical
+JSON of these fields:
+
+```
+{"audience":"agent://registry.home.example.com","capabilities":["resolve","search"],"issued_at":"2026-04-09T14:00:00Z","nonce":"fed-nonce-01-k3Jp9wQz","registry_id":"agent://registry.alpha.example.com","type":"ampro.registry.federation_request.v1"}
+```
+
+In general, the signed object is
+`{type: "ampro.registry.federation_request.v1", registry_id, audience,
+issued_at, nonce, capabilities}`, with `capabilities` sorted.
+
+The receiver MUST accept the request only when all of the following
+hold:
+
+1. `audience` equals the receiver's own registry URI. A receiver that
+   does not know its own URI MUST reject.
+2. `issued_at` is within ±300 s of the receiver's clock.
+3. The signature verifies.
+4. The nonce has not been seen before from this `registry_id`. The
+   receiver records the nonce only after the signature verifies, and
+   keeps it for at least 600 s.
+
+A request without `audience`, `issued_at`, or `nonce` MUST be rejected.
+
+#### 12.16.2 Federation Revoke
+
+```json
+{
+  "body_type": "registry.federation_revoke",
+  "body": {
+    "revoking_registry": "agent://registry.alpha.example.com",
+    "revoked_registry": "agent://registry.home.example.com",
+    "reason": "key compromise suspected",
+    "effective_at": "2026-04-09T15:00:00Z",
+    "signature": "kIgfeDWkm+JbtW4+ghkIm0qnZIlA7ZL/Paz2MzchfFx74OrQTeLf1lheHxiSGYBUovbQ2ow5rsRfumKnpzP4DQ=="
+  }
+}
+```
+
+`signature` is the signature by `revoking_registry`'s key over the
+compact canonical JSON of these fields:
+
+```
+{"effective_at":"2026-04-09T15:00:00Z","reason":"key compromise suspected","revoked_registry":"agent://registry.home.example.com","revoking_registry":"agent://registry.alpha.example.com","type":"ampro.registry.federation_revoke.v1"}
+```
+
+In general, the signed object is
+`{type: "ampro.registry.federation_revoke.v1", revoking_registry,
+revoked_registry, reason, effective_at}`. `reason` is at most 1,024
+characters. `effective_at` is canonicalised to UTC with `Z`, so
+`2026-04-09T17:00:00+02:00` is signed as `2026-04-09T15:00:00Z`.
+
+The receiver MUST check that `revoked_registry` is its own URI and that
+the signature verifies before tearing down the federation.
+
+#### 12.16.3 Conflict Resolution
+
+When the same `agent_uri` is known locally and from a peer, the
+precedence is: trust, then recency, then the lexicographically smallest
+registry URI. A remote record that wins MUST have its `trust_tier`
+capped at the local tier. The full rules are in PROTOCOL-CONTRACTS
+section 4.
 
 ---
 
@@ -2908,8 +3422,11 @@ types are defined by this specification.
 
 | Body Type                      | Description                          | Idempotent |
 |--------------------------------|--------------------------------------|------------|
-| `registry.federation_request`  | Request cross-registry federation    | No         |
+| `registry.federation_request`  | Request cross-registry federation (signed, Section 12.16.1) | No |
 | `registry.federation_response` | Respond to federation request        | Yes        |
+| `registry.federation_revoke`   | Tear down a federation link (signed, Section 12.16.2) | Yes |
+| `registry.federation_sync`     | Request a delta from a peer registry | Yes        |
+| `registry.federation_sync_response` | Delta of agent-record changes plus cursor | Yes |
 
 #### 16.1.11 Audit
 
@@ -3055,12 +3572,26 @@ groups are considered).
 - The server MUST respond with the negotiated version in the
   `Protocol-Version` response header.
 - If no `Accept-Version` is provided, the server uses its current
-  default version.
-- If the requested version is not supported, the server MUST return
-  HTTP 406 (see Section 7.2.5).
-- Version negotiation supports comma-separated preference lists:
-  `Accept-Version: 1.0.0, 0.1.0`. The server picks the highest
-  supported version from the list.
+  default version. For the reference implementation this is `1.0.0`
+  (`ampro.core.versioning.CURRENT_VERSION`).
+- Receivers MUST accept any well-formed SemVer 2.0.0 version
+  (`MAJOR.MINOR.PATCH`, with optional `-pre-release` and `+build`)
+  whose MAJOR matches a version they support.
+  - If that exact version is supported, the server speaks it.
+  - Otherwise, the server speaks the highest supported version with the
+    same MAJOR.
+  - A receiver MUST NOT reject a version solely because of its MINOR,
+    PATCH, pre-release, or build component.
+- If the requested version is malformed, or its MAJOR matches no
+  supported version, the server MUST return HTTP 406 (see Section
+  7.2.5).
+- Version negotiation supports comma-separated preference lists, for
+  example `Accept-Version: 1.0.0, 0.1.0`. The server walks the list in
+  the client's order.
+  - It picks the first entry that it supports exactly.
+  - If no entry is supported exactly, it picks the highest supported
+    version that shares a MAJOR with the first well-formed entry whose
+    MAJOR it supports.
 
 ### 18.5 Sunset Header
 
@@ -3172,16 +3703,21 @@ MUST support all 8 capability groups (Section 17.1).
 
 ### 20.7 Testing Conformance
 
-Conformance testing is performed using test vector files published
-alongside this specification. A test vector file contains:
+Conformance testing uses the JSON vector files in `tests/vectors/` of
+the reference repository. Their format, the fixed test keys, and the way
+to run them from another language are described in
+`tests/vectors/README.md`. The vectors cover:
 
-- A series of HTTP request/response pairs.
-- Expected status codes for each request.
-- Expected response body type for each request.
-- Edge cases for error handling.
+- schema acceptance and rejection for every body type and envelope
+  rule;
+- byte-exact canonical forms and deterministic Ed25519 signatures for
+  every signed artefact: RFC 9421 requests, delegation links, key
+  revocations, cost receipts, and federation proofs and revokes;
+- the session-binding key agreement and HMACs.
 
 Implementations SHOULD pass all test vectors for their declared
-conformance level.
+conformance level. Implementations that sign or verify any of the
+artefacts above MUST reproduce the canonical bytes exactly.
 
 ---
 
@@ -3204,13 +3740,22 @@ conformance level.
   RFC 2119 Key Words", BCP 14, RFC 8174, May 2017.
 - **[RFC 8615]** Nottingham, M., "Well-Known Uniform Resource
   Identifiers (URIs)", RFC 8615, May 2019.
+- **[RFC 5869]** Krawczyk, H. and P. Eronen, "HMAC-based
+  Extract-and-Expand Key Derivation Function (HKDF)", RFC 5869,
+  May 2010.
+- **[RFC 7748]** Langley, A., Hamburg, M., and S. Turner, "Elliptic
+  Curves for Security", RFC 7748, January 2016.
+- **[RFC 8032]** Josefsson, S. and I. Liusvaara, "Edwards-Curve Digital
+  Signature Algorithm (EdDSA)", RFC 8032, January 2017.
+- **[RFC 9421]** Backman, A. and J. Richer, "HTTP Message
+  Signatures", RFC 9421, February 2024.
+- **[RFC 9530]** Polli, R. and L. Pardue, "Digest Fields", RFC 9530,
+  February 2024.
 - **[W3C SSE]** Hickson, I., "Server-Sent Events", W3C
   Recommendation, February 2015.
 
 ### 21.2 Informative References
 
-- **[RFC 9421]** Backman, A. and J. Richer, "HTTP Message
-  Signatures", RFC 9421, February 2024.
 - **[W3C DID]** Sporny, M. et al., "Decentralized Identifiers
   (DIDs) v1.0", W3C Recommendation, July 2022.
 - **[W3C Trace Context]** Kanzhelev, S. et al., "Trace Context",
@@ -3379,43 +3924,92 @@ conformance level.
 ## Appendix D: Security Pipeline Order
 
 When processing an incoming `POST /agent/message` request,
-implementations SHOULD apply security checks in the following order:
+implementations MUST respect the ordering constraints below and SHOULD
+otherwise follow the order of the reference server.
 
-1. **Message size check** -- Reject if body exceeds limit (413).
-2. **Deduplication** -- Check if message ID was recently seen. If
-   duplicate, return the cached response.
-3. **Version negotiation** -- Validate `Accept-Version` header. If
-   unsupported, return 406.
-4. **Body schema validation** -- Parse and validate the body against
-   the body type schema. If invalid, return 400.
-5. **Authentication** -- Parse `Authorization` header and resolve
-   trust tier.
-6. **Rate limiting** -- Check sender rate against their trust tier's
-   limit. If exceeded, return 429.
-7. **Sender tracking** -- Check sender failure history. If blocked,
-   return 429.
-8. **Concurrency check** -- Check current task count. If at capacity,
-   return 503.
-9. **Nonce replay check** -- Verify nonce has not been seen. If
-   replayed, return 409.
-10. **Session validation** -- If `Session-Id` is present, validate the
-    session exists and is active. If expired, return 410.
-11. **Session binding** -- If `Session-Binding` is present, verify the
-    HMAC. If invalid, return 403.
-12. **Delegation validation** -- If the body contains a delegation
-    chain, validate all links per Section 11.11.1.
-13. **Loop detection** -- Check `Visited-Agents` header for cycles.
-    If loop detected, return 409.
-14. **Compliance check** -- Evaluate content classification and
-    jurisdiction constraints.
-15. **Contact policy** -- Verify the sender is permitted to contact
-    the agent per the visibility config.
-16. **Dispatch** -- Route the message to the appropriate handler
-    based on `body_type`.
+**Normative ordering constraints**
 
-This order ensures that cheap checks (size, dedup) are performed
-before expensive checks (cryptographic verification, delegation
-chain validation).
+- The message size limit MUST be enforced before the body is parsed.
+- **Authentication MUST run before deduplication, and deduplication
+  MUST be keyed by the authenticated caller** (Section 12.5).
+
+  A dedup store returns the *cached response* for a repeated message
+  ID. If deduplication ran before authentication, or were keyed only by
+  the `sender` and `id` fields that the client chooses, then anyone who
+  learns a message ID could submit an unauthenticated or differently
+  authenticated envelope with that ID and receive the original caller's
+  reply. Message IDs are not secrets: they appear in logs, in
+  `In-Reply-To` headers, and in traces. Keying the cache by the
+  authenticated principal means a replayed ID only ever returns a
+  response to the caller that earned it.
+
+  Anonymous callers, where the deployment admits them, share one
+  principal identity. Deployments that must keep anonymous replies
+  confidential MUST require authentication.
+- Envelope and body validation, sender binding, and the recipient check
+  SHOULD run before deduplication, so that rejected envelopes never
+  occupy dedup capacity or get a cached rejection.
+- Rate limiting SHOULD run immediately after authentication, before
+  expensive validation. It is keyed by principal, or by peer address
+  for anonymous callers.
+- Nonces MUST be recorded only after the signature that carries them
+  verifies (Sections 12.6 and 12.15).
+
+**Reference server order** (`AgentServer.handle`,
+`_handle_message_request` and `_handle_message` in
+`ampro/server/core.py`; policy in `ampro/server/security.py`):
+
+1. **Message size** -- A body over `max_message_bytes` (default
+   10 MiB) is rejected with 413. This check runs for every route.
+2. **Authentication** -- The configured authenticators run in order,
+   and the first principal wins. The authenticators are RFC 9421
+   signatures (Section 12.15), and JWT, DID proof, API key or mTLS
+   credentials (Section 12.1).
+   - A presented but invalid credential is rejected with 401 and
+     `WWW-Authenticate`.
+   - With no credential, the request is rejected with 401 if the policy
+     requires authentication. Otherwise the caller is anonymous at tier
+     EXTERNAL.
+3. **Rate limiting** -- The limit is applied per principal, or per peer
+   address for anonymous callers. An exceeded limit gets 429 with
+   `Retry-After` and the `X-RateLimit-*` headers.
+4. **Envelope and schema validation** -- A body that is not JSON, an
+   invalid `AgentMessage`, or a body that fails its `body_type` schema
+   is rejected with 400. Unknown body types pass through (Section
+   5.1.4).
+5. **Sender binding** -- If the principal is cryptographically bound to
+   an agent address (an RFC 9421 key with a known owner, a DID proof, or
+   an mTLS identity), the envelope `sender` MUST equal that address, or
+   the request is rejected with 403.
+6. **Recipient check** -- The envelope `recipient` (normalised) MUST be
+   one of this agent's identifiers or configured aliases, or the request
+   is rejected with 400. This stops a message signed for agent A from
+   being replayed against agent B.
+7. **Loop detection** -- A `Visited-Agents` header with more than 20
+   entries, or one that already contains this agent, is rejected with
+   409.
+8. **Handler lookup** -- A body type with no handler gets 501.
+9. **Deduplication** -- The key is
+   `principal_id || 0x00 || sender || 0x00 || id`.
+   - For a completed duplicate, the server returns the cached response.
+   - For a duplicate still in flight, it returns 409.
+   - Responses with a status of 500 or above are not cached.
+10. **Concurrency** -- Requests are limited per principal (or per
+    sender for anonymous callers) and in total. A request over the
+    limit gets 503 with `Retry-After`.
+11. **Dispatch with timeout** -- The handler runs under the configured
+    timeout. A timeout returns 408.
+
+Implementations that also perform the checks below SHOULD place them
+after step 6 and before dispatch:
+
+- version negotiation (406);
+- session validation (410), with session binding verified per Section
+  9.3.2 (403);
+- delegation-chain validation (Section 11.11.1);
+- compliance and contact-policy checks (403).
+
+The reference server leaves these checks to handlers and middleware.
 
 ---
 

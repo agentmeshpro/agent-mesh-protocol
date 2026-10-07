@@ -2,9 +2,14 @@
 Agent Protocol — Handshake Body Types & State Machine.
 
 Implements the session handshake lifecycle for the Agent Mesh Protocol:
-  1. Client sends session.init with proposed capabilities and nonce
-  2. Server replies with session.established (negotiated capabilities + binding token)
-  3. Client sends session.confirm (binding proof + confirm_nonce echo)
+  1. Client sends session.init with proposed capabilities, nonce and an
+     ephemeral X25519 public key (``client_ephemeral_key``)
+  2. Server replies with session.established (negotiated capabilities,
+     server nonce, confirm_nonce and its own ``server_ephemeral_key``)
+  3. Both sides derive the binding key via X25519 + HKDF-SHA256; the key
+     is never transmitted. Client sends session.confirm (binding proof +
+     confirm_nonce echo); the server verifies it with
+     :func:`server_verify_confirm`.
   4. Session transitions to ACTIVE
 
 Once active, sessions support ping/pong keepalive, pause/resume, and close.
@@ -13,18 +18,21 @@ The HandshakeStateMachine enforces valid state transitions and raises
 ValueError on illegal moves.
 
 Security notes:
-  - ``binding_token`` is a shared secret derived during the handshake.
-    It MUST only travel over TLS / encrypted channels. Transmitting it
-    in plaintext would allow an eavesdropper to forge per-message binding
-    proofs and hijack the session. AMP does NOT support unencrypted
-    transports, so this invariant holds in all real deployments.
+  - The binding key is derived independently by both peers from an
+    ephemeral X25519 exchange (see ``ampro.session.binding``) and is
+    NEVER sent on the wire. ``SessionEstablishedBody.binding_token`` is a
+    deprecated legacy field; servers MUST NOT populate it and clients
+    ignore it.
+  - Verification of ``binding_proof`` is mandatory: a server that cannot
+    verify it (no ephemeral key from the client, bad proof) rejects the
+    handshake with :class:`SessionBindingError`.
   - ``confirm_nonce`` provides replay protection for the session.confirm
     step. The server issues a single-use nonce in session.established;
     the client echoes it in session.confirm. The HandshakeStateMachine
     tracks issued and consumed nonces and raises SessionReplayError on
     any replay or unknown nonce.
 
-PURE — zero platform-specific imports. Only pydantic and stdlib.
+PURE — zero platform-specific imports. Only pydantic, stdlib and cryptography.
 """
 
 from __future__ import annotations
@@ -36,12 +44,21 @@ import json
 import secrets
 import threading
 import time
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from pydantic import BaseModel, Field
 
 from ampro.errors import SessionError
+from ampro.session.binding import (
+    SessionBinding,
+    compute_binding_proof,
+    derive_session_binding_key,
+    generate_ephemeral_keypair,
+    verify_binding_proof,
+)
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -54,6 +71,15 @@ class SessionReplayError(SessionError):
     This indicates either a replay attack on the session.confirm message
     or a programming error where the nonce was not properly generated via
     the HandshakeStateMachine.
+    """
+
+
+class SessionBindingError(SessionError):
+    """Raised when session binding cannot be established or verified.
+
+    Examples: the peer did not supply an ephemeral key, the
+    ``binding_proof`` does not verify, or the confirm refers to a
+    different session.
     """
 
 
@@ -114,6 +140,14 @@ class SessionInitBody(BaseModel):
         default=None,
         description="Previous session ID for session resumption",
     )
+    client_ephemeral_key: str | None = Field(
+        default=None,
+        description=(
+            "Client ephemeral X25519 public key (32 bytes, base64url, no "
+            "padding) for binding-key agreement. Required by servers that "
+            "bind sessions (server_accept_init rejects an init without it)."
+        ),
+    )
 
     model_config = {"extra": "ignore"}
 
@@ -143,10 +177,19 @@ class SessionEstablishedBody(BaseModel):
     server_nonce: str = Field(
         description="Server-side 256-bit hex nonce for binding proof",
     )
-    binding_token: str = Field(
+    server_ephemeral_key: str | None = Field(
+        default=None,
         description=(
-            "Token the client must prove possession of in session.confirm. "
-            "MUST only travel over TLS / encrypted channels — see module docstring."
+            "Server ephemeral X25519 public key (32 bytes, base64url, no "
+            "padding). Clients MUST refuse a session.established without it."
+        ),
+    )
+    binding_token: str | None = Field(
+        default=None,
+        description=(
+            "DEPRECATED — legacy field that carried the binding secret in "
+            "the clear. Servers MUST NOT send it; clients MUST ignore it. "
+            "The binding key is derived via X25519 key agreement instead."
         ),
     )
     confirm_nonce: str = Field(
@@ -171,7 +214,10 @@ class SessionConfirmBody(BaseModel):
         description="Session ID from the session.established message",
     )
     binding_proof: str = Field(
-        description="Cryptographic proof derived from client_nonce, server_nonce, and binding_token",
+        description=(
+            "HMAC-SHA256 under the derived binding key over the handshake "
+            "transcript (see ampro.session.binding.compute_binding_proof)"
+        ),
     )
     confirm_nonce: str = Field(
         description=(
@@ -227,10 +273,10 @@ class SessionPongBody(BaseModel):
 class SessionPauseBody(BaseModel):
     """body.type = 'session.pause' — Temporarily suspend the session.
 
-    The ``resume_token`` SHOULD be created via :func:`create_resume_token`
-    which embeds session_id, binding_token, and optional context into a
-    structured, optionally HMAC-signed token. This ensures the binding
-    state survives process restarts and can be verified on resume.
+    ``resume_token`` MUST be an opaque, unguessable handle (e.g.
+    ``secrets.token_urlsafe(32)``).  Do NOT send the output of
+    :func:`create_resume_token` here: that structure embeds the session's
+    binding key and must stay server-side, keyed by the opaque handle.
     """
 
     session_id: str = Field(
@@ -287,6 +333,14 @@ _TOKEN_VERSION_UNSIGNED = "v1u"
 # Cap on resume token length. Tokens encode session_id + binding_token plus
 # small session context; a token over 64KiB is a DoS attempt or a misuse.
 _MAX_RESUME_TOKEN_BYTES = 65_536
+
+# Default maximum age of a resume token (seconds). Override per call via
+# ``parse_resume_token(..., max_age_seconds=...)``.
+DEFAULT_RESUME_TOKEN_MAX_AGE_SECONDS: float = 3600.0
+
+# Tolerance for resume tokens whose created_at lies slightly in the future
+# (clock skew between processes sharing the HMAC key).
+_RESUME_TOKEN_FUTURE_SKEW = timedelta(seconds=30)
 
 
 def create_resume_token(
@@ -349,7 +403,12 @@ def allow_unsigned_resume_tokens(allow: bool) -> None:
     _ALLOW_UNSIGNED_RESUME_TOKENS = allow
 
 
-def parse_resume_token(token: str, key: bytes | None = None) -> dict:
+def parse_resume_token(
+    token: str,
+    key: bytes | None = None,
+    *,
+    max_age_seconds: float = DEFAULT_RESUME_TOKEN_MAX_AGE_SECONDS,
+) -> dict:
     """Parse and verify a resume token.
 
     Security contract:
@@ -363,9 +422,14 @@ def parse_resume_token(token: str, key: bytes | None = None) -> dict:
         accepted only when *key* is also ``None``. Mixing signed/unsigned
         forms is rejected.
 
+      * Tokens expire: ``created_at`` (embedded and covered by the HMAC)
+        MUST be a tz-aware ISO-8601 timestamp no older than
+        *max_age_seconds* and not in the future (beyond 30s skew).
+
     Args:
         token: The resume token string produced by :func:`create_resume_token`.
         key: HMAC-SHA256 key, required for signed tokens.
+        max_age_seconds: Maximum token age (default 1 hour). Must be > 0.
 
     Returns:
         Parsed dict with ``session_id``, ``binding_token``, ``context``,
@@ -373,8 +437,11 @@ def parse_resume_token(token: str, key: bytes | None = None) -> dict:
 
     Raises:
         ValueError: If the token is malformed, signed format without a key,
-            unsigned format with a key, or the signature does not match.
+            unsigned format with a key, the signature does not match, or
+            the token is expired / missing a valid ``created_at``.
     """
+    if not max_age_seconds or max_age_seconds <= 0:
+        raise ValueError("max_age_seconds must be a positive number")
     if len(token) > _MAX_RESUME_TOKEN_BYTES:
         raise ValueError(
             f"resume token exceeds {_MAX_RESUME_TOKEN_BYTES} byte cap"
@@ -446,6 +513,23 @@ def parse_resume_token(token: str, key: bytes | None = None) -> dict:
             "supplied — refusing inconsistent token"
         )
 
+    created_raw = data.get("created_at")
+    if not isinstance(created_raw, str):
+        raise ValueError("Token payload missing created_at")
+    try:
+        created_at = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"Token created_at is not ISO-8601: {exc}") from exc
+    if created_at.tzinfo is None or created_at.utcoffset() is None:
+        raise ValueError("Token created_at must be timezone-aware")
+    now = datetime.now(UTC)
+    if created_at > now + _RESUME_TOKEN_FUTURE_SKEW:
+        raise ValueError("Token created_at is in the future")
+    if now - created_at > timedelta(seconds=max_age_seconds):
+        raise ValueError(
+            f"Resume token expired (older than {max_age_seconds:g}s)"
+        )
+
     return data
 
 
@@ -512,7 +596,10 @@ class HandshakeStateMachine:
             if timeout_seconds is not None
             else self.DEFAULT_TIMEOUT_SECONDS
         )
-        self._started_at: float = time.monotonic()
+        # The handshake clock starts at the first transition out of IDLE
+        # (send_init / receive_init), not at construction — a state machine
+        # may legitimately be created ahead of time.
+        self._started_at: float | None = None
 
     @property
     def timeout_seconds(self) -> float:
@@ -600,7 +687,10 @@ class HandshakeStateMachine:
         with self._lock:
             # Timeout only applies while the handshake is still negotiating.
             # Once ACTIVE / PAUSED / CLOSED the session has its own TTL.
-            if self._state not in (
+            if self._started_at is None:
+                if self._state == HandshakeState.IDLE:
+                    self._started_at = time.monotonic()
+            elif self._state not in (
                 HandshakeState.ACTIVE,
                 HandshakeState.PAUSED,
                 HandshakeState.CLOSED,
@@ -621,3 +711,217 @@ class HandshakeStateMachine:
                 )
             self._state = next_state
             return self._state
+
+
+# ---------------------------------------------------------------------------
+# Handshake helpers (key agreement + mandatory proof verification)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ClientHandshakeState:
+    """Client-side secrets held between session.init and session.established."""
+
+    client_nonce: str
+    client_public_key: str
+    private_key: X25519PrivateKey
+
+
+def client_start_handshake(
+    proposed_capabilities: list[str],
+    proposed_version: str,
+    state_machine: HandshakeStateMachine | None = None,
+    *,
+    conversation_id: str | None = None,
+    previous_session_id: str | None = None,
+) -> tuple[SessionInitBody, ClientHandshakeState]:
+    """Build a ``session.init`` body with a fresh nonce and ephemeral key.
+
+    Transitions *state_machine* (if given) via ``send_init``.
+    """
+    private_key, public_key = generate_ephemeral_keypair()
+    client_nonce = secrets.token_hex(32)
+    body = SessionInitBody(
+        proposed_capabilities=proposed_capabilities,
+        proposed_version=proposed_version,
+        client_nonce=client_nonce,
+        conversation_id=conversation_id,
+        previous_session_id=previous_session_id,
+        client_ephemeral_key=public_key,
+    )
+    if state_machine is not None:
+        state_machine.transition("send_init")
+    return body, ClientHandshakeState(client_nonce, public_key, private_key)
+
+
+def server_accept_init(
+    init: SessionInitBody,
+    state_machine: HandshakeStateMachine,
+    *,
+    session_id: str,
+    negotiated_capabilities: list[str],
+    negotiated_version: str,
+    trust_tier: str,
+    trust_score: int,
+    session_ttl_seconds: int = 3600,
+) -> tuple[SessionEstablishedBody, SessionBinding]:
+    """Server side of phase 2: derive the binding key, build session.established.
+
+    Transitions *state_machine* ``receive_init`` -> ``send_established`` and
+    issues a single-use confirm nonce. The returned :class:`SessionBinding`
+    holds the derived key and transcript values; keep it server-side and
+    pass it to :func:`server_verify_confirm`. The established body does
+    NOT contain the binding key.
+
+    Raises:
+        SessionBindingError: If the init lacks a valid ``client_ephemeral_key``.
+    """
+    if not init.client_ephemeral_key:
+        raise SessionBindingError(
+            "session.init has no client_ephemeral_key — binding key agreement "
+            "is mandatory"
+        )
+    state_machine.transition("receive_init")
+    private_key, server_public = generate_ephemeral_keypair()
+    server_nonce = secrets.token_hex(32)
+    try:
+        key = derive_session_binding_key(
+            private_key,
+            init.client_ephemeral_key,
+            session_id=session_id,
+            client_nonce=init.client_nonce,
+            server_nonce=server_nonce,
+            client_public_key=init.client_ephemeral_key,
+            server_public_key=server_public,
+        )
+    except ValueError as exc:
+        raise SessionBindingError(f"key agreement failed: {exc}") from exc
+    confirm_nonce = state_machine.issue_confirm_nonce()
+    body = SessionEstablishedBody(
+        session_id=session_id,
+        negotiated_capabilities=negotiated_capabilities,
+        negotiated_version=negotiated_version,
+        trust_tier=trust_tier,
+        trust_score=trust_score,
+        session_ttl_seconds=session_ttl_seconds,
+        server_nonce=server_nonce,
+        server_ephemeral_key=server_public,
+        confirm_nonce=confirm_nonce,
+    )
+    binding = SessionBinding(
+        session_id=session_id,
+        binding_token=key,
+        client_nonce=init.client_nonce,
+        server_nonce=server_nonce,
+        client_public_key=init.client_ephemeral_key,
+        server_public_key=server_public,
+        confirm_nonce=confirm_nonce,
+    )
+    state_machine.transition("send_established")
+    return body, binding
+
+
+def client_finish_handshake(
+    state: ClientHandshakeState,
+    established: SessionEstablishedBody,
+    state_machine: HandshakeStateMachine | None = None,
+) -> tuple[SessionConfirmBody, SessionBinding]:
+    """Client side of phase 3: derive the key and build session.confirm.
+
+    Any ``binding_token`` in *established* is ignored. Transitions
+    *state_machine* (if given) ``receive_established`` -> ``send_confirm``.
+
+    Raises:
+        SessionBindingError: If the server did not perform key agreement
+            (no ``server_ephemeral_key``) or the key is invalid.
+    """
+    if not established.server_ephemeral_key:
+        raise SessionBindingError(
+            "session.established has no server_ephemeral_key — refusing "
+            "unbound / legacy cleartext-token session"
+        )
+    if state_machine is not None:
+        state_machine.transition("receive_established")
+    try:
+        key = derive_session_binding_key(
+            state.private_key,
+            established.server_ephemeral_key,
+            session_id=established.session_id,
+            client_nonce=state.client_nonce,
+            server_nonce=established.server_nonce,
+            client_public_key=state.client_public_key,
+            server_public_key=established.server_ephemeral_key,
+        )
+    except ValueError as exc:
+        raise SessionBindingError(f"key agreement failed: {exc}") from exc
+    binding = SessionBinding(
+        session_id=established.session_id,
+        binding_token=key,
+        client_nonce=state.client_nonce,
+        server_nonce=established.server_nonce,
+        client_public_key=state.client_public_key,
+        server_public_key=established.server_ephemeral_key,
+        confirm_nonce=established.confirm_nonce,
+    )
+    proof = compute_binding_proof(
+        key,
+        session_id=binding.session_id,
+        client_nonce=binding.client_nonce,
+        server_nonce=binding.server_nonce,
+        confirm_nonce=binding.confirm_nonce,
+        client_public_key=binding.client_public_key,
+        server_public_key=binding.server_public_key,
+    )
+    confirm = SessionConfirmBody(
+        session_id=binding.session_id,
+        binding_proof=proof,
+        confirm_nonce=binding.confirm_nonce,
+    )
+    if state_machine is not None:
+        state_machine.transition("send_confirm")
+    return confirm, binding
+
+
+def server_verify_confirm(
+    confirm: SessionConfirmBody,
+    binding: SessionBinding,
+    state_machine: HandshakeStateMachine,
+) -> bool:
+    """Verify a client's session.confirm (mandatory for bound sessions).
+
+    Checks, in order: session_id and confirm_nonce match the binding,
+    ``binding_proof`` verifies (constant time), then consumes the confirm
+    nonce (replay protection) and transitions ``receive_confirm``.
+
+    Returns:
+        True on success.
+
+    Raises:
+        SessionBindingError: On session mismatch or invalid proof.
+        SessionReplayError: If the confirm nonce was already consumed or
+            never issued.
+    """
+    if not binding.binding_token or not binding.server_public_key:
+        raise SessionBindingError("binding has no derived key")
+    if not hmac.compare_digest(
+        confirm.session_id.encode("utf-8"), binding.session_id.encode("utf-8")
+    ):
+        raise SessionBindingError("session.confirm session_id mismatch")
+    if not hmac.compare_digest(
+        confirm.confirm_nonce.encode("utf-8"), binding.confirm_nonce.encode("utf-8")
+    ):
+        raise SessionBindingError("session.confirm confirm_nonce mismatch")
+    if not verify_binding_proof(
+        binding.binding_token,
+        confirm.binding_proof,
+        session_id=binding.session_id,
+        client_nonce=binding.client_nonce,
+        server_nonce=binding.server_nonce,
+        confirm_nonce=binding.confirm_nonce,
+        client_public_key=binding.client_public_key,
+        server_public_key=binding.server_public_key,
+    ):
+        raise SessionBindingError("binding_proof verification failed")
+    state_machine.consume_confirm_nonce(confirm.confirm_nonce)
+    state_machine.transition("receive_confirm")
+    return True

@@ -11,22 +11,24 @@ and streaming events look when wired into FastAPI by hand.
 A more complete agent with tools, streaming, and health endpoint.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
     uvicorn examples.02_fastapi_agent:app --port 8000
 """
 
+# requires: fastapi  (tests/test_examples_run.py skips this example if missing)
+from uuid import uuid4
+
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from uuid import uuid4
 
 from ampro import (
     AgentMessage,
     CapabilityGroup,
     CapabilitySet,
+    HealthResponse,
     StreamingEvent,
     StreamingEventType,
     validate_body,
-    HealthResponse,
 )
 
 app = FastAPI(title="FastAPI Agent")

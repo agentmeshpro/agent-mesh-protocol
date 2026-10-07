@@ -4,14 +4,14 @@
 Demonstrates the three addressing forms and resolution rules.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/04_addressing.py
 """
 
 from ampro import (
-    parse_agent_uri,
-    normalize_shorthand,
     AddressType,
+    normalize_shorthand,
+    parse_agent_uri,
 )
 
 # --- Three Address Forms ---

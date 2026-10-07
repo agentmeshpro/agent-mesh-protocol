@@ -5,7 +5,7 @@ The simplest possible protocol-compliant agent.
 30 lines. No framework dependency beyond Flask.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git flask
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git flask
     python examples/01_minimum_viable_agent.py
 
 Test:
@@ -15,8 +15,11 @@ Test:
       -d '{"sender":"agent://tester.local","recipient":"agent://my-pi.local","body_type":"message","body":{"text":"hello"},"headers":{"Protocol-Version":"1.0.0"}}'
 """
 
-from flask import Flask, request, jsonify
+# requires: flask  (tests/test_examples_run.py skips this example if missing)
+import os
 from uuid import uuid4
+
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -53,4 +56,8 @@ def message():
 
 
 if __name__ == "__main__":
-    app.run(port=8000)
+    if os.environ.get("AMPRO_EXAMPLE_NO_SERVE"):
+        # Smoke-test mode (tests/test_examples_run.py): don't block on a server.
+        print("AMPRO_EXAMPLE_NO_SERVE is set; not starting the server.")
+    else:
+        app.run(port=8000)

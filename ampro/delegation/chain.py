@@ -7,21 +7,23 @@ narrowing at each hop.
 
 This module is PURE — only stdlib + pydantic + cryptography.
 No platform-specific imports (app.*, etc.).
-Designed for extraction as part of `pip install agent-protocol`.
+Designed for extraction as part of `pip install ampro`.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Clock skew tolerance — imported from canonical constant in trust.tiers.
 from ampro.trust.tiers import CLOCK_SKEW_SECONDS
@@ -35,7 +37,12 @@ _SKEW = timedelta(seconds=CLOCK_SKEW_SECONDS)
 
 
 class DelegationLink(BaseModel):
-    """A single hop in a delegation chain."""
+    """A single hop in a delegation chain.
+
+    Every field except ``signature`` is covered by the delegator's Ed25519
+    signature (see :func:`canonical_link_payload`). Timestamps MUST carry
+    an explicit UTC offset; naive datetimes are rejected at validation.
+    """
 
     delegator: str = Field(description="Agent ID of the delegating agent")
     delegate: str = Field(description="Agent ID receiving the delegation")
@@ -44,10 +51,13 @@ class DelegationLink(BaseModel):
     )
     max_depth: int = Field(
         default=3,
-        description="Maximum remaining delegation depth from this link onward",
+        description=(
+            "Maximum number of links (including this one) permitted from "
+            "this link onward. Each child MUST set max_depth <= parent - 1."
+        ),
     )
-    created_at: datetime = Field(description="When this link was created")
-    expires_at: datetime = Field(description="When this link expires")
+    created_at: datetime = Field(description="When this link was created (tz-aware)")
+    expires_at: datetime = Field(description="When this link expires (tz-aware)")
     signature: str = Field(
         default="",
         description="Base64-encoded Ed25519 signature by the delegator",
@@ -73,6 +83,16 @@ class DelegationLink(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+    @field_validator("created_at", "expires_at")
+    @classmethod
+    def _require_tz_aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None or v.utcoffset() is None:
+            raise ValueError(
+                "delegation timestamps must be timezone-aware (RFC 3339 with "
+                "'Z' or an explicit offset); naive datetimes are rejected"
+            )
+        return v
+
 
 class DelegationChain(BaseModel):
     """An ordered sequence of delegation links forming a chain of trust."""
@@ -95,6 +115,43 @@ class DelegationChain(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def canonical_timestamp(value: datetime) -> str:
+    """Render a tz-aware datetime as canonical RFC 3339 UTC with ``Z``.
+
+    Format: ``YYYY-MM-DDTHH:MM:SSZ``, or ``YYYY-MM-DDTHH:MM:SS.ffffffZ``
+    when the value has a non-zero microsecond component.
+
+    Raises:
+        ValueError: If *value* is naive.
+    """
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("naive datetime cannot be canonicalised")
+    utc = value.astimezone(UTC)
+    base = utc.strftime("%Y-%m-%dT%H:%M:%S")
+    if utc.microsecond:
+        base += f".{utc.microsecond:06d}"
+    return base + "Z"
+
+
+def canonical_link_payload(
+    link: DelegationLink,
+    parent_delegate: str | None = None,
+) -> dict:
+    """Return the dict that is signed for *link*.
+
+    Contains **every** model field except ``signature`` (so trust_tier,
+    chain_budget, jwks_url, max_fan_out, ... are all tamper-evident), plus
+    ``parent_delegate`` binding the link to its chain position. Scopes are
+    sorted and timestamps canonicalised via :func:`canonical_timestamp`.
+    """
+    data = link.model_dump(exclude={"signature"})
+    data["created_at"] = canonical_timestamp(link.created_at)
+    data["expires_at"] = canonical_timestamp(link.expires_at)
+    data["scopes"] = sorted(link.scopes)
+    data["parent_delegate"] = parent_delegate
+    return data
+
+
 def _canonical_link_bytes(
     link: DelegationLink,
     parent_delegate: str | None = None,
@@ -103,8 +160,8 @@ def _canonical_link_bytes(
     Produce deterministic JSON bytes for a delegation link,
     excluding the ``signature`` field.
 
-    Keys are sorted and no extra whitespace is used so that
-    any compliant implementation can reproduce the same bytes.
+    Keys are sorted, no whitespace, ``ensure_ascii=False`` and UTF-8, so
+    that any compliant implementation can reproduce the same bytes.
 
     Args:
         link: The delegation link to serialize.
@@ -113,28 +170,26 @@ def _canonical_link_bytes(
             canonical payload binds the signature to a specific position
             in a specific chain, preventing cross-chain transplant attacks.
     """
-    data = {
-        "created_at": link.created_at.isoformat(),
-        "delegate": link.delegate,
-        "delegator": link.delegator,
-        "expires_at": link.expires_at.isoformat(),
-        "max_depth": link.max_depth,
-        "parent_delegate": parent_delegate,
-        "scopes": sorted(link.scopes),
-    }
-    return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        canonical_link_payload(link, parent_delegate),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
 
 
-def _canonical_dict_bytes(link_data: dict) -> bytes:
+def delegation_link_id(link: DelegationLink) -> str:
+    """Stable identifier for a link, used as the key in ``fan_out_counts``.
+
+    SHA-256 (hex) over the link's canonical signed bytes (root-position
+    form) concatenated with its signature, so distinct grants never share
+    an id.
     """
-    Produce deterministic JSON bytes from a raw dict,
-    excluding the ``signature`` key if present.
-    """
-    cleaned = {k: v for k, v in link_data.items() if k != "signature"}
-    # Normalise scopes to sorted list for determinism
-    if "scopes" in cleaned and isinstance(cleaned["scopes"], list):
-        cleaned["scopes"] = sorted(cleaned["scopes"])
-    return json.dumps(cleaned, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    h = hashlib.sha256()
+    h.update(_canonical_link_bytes(link, None))
+    h.update(b"\x00")
+    h.update(link.signature.encode("utf-8"))
+    return h.hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -209,11 +264,17 @@ def validate_scope_narrowing(
 
 def sign_delegation(
     private_key_bytes: bytes,
-    link_data: dict,
+    link_data: dict | DelegationLink,
     parent_delegate: str | None = None,
 ) -> str:
     """
-    Sign canonical JSON of *link_data* (excluding signature) with Ed25519.
+    Sign the canonical form of a delegation link with Ed25519.
+
+    *link_data* is first validated as a :class:`DelegationLink` (so model
+    defaults are filled in and timestamps normalised) and then serialised
+    via :func:`canonical_link_payload` — exactly the bytes the verifier in
+    :func:`validate_chain` reconstructs. Every field except ``signature``
+    is signed.
 
     The ``parent_delegate`` is injected into the canonical payload before
     signing so that the resulting signature is bound to a specific chain
@@ -221,17 +282,23 @@ def sign_delegation(
 
     Args:
         private_key_bytes: Raw 32-byte Ed25519 private key seed.
-        link_data: Dict representing the delegation link fields.
+        link_data: Dict (or model) representing the delegation link fields.
+            Timestamps may be tz-aware datetimes or RFC 3339 strings with
+            ``Z`` / an explicit offset.
         parent_delegate: The ``delegate`` of the parent link, or ``None``
             for the root link.
 
     Returns:
         Base64-encoded signature string.
     """
+    if isinstance(link_data, DelegationLink):
+        link = link_data
+    else:
+        link = DelegationLink.model_validate(
+            {k: v for k, v in link_data.items() if k != "signature"}
+        )
     private_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
-    # Inject parent_delegate into the dict before canonical serialization
-    augmented = {**link_data, "parent_delegate": parent_delegate}
-    payload = _canonical_dict_bytes(augmented)
+    payload = _canonical_link_bytes(link, parent_delegate=parent_delegate)
     signature = private_key.sign(payload)
     return base64.b64encode(signature).decode("ascii")
 
@@ -244,25 +311,44 @@ def sign_delegation(
 def validate_chain(
     chain: DelegationChain,
     public_keys: dict[str, bytes],
+    *,
+    fan_out_counts: Mapping[str, int] | None = None,
 ) -> tuple[bool, str]:
     """
     Validate every link in a delegation chain.
 
     Checks performed for each link (in order):
+      0. No self-delegation.
       1. Delegator's public key is available.
-      2. Ed25519 signature is valid.
-      3. Link has not expired.
-      4. Depth does not exceed the max_depth of the *parent* link
-         (or the link's own max_depth for the root).
+      2. Ed25519 signature over the canonical link (ALL fields except
+         ``signature``, plus ``parent_delegate``) is valid.
+      3. Link has not expired / is not from the future.
+      4. Depth: ``max_depth >= 1``; for children
+         ``max_depth <= parent.max_depth - 1``; and the total chain length
+         MUST NOT exceed the root's ``max_depth``.
       5. Scopes are a valid narrowing of the parent link's scopes.
       6. Chain continuity: each link's delegator equals the previous
          link's delegate.
       7. Temporal nesting: each link's validity window is within
          its parent's.
+      8. Fan-out: when *fan_out_counts* is supplied, every non-terminal
+         link's recorded sub-delegation count MUST be below its
+         ``max_fan_out``.
+      9. Budget (fail-closed): ``chain_budget`` must parse, satisfy
+         ``0 < remaining <= max``, and both values must be
+         non-increasing along the chain. Once a link carries a budget,
+         all descendants MUST carry one.
 
     Args:
         chain: The delegation chain to validate.
         public_keys: Mapping of agent_id -> raw 32-byte Ed25519 public key.
+        fan_out_counts: Optional mapping of :func:`delegation_link_id` ->
+            number of sub-delegations ALREADY issued under that link,
+            excluding the chain being validated. When provided, a
+            non-terminal link whose count is ``>= max_fan_out`` fails the
+            chain. Callers increment the count after accepting the chain.
+            When ``None`` the fan-out limit cannot be checked (stateless
+            validation) and is skipped.
 
     Returns:
         ``(True, "valid")`` on success, or ``(False, reason)`` on failure.
@@ -272,7 +358,16 @@ def validate_chain(
 
     now = datetime.now(UTC)
 
+    root = chain.links[0]
+    if len(chain.links) > root.max_depth:
+        return (
+            False,
+            f"chain depth {len(chain.links)} exceeds root max_depth {root.max_depth}",
+        )
+
     for i, link in enumerate(chain.links):
+        parent = chain.links[i - 1] if i > 0 else None
+
         # --- 0. Self-delegation check ---
         if link.delegator == link.delegate:
             return False, f"link {i}: self-delegation not allowed ({link.delegator})"
@@ -282,55 +377,57 @@ def validate_chain(
         if pub_bytes is None:
             return False, f"link {i}: unknown delegator '{link.delegator}'"
 
-        # --- 2. Signature verification (context-bound) ---
-        parent_delegate = chain.links[i - 1].delegate if i > 0 else None
+        # --- 2. Signature verification (all fields, context-bound) ---
+        parent_delegate = parent.delegate if parent is not None else None
         try:
             pub_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
             payload = _canonical_link_bytes(link, parent_delegate=parent_delegate)
-            sig_bytes = base64.b64decode(link.signature)
+            sig_bytes = base64.b64decode(link.signature, validate=True)
             pub_key.verify(sig_bytes, payload)
         except Exception as exc:
-            return False, f"link {i}: invalid signature ({exc})"
+            return False, f"link {i}: invalid signature ({type(exc).__name__})"
 
         # --- 3. Expiry check (with clock skew tolerance) ---
         if link.expires_at <= now - _SKEW:
-            return False, f"link {i}: expired (expires_at={link.expires_at.isoformat()})"
+            return (
+                False,
+                f"link {i}: expired (expires_at={canonical_timestamp(link.expires_at)})",
+            )
 
         if link.created_at > now + _SKEW:
             return False, f"link {i}: created_at is in the future"
 
         # --- 4. Depth check ---
-        if i > 0:
-            parent = chain.links[i - 1]
-            # The current hop index (1-based) must not exceed the parent's max_depth
-            if i >= parent.max_depth:
-                return (
-                    False,
-                    f"link {i}: depth {i} exceeds parent max_depth {parent.max_depth}",
-                )
+        if link.max_depth < 1:
+            return False, f"link {i}: max_depth {link.max_depth} must be >= 1"
+        if parent is not None and link.max_depth > parent.max_depth - 1:
+            return (
+                False,
+                f"link {i}: max_depth {link.max_depth} must be <= parent "
+                f"max_depth - 1 ({parent.max_depth - 1})",
+            )
 
         # --- 5. Scope narrowing ---
-        if i > 0:
-            parent = chain.links[i - 1]
-            if not validate_scope_narrowing(parent.scopes, link.scopes):
-                return (
-                    False,
-                    f"link {i}: scopes {link.scopes} not subset of parent {parent.scopes}",
-                )
+        if not link.scopes:
+            return False, f"link {i}: a delegation must grant at least one scope"
+        if parent is not None and not validate_scope_narrowing(
+            parent.scopes, link.scopes
+        ):
+            return (
+                False,
+                f"link {i}: scopes {link.scopes} not subset of parent {parent.scopes}",
+            )
 
         # --- 6. Chain continuity ---
-        if i > 0:
-            parent = chain.links[i - 1]
-            if link.delegator != parent.delegate:
-                return (
-                    False,
-                    f"link {i}: delegator '{link.delegator}' != "
-                    f"previous delegate '{parent.delegate}'",
-                )
+        if parent is not None and link.delegator != parent.delegate:
+            return (
+                False,
+                f"link {i}: delegator '{link.delegator}' != "
+                f"previous delegate '{parent.delegate}'",
+            )
 
         # --- 7. Temporal nesting ---
-        if i > 0:
-            parent = chain.links[i - 1]
+        if parent is not None:
             if link.created_at < parent.created_at - _SKEW:
                 return (
                     False,
@@ -342,37 +439,50 @@ def validate_chain(
                     f"link {i}: expires_at exceeds parent's expires_at",
                 )
 
-        # --- 8. Fan-out check ---
-        if hasattr(link, 'max_fan_out') and i > 0:
-            # max_fan_out limits how many sub-delegations at each level
-            if link.max_fan_out <= 0:
-                return False, f"link {i}: max_fan_out is {link.max_fan_out} (must be > 0)"
+        # --- 8. Fan-out check (stateful; needs a counter store) ---
+        if fan_out_counts is not None and i < len(chain.links) - 1:
+            issued = fan_out_counts.get(delegation_link_id(link), 0)
+            if issued >= link.max_fan_out:
+                return (
+                    False,
+                    f"link {i}: max_fan_out {link.max_fan_out} exhausted "
+                    f"({issued} sub-delegations already issued)",
+                )
 
         # --- 9. Budget check (fail-closed) ---
-        if hasattr(link, 'chain_budget') and link.chain_budget:
+        if link.chain_budget:
             try:
                 remaining, max_b = parse_chain_budget(link.chain_budget)
             except ValueError as e:
                 return False, f"link {i}: invalid chain_budget ({e})"
-            if remaining < 0:
-                return False, f"link {i}: negative budget (remaining={remaining})"
             if remaining <= 0:
                 return False, f"link {i}: chain budget exhausted (remaining={remaining})"
-            # Child budget must not exceed parent budget
-            if i > 0:
-                parent = chain.links[i - 1]
-                if hasattr(parent, 'chain_budget') and parent.chain_budget:
-                    try:
-                        parent_remaining, _ = parse_chain_budget(parent.chain_budget)
-                        if remaining > parent_remaining:
-                            return (
-                                False,
-                                f"link {i}: child budget ({remaining}) "
-                                f"exceeds parent budget ({parent_remaining})",
-                            )
-                    except ValueError:
-                        # Parent already validated; should not happen
-                        pass
+            if remaining > max_b:
+                return (
+                    False,
+                    f"link {i}: chain budget remaining ({remaining}) exceeds max ({max_b})",
+                )
+            if parent is not None and parent.chain_budget:
+                # Parent already parsed successfully on the previous iteration.
+                parent_remaining, parent_max = parse_chain_budget(parent.chain_budget)
+                if remaining > parent_remaining:
+                    return (
+                        False,
+                        f"link {i}: child budget ({remaining}) "
+                        f"exceeds parent budget ({parent_remaining})",
+                    )
+                if max_b > parent_max:
+                    return (
+                        False,
+                        f"link {i}: child budget max ({max_b}) "
+                        f"exceeds parent budget max ({parent_max})",
+                    )
+        elif parent is not None and parent.chain_budget:
+            return (
+                False,
+                f"link {i}: chain_budget dropped (parent budget "
+                f"{parent.chain_budget!r} must be carried forward)",
+            )
 
     return True, "valid"
 
@@ -387,7 +497,7 @@ _BUDGET_RE = re.compile(r"remaining=(\d+(?:\.\d+)?)USD;max=(\d+(?:\.\d+)?)USD")
 
 def parse_chain_budget(budget: str) -> tuple[float, float]:
     """Parse a Chain-Budget header value into (remaining, max) floats."""
-    match = _BUDGET_RE.match(budget)
+    match = _BUDGET_RE.fullmatch(budget)
     if not match:
         raise ValueError(f"Invalid chain budget format: {budget!r}")
     return float(match.group(1)), float(match.group(2))

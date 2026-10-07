@@ -7,14 +7,14 @@ capability. A client queries a registry for agents that support
 match, and sends a task.create message.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/19_registry_search.py
 """
 
 from ampro import (
     AgentMessage,
-    RegistrySearchRequest,
     RegistrySearchMatch,
+    RegistrySearchRequest,
     RegistrySearchResult,
     TaskCreateBody,
     validate_body,
@@ -156,13 +156,13 @@ task_msg = AgentMessage(
     body=task_body.model_dump(),
 )
 
-print(f"  Envelope:")
+print("  Envelope:")
 print(f"    From:      {task_msg.sender}")
 print(f"    To:        {task_msg.recipient}")
 print(f"    Body type: {task_msg.body_type}")
 print(f"    ID:        {task_msg.id}")
 
-print(f"\n  Body:")
+print("\n  Body:")
 print(f"    Task ID:     {task_body.task_id}")
 print(f"    Description: {task_body.description}")
 print(f"    Priority:    {task_body.priority}")

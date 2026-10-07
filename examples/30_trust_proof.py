@@ -7,15 +7,15 @@ validates with validate_body, shows verifier checking, and links to
 CertificationLink in agent.json.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/30_trust_proof.py
 """
 
 from ampro import (
-    AgentMessage,
     AgentJson,
-    TrustProofBody,
+    AgentMessage,
     CertificationLink,
+    TrustProofBody,
     validate_body,
 )
 
@@ -172,7 +172,7 @@ agent_json = AgentJson(
 
 print(f"  protocol_version: {agent_json.protocol_version}")
 print(f"  identifiers:      {agent_json.identifiers}")
-print(f"  certifications:")
+print("  certifications:")
 for cert in agent_json.certifications:
     parsed = CertificationLink.model_validate(cert)
     print(f"    - {parsed.standard}: {parsed.url}")

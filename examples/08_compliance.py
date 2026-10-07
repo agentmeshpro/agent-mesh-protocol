@@ -5,18 +5,19 @@ Demonstrates content classification, hash-chain audit logs,
 and cross-platform data erasure.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/08_compliance.py
 """
 
 import asyncio
+
 from ampro import (
     AgentMessage,
-    ContentClassification,
-    ErasureRequest,
-    AuditLogger,
     AuditEntry,
+    AuditLogger,
+    ContentClassification,
     ErasureProcessor,
+    ErasureRequest,
     check_content_classification,
     requires_audit,
 )
@@ -36,13 +37,13 @@ pii_msg = AgentMessage(
     headers={"Content-Classification": "pii"},
 )
 result = check_content_classification(pii_msg, accepts_pii=False)
-print(f"  PII message to non-PII agent:")
+print("  PII message to non-PII agent:")
 print(f"    Allowed: {result.allowed}")
 print(f"    Reason: {result.reason}")
 print(f"    Detail: {result.detail}")
 
 result2 = check_content_classification(pii_msg, accepts_pii=True)
-print(f"\n  PII message to PII-accepting agent:")
+print("\n  PII message to PII-accepting agent:")
 print(f"    Allowed: {result2.allowed}")
 
 # --- Audit Requires Check ---
@@ -73,16 +74,56 @@ for i in range(3):
 print(f"\n  Chain integrity valid: {logger.verify_chain()}")
 print(f"  Total entries: {logger.count}")
 
-# Tamper detection
-logger._entries[1].action_taken = "TAMPERED"
-print(f"  After tampering: valid={logger.verify_chain()}")
+# Entries handed out by the logger are copies — editing them cannot
+# alter the log itself.
+copy = logger.get_entries()[1]
+copy.action_taken = "TAMPERED"
+print(f"  After editing a returned copy: valid={logger.verify_chain()}")
+
+# Tamper detection: simulate an attacker with write access to the
+# underlying storage (e.g. a compromised database) by plugging in a
+# deliberately mutable backend and editing an entry in place.
+class MutableStorage:
+    """Toy AuditStorage backend that does NOT protect its entries."""
+
+    def __init__(self) -> None:
+        self.rows: list[AuditEntry] = []
+
+    def append(self, entry: AuditEntry) -> None:
+        self.rows.append(entry)
+
+    def tail(self) -> AuditEntry | None:
+        return self.rows[-1] if self.rows else None
+
+    def entries(self) -> list[AuditEntry]:
+        return list(self.rows)
+
+    def count(self) -> int:
+        return len(self.rows)
+
+
+storage = MutableStorage()
+tamper_logger = AuditLogger(storage=storage)
+for i in range(3):
+    tamper_logger.log(AuditEntry(
+        message_id=f"msg-{i}",
+        sender="agent://alice.example.com",
+        recipient="agent://bob.example.com",
+        body_type="task.create",
+        content_classification="pii",
+        trust_tier="verified",
+        action_taken="processed",
+    ))
+print(f"  Mutable backend before tampering: valid={tamper_logger.verify_chain()}")
+storage.rows[1].action_taken = "TAMPERED"
+print(f"  Mutable backend after tampering:  valid={tamper_logger.verify_chain()}")
 
 # --- Erasure Processing ---
 print("\n=== GDPR Erasure ===\n")
 
 async def demo_erasure():
     processor = ErasureProcessor()
-    
+
     req = ErasureRequest(
         subject_id="user-42",
         subject_proof="ed25519-signed-proof",
@@ -90,7 +131,7 @@ async def demo_erasure():
         reason="user_request",
         deadline="2026-05-09T00:00:00Z",
     )
-    
+
     resp = await processor.process(req)
     print(f"  Subject: {resp.subject_id}")
     print(f"  Status: {resp.status}")

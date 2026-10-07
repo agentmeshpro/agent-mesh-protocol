@@ -6,16 +6,16 @@ the client ACKs processed batches, the server pauses when the client
 falls behind, and the client signals it is ready to resume.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/16_backpressure.py
 """
 
 from datetime import datetime, timezone
 
 from ampro import (
+    StreamAckEvent,
     StreamingEvent,
     StreamingEventType,
-    StreamAckEvent,
     StreamPauseEvent,
     StreamResumeEvent,
 )
@@ -156,7 +156,7 @@ if last_acked_seq < server_seq:
 # SSE format examples
 # ---------------------------------------------------------------------------
 
-print(f"\n=== SSE Wire Format Examples ===\n")
+print("\n=== SSE Wire Format Examples ===\n")
 
 examples = [
     StreamingEvent(

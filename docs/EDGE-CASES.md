@@ -279,6 +279,11 @@ If downstream agent is offline during erasure propagation, no retry mechanism. G
 
 No `expires_at` or `ttl_seconds`. Once linked, always linked. Compromised key keeps links valid forever.
 
+**Resolved**: `IdentityLinkProofBody` now has a required `expires_at`, which
+must be strictly after `timestamp`. Freshly minted proofs default to a
+one-year lifetime (`DEFAULT_LINK_PROOF_LIFETIME`), and
+`is_link_proof_valid()` returns `False` once the proof has expired.
+
 ### 4.8 Cached Visibility Changes Don't Propagate (HIGH)
 **File**: `ampro/agent/visibility.py`
 

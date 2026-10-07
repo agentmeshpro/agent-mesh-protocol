@@ -46,7 +46,7 @@ Out of scope:
 
 The protocol has undergone two formal security audits:
 
-- **v0.2.0 audit** — see `docs/SECURITY-AUDIT.md`. 32 findings (13 CRITICAL, 14 HIGH, 14 MEDIUM, 6 LOW). All P0/P1 closed in v0.2.1.
+- **v0.2.0 audit** — see `docs/SECURITY-AUDIT.md`. 47 findings (13 CRITICAL, 14 HIGH, 14 MEDIUM, 6 LOW). All P0/P1 closed in v0.2.1.
 - **v0.2.1 re-audit** — see `docs/SECURITY-AUDIT-V2.md`. Verified fix effectiveness, identified bypasses. All CRITICAL+HIGH closed in v0.2.3.
 
 The v0.2.3 release closed all 66 CRITICAL+HIGH security findings from the

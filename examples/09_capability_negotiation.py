@@ -5,19 +5,19 @@ Demonstrates how two agents with different capability levels
 negotiate what they can do together.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/09_capability_negotiation.py
 """
 
 from ampro import (
-    CapabilityGroup,
-    CapabilityLevel,
-    CapabilitySet,
-    NegotiationResult,
-    CapabilityNegotiator,
-    negotiate_version,
     CURRENT_VERSION,
     SUPPORTED_VERSIONS,
+    CapabilityGroup,
+    CapabilityLevel,
+    CapabilityNegotiator,
+    CapabilitySet,
+    NegotiationResult,
+    negotiate_version,
 )
 
 # --- Capability Levels ---

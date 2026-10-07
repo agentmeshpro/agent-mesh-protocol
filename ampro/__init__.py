@@ -367,7 +367,7 @@ from ampro.wire.config import WireConfig
 from ampro.wire.endpoints import ALL_ENDPOINTS, ConformanceLevel, EndpointSpec, endpoints_for_level
 from ampro.wire.errors import ErrorType, ProblemDetail
 
-__version__ = "0.3.4"
+__version__ = "0.4.0"
 
 __all__ = [
     # Core

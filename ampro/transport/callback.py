@@ -7,15 +7,21 @@ Uses the same AgentMessage envelope for delivery.
 Spec ref: Section 5.5
 - Verify callback URL reachability before accepting
 - Retry: 3 attempts, exponential backoff (1s, 5s, 25s)
-- SSRF validation on callback URLs
+- SSRF validation on callback URLs, with DNS pinning (no rebinding)
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
-from ampro.transport.attachment import validate_attachment_url
+from ampro.security.ssrf import (
+    SSRFError,
+    is_url_safe_static,
+    pinned_async_transport,
+    validate_url_async,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +30,13 @@ RETRY_DELAYS = [1, 5, 25]  # seconds
 
 def validate_callback_url(url: str) -> bool:
     """
-    Validate a callback URL for safety.
-    Must be HTTPS + pass SSRF checks.
+    Validate a callback URL for safety (static check, no DNS).
+
+    Must be HTTPS + pass the shared SSRF checks in
+    :mod:`ampro.security.ssrf`.  :func:`deliver_callback` additionally
+    resolves the host and pins the connection to the checked addresses.
     """
-    if not url.startswith("https://"):
-        return False
-    return validate_attachment_url(url)
+    return is_url_safe_static(url)
 
 
 async def deliver_callback(
@@ -42,47 +49,39 @@ async def deliver_callback(
 
     Returns True if delivery succeeded, False if all retries failed.
 
-    WARNING: This implementation does not pin DNS resolution. Production
-    deployments should resolve DNS once and pin the IP for the duration
-    of delivery attempts to prevent DNS rebinding attacks.
+    SSRF / DNS-rebinding protection: the hostname is resolved exactly once
+    and every resolved address must be publicly routable.  All requests
+    (HEAD check + POST attempts) are then made through a transport that
+    dials only those pinned addresses, while the ``Host`` header and TLS
+    SNI / certificate verification still use the original hostname.
+    Redirects are not followed and environment proxies are ignored.
     """
-    import asyncio
-    import socket
-    from urllib.parse import urlparse as _urlparse
-
     import httpx
 
-    if not validate_callback_url(callback_url):
-        logger.warning("Callback URL failed validation: %s", callback_url)
+    try:
+        validated = await validate_url_async(callback_url)
+    except SSRFError as exc:
+        logger.warning("Callback URL failed validation: %s (%s)", callback_url, exc)
         return False
 
-    # DNS pinning: resolve once, reuse the same connection for all attempts
-    # to prevent DNS rebinding attacks between HEAD check and POST delivery
-    parsed = _urlparse(callback_url)
-    hostname = parsed.hostname
-    try:
-        resolved_ip = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)[0][4][0]
-    except (socket.gaierror, IndexError):
-        logger.warning("DNS resolution failed for callback URL: %s", callback_url)
-        return False
-
-    # Verify the resolved IP is not private/internal (double-check after DNS)
-    import ipaddress as _ipaddress
-    try:
-        resolved_addr = _ipaddress.ip_address(resolved_ip)
-        if resolved_addr.is_private or resolved_addr.is_loopback or resolved_addr.is_link_local:
-            logger.warning("Callback URL resolved to internal IP: %s → %s", callback_url, resolved_ip)
-            return False
-    except ValueError:
-        pass
-
-    # Use a single client for HEAD + all POST attempts (same connection = same DNS)
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    transport = pinned_async_transport(validated)
+    async with httpx.AsyncClient(
+        transport=transport,
+        timeout=10.0,
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
         # HEAD reachability check (spec Section 5.5)
         try:
-            head_resp = await client.head(callback_url)
-            if head_resp.status_code >= 400:
-                logger.warning("Callback URL HEAD check failed: %s → %d", callback_url, head_resp.status_code)
+            # Responses are opened as streams and closed without reading
+            # the body: a callback target cannot make us buffer anything.
+            async with client.stream("HEAD", callback_url) as head_resp:
+                head_status = head_resp.status_code
+            if head_status >= 300:
+                logger.warning(
+                    "Callback URL HEAD check failed: %s → %d",
+                    callback_url, head_status,
+                )
                 return False
         except Exception as exc:
             logger.warning("Callback URL unreachable: %s → %s", callback_url, exc)
@@ -90,17 +89,19 @@ async def deliver_callback(
 
         for attempt in range(max_retries):
             try:
-                resp = await client.post(
+                async with client.stream(
+                    "POST",
                     callback_url,
                     json=message,
                     headers={"Content-Type": "application/json"},
-                )
-                if resp.status_code in (200, 201, 202, 204):
+                ) as resp:
+                    status = resp.status_code
+                if status in (200, 201, 202, 204):
                     logger.info("Callback delivered to %s (attempt %d)", callback_url, attempt + 1)
                     return True
                 logger.warning(
                     "Callback to %s returned %d (attempt %d)",
-                    callback_url, resp.status_code, attempt + 1,
+                    callback_url, status, attempt + 1,
                 )
             except Exception as exc:
                 logger.warning(

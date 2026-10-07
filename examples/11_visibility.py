@@ -5,13 +5,16 @@ Shows how agents control who can see them and who can contact them.
 Demonstrates all 4 visibility levels and agent.json filtering.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/11_visibility.py
 """
 
 from ampro import (
-    VisibilityLevel, ContactPolicy, VisibilityConfig,
-    check_contact_allowed, filter_agent_json,
+    ContactPolicy,
+    VisibilityConfig,
+    VisibilityLevel,
+    check_contact_allowed,
+    filter_agent_json,
 )
 
 # Sample agent.json

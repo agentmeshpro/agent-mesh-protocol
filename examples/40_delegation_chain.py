@@ -11,7 +11,7 @@ This example reuses the delegation keypairs to sign cost receipts.
 Extends example 06 with v0.1.3 cost receipt accumulation.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/40_delegation_chain.py
 """
 
@@ -21,21 +21,21 @@ import base64
 import json
 import secrets
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ampro import (
-    DelegationLink,
-    DelegationChain,
-    validate_chain,
-    validate_scope_narrowing,
-    sign_delegation,
-    parse_chain_budget,
-    check_visited_agents_loop,
-    check_visited_agents_limit,
     CostReceipt,
     CostReceiptChain,
+    DelegationChain,
+    DelegationLink,
+    check_visited_agents_limit,
+    check_visited_agents_loop,
+    parse_chain_budget,
+    sign_delegation,
+    validate_chain,
+    validate_scope_narrowing,
 )
 from ampro.trust.resolver import _PUBLIC_KEY_CACHE
 
@@ -61,7 +61,7 @@ now = datetime.now(timezone.utc)
 TASK_ID = "task-delegation-demo-001"
 
 print("=== Delegation Chain with Cost Receipts ===\n")
-print(f"  gateway -> planner -> executor")
+print("  gateway -> planner -> executor")
 print(f"  Task: {TASK_ID}")
 
 
@@ -81,7 +81,7 @@ def _sign_cost_receipt(agent_id: str, task_id: str, cost_usd: float,
 # Step 1: Build the delegation chain
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Step 1: Build Chain ---\n")
+print("\n--- Step 1: Build Chain ---\n")
 
 # Link 1: Gateway delegates to Planner
 link1_data = {
@@ -99,7 +99,7 @@ link1 = DelegationLink(
     trust_tier="owner",
     chain_budget="remaining=10.00USD;max=10.00USD",
 )
-print(f"  Link 1: gateway -> planner")
+print("  Link 1: gateway -> planner")
 print(f"    Scopes: {link1.scopes}")
 print(f"    Budget: {link1.chain_budget}")
 
@@ -119,7 +119,7 @@ link2 = DelegationLink(
     trust_tier="verified",
     chain_budget="remaining=5.00USD;max=10.00USD",
 )
-print(f"  Link 2: planner -> executor")
+print("  Link 2: planner -> executor")
 print(f"    Scopes: {link2.scopes}")
 print(f"    Budget: {link2.chain_budget}")
 
@@ -127,7 +127,7 @@ print(f"    Budget: {link2.chain_budget}")
 # Step 2: Validate the chain
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Step 2: Validate Chain ---\n")
+print("\n--- Step 2: Validate Chain ---\n")
 
 chain = DelegationChain(links=[link1, link2])
 valid, reason = validate_chain(chain, pub_keys)
@@ -139,23 +139,23 @@ print(f"  Depth: {chain.depth} hops")
 # Step 3: Scope narrowing analysis
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Step 3: Scope Narrowing ---\n")
+print("\n--- Step 3: Scope Narrowing ---\n")
 
 print(f"  Gateway scopes:  {link1.scopes}")
 print(f"  Planner scopes:  {link2.scopes}")
 print(f"  Valid narrowing:  {validate_scope_narrowing(link1.scopes, link2.scopes)}")
 
 # Attempt to widen scope — should fail
-print(f"\n  Widening attempt:")
+print("\n  Widening attempt:")
 print(f"    Parent: {link2.scopes}")
-print(f"    Child:  ['tool:read', 'tool:execute', 'tool:admin']")
+print("    Child:  ['tool:read', 'tool:execute', 'tool:admin']")
 print(f"    Valid:  {validate_scope_narrowing(link2.scopes, ['tool:read', 'tool:execute', 'tool:admin'])}")
 
 # ---------------------------------------------------------------------------
 # Step 4: Cost receipts — each agent reports what it spent (now signed)
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Step 4: Cost Receipt Accumulation ---\n")
+print("\n--- Step 4: Cost Receipt Accumulation ---\n")
 
 cost_chain = CostReceiptChain()
 
@@ -236,7 +236,7 @@ print(f"  {'':5s} {'TOTAL':40s} ${cost_chain.total_cost_usd:>8.4f} {total_tokens
 # Step 5: Budget tracking across the chain
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Step 5: Budget Tracking ---\n")
+print("\n--- Step 5: Budget Tracking ---\n")
 
 remaining, max_budget = parse_chain_budget(link1.chain_budget)
 print(f"  Initial budget:   ${max_budget:.2f}")
@@ -251,7 +251,7 @@ print(f"  Under budget:     {cost_chain.total_cost_usd <= max_budget}")
 # Step 6: Visited-Agents loop detection
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Step 6: Loop Detection ---\n")
+print("\n--- Step 6: Loop Detection ---\n")
 
 visited = "agent://gateway.example.com,agent://planner.example.com"
 print(f"  Visited: {visited}")
@@ -266,7 +266,7 @@ print(f"  Within 20-agent limit: {check_visited_agents_limit(visited_full)}")
 # Summary
 # ---------------------------------------------------------------------------
 
-print(f"\n--- Summary ---\n")
+print("\n--- Summary ---\n")
 print(f"  Chain:    {chain.depth} hops, {len(cost_chain.receipts)} cost receipts")
 print(f"  Total:    ${cost_chain.total_cost_usd:.4f} ({total_tokens} tokens)")
 print(f"  Valid:    {valid}")
