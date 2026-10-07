@@ -78,6 +78,16 @@ class AMPContext:
     # --- Raw access ---
     headers: dict[str, str] = field(default_factory=dict)
 
+    # --- Caller / wire protocol ---
+    # ``principal`` is the authenticated caller as resolved by the transport
+    # (e.g. ``ampro.interop.a2a.Principal``); ``None`` when unauthenticated.
+    principal: Any = None
+    scopes: frozenset[str] = field(default_factory=frozenset)
+    # Wire protocol that delivered the message: ``"amp"``, ``"a2a"``, ``"mcp"``.
+    protocol: str = "amp"
+    # Protocol-specific extras (e.g. ``"a2a.message"`` — the raw A2A Message).
+    metadata: dict[str, Any] = field(default_factory=dict)
+
     # === Methods — server provides real implementations ===
 
     async def emit(self, event: StreamingEvent) -> None:

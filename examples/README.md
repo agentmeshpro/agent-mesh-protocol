@@ -100,3 +100,9 @@ ampro-server examples.41_ampi_quickstart:agent --port 8000
 | 43 | `43_ampi_testing.py` | `TestServer` unit-test harness |
 | 44 | `44_ampi_ctx_methods.py` | `ctx.send` / `.emit_event` / `.emit_audit` / `.discover` / `.delegate` |
 | 45 | `45_ampro_server_cli.py` | Running an agent via the `ampro-server` CLI |
+
+## Interop (46+)
+
+| # | File | Shows |
+|---|------|-------|
+| 46 | `46_a2a_agent.py` | Serving an `AgentApp` over A2A 1.0 next to AMP; `A2AClient`, input-required, `AuthRequired`, AMP extension |
