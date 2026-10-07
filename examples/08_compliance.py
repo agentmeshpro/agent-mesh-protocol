@@ -5,7 +5,7 @@ Demonstrates content classification, hash-chain audit logs,
 and cross-platform data erasure.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/08_compliance.py
 """
 

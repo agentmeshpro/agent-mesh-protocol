@@ -5,7 +5,7 @@ Demonstrates partial and full consent revocation, immediate vs scheduled
 revocation, and tracking erasure propagation status across multiple agents.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/24_consent_revoke.py
 """
 

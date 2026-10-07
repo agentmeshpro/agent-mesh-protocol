@@ -7,7 +7,7 @@ AgentMessage, federation request/response flow, and audit attestation
 for session agreement.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/28_agent_migration.py
 """
 

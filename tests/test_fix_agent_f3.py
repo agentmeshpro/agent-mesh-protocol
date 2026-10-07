@@ -261,7 +261,9 @@ class TestRevocationStore:
             revocation_verify_cached_key,
             should_reject_cached_key,
         )
-        from ampro.security.key_revocation import _UnconfiguredRevocationStore as _NoOpRevocationStore
+        from ampro.security.key_revocation import (
+            _UnconfiguredRevocationStore as _NoOpRevocationStore,
+        )
 
         class Store:
             def __init__(self) -> None:

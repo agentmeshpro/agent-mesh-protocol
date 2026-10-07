@@ -7,7 +7,7 @@ capability. A client queries a registry for agents that support
 match, and sends a task.create message.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/19_registry_search.py
 """
 

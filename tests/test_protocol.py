@@ -9,7 +9,8 @@ from pydantic import ValidationError
 class TestImports:
     def test_version(self):
         import ampro
-        assert ampro.__version__ == "0.3.1"
+        from importlib.metadata import version
+        assert ampro.__version__ == version("ampro")
 
     def test_all_exports(self):
         import ampro
@@ -289,7 +290,8 @@ class TestV011Imports:
 
     def test_version_bumped(self):
         import ampro
-        assert ampro.__version__ == "0.3.1"
+        from importlib.metadata import version
+        assert ampro.__version__ == version("ampro")
 
     def test_handshake_imports(self):
         from ampro import (
@@ -348,7 +350,8 @@ class TestV012Imports:
 
     def test_version_is_016(self):
         import ampro
-        assert ampro.__version__ == "0.3.1"
+        from importlib.metadata import version
+        assert ampro.__version__ == version("ampro")
 
     def test_key_revocation_imports(self):
         from ampro import RevocationReason

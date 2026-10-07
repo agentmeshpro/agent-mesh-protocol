@@ -5,7 +5,7 @@ Simulates a 3-phase handshake between two agents, including
 session binding, ping/pong keepalive, and graceful close.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/10_handshake.py
 """
 

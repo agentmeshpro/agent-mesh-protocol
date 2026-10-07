@@ -6,7 +6,7 @@ between agents operating under incompatible regulatory frameworks, and
 task rejection when jurisdiction constraints are violated.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/23_jurisdiction.py
 """
 

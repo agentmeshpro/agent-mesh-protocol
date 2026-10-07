@@ -4,7 +4,7 @@
 Demonstrates the 4-tier trust system and multi-method auth parsing.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/03_trust_and_auth.py
 """
 

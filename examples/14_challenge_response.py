@@ -6,7 +6,7 @@ to a new sender, and the sender solving it. Shows the full message
 flow with AgentMessage envelopes.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/14_challenge_response.py
 """
 

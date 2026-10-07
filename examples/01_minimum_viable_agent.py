@@ -5,7 +5,7 @@ The simplest possible protocol-compliant agent.
 30 lines. No framework dependency beyond Flask.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git flask
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git flask
     python examples/01_minimum_viable_agent.py
 
 Test:

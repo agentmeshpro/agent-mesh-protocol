@@ -104,7 +104,9 @@ class TestVerifyFederationTrustProof:
         """A real Ed25519 signature, verified through a registered resolver,
         is the only path that returns True."""
         import base64
+
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
         from ampro import RegistryFederationRequest, verify_federation_trust_proof
         from ampro.registry.federation import register_federation_trust_proof_resolver
 

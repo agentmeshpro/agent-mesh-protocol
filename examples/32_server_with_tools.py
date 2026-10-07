@@ -6,7 +6,7 @@ messages with a tool_name in the context, and the server dispatches
 to the matching tool function.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
     python examples/32_server_with_tools.py
 
 Test:

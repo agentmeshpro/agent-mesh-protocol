@@ -254,7 +254,7 @@ def resolve_federation_conflict(
     # is treated as adversarial: we discard the remote timestamp entirely
     # so that the comparison falls back to local-wins logic.
     if remote_seen is not None:
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
         now = datetime.now(timezone.utc)
         if remote_seen.tzinfo is None:
             remote_seen = remote_seen.replace(tzinfo=timezone.utc)

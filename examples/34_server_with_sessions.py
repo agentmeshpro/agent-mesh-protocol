@@ -7,7 +7,7 @@ session.confirm, and session-bound messages, proving that handshake
 lifecycle is YOUR code — the server just routes messages.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git fastapi uvicorn
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git fastapi uvicorn
     python examples/34_server_with_sessions.py
 
 Test session.init:

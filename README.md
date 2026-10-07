@@ -33,7 +33,7 @@ Today every agent framework — MCP, A2A, OpenAI's Assistants API, LangChain, cu
 ## Install
 
 ```bash
-pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
 ```
 
 > PyPI publication pending; install from source until 1.0.

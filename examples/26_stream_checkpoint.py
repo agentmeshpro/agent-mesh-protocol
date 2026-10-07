@@ -7,7 +7,7 @@ and shows how to resume from the last checkpoint. Also demonstrates
 mid-stream auth token refresh.
 
 Run:
-    pip install git+https://github.com/vesakri/agent-mesh-protocol.git
+    pip install git+https://github.com/CatlystAI/agent-mesh-protocol.git
     python examples/26_stream_checkpoint.py
 """
 
