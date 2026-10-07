@@ -1949,7 +1949,7 @@ function ChatbotWidget({
   if (!mounted) return null
 
   return createPortal(
-    <div className="pointer-events-none fixed bottom-6 right-6 z-50 w-[380px]">
+    <div className="pointer-events-none fixed bottom-4 left-4 right-4 z-50 sm:bottom-6 sm:left-auto sm:right-6 sm:w-[380px]">
       {/* Ambient shadow halo behind widget — layered for depth */}
       <div
         aria-hidden
@@ -2088,7 +2088,9 @@ function ChatbotWidget({
         {state.turnCount === 0 && !state.isStreaming && (
           <motion.div
             key="starters"
-            className="flex flex-wrap gap-2"
+            // Phones: one horizontally scrollable row so the fixed dock does
+            // not stack over the page. Wider screens: wrap as before.
+            className="-mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
@@ -2129,7 +2131,7 @@ function ChatbotWidget({
                 className={
                   isMachine
                     ? ''
-                    : 'rounded-full bg-white px-3 py-[8px] font-sans text-[13px] font-medium leading-[19.5px] transition-colors hover:bg-[#FBF3F0]'
+                    : 'shrink-0 whitespace-nowrap rounded-full bg-white px-3 py-[8px] font-sans text-[13px] font-medium leading-[19.5px] transition-colors hover:bg-[#FBF3F0] sm:shrink sm:whitespace-normal'
                 }
               >
                 {isMachine ? `> ${suggestion}` : suggestion}

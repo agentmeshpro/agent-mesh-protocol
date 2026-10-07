@@ -33,8 +33,8 @@ function FloatingThemeToggle() {
 
   return createPortal(
     <motion.div
-      className="fixed left-1/2 z-50 -translate-x-1/2"
-      style={{ bottom: '24px' }}
+      // Phones: float under the nav so it never covers the chat dock.
+      className="fixed left-1/2 top-[64px] z-50 -translate-x-1/2 sm:bottom-6 sm:top-auto"
       initial={{ y: 30, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
