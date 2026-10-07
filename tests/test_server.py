@@ -404,3 +404,46 @@ class TestFromApp:
         server = AgentServer.from_app(app)
         assert server.agent_json.endpoint == "https://json.example.com"
         assert "agent://json.example.com" in server.agent_json.identifiers
+
+
+class TestRouteHopCount:
+    """The legacy route() entry point honours AMP-Hop-Count when given headers."""
+
+    def _server(self):
+        return AgentServer(agent_id="agent://hop.example.com", endpoint="https://hop.example.com")
+
+    def _envelope(self, visited: str | None = None) -> dict:
+        env = {
+            "sender": "agent://caller.example.com",
+            "recipient": "agent://hop.example.com",
+            "body_type": "message",
+            "body": {"text": "hi"},
+        }
+        if visited is not None:
+            env["headers"] = {"Visited-Agents": visited}
+        return env
+
+    def test_hop_header_over_limit_rejected(self):
+        server = self._server()
+        status, _, body = asyncio.run(server.route(
+            "POST", "/agent/message", self._envelope(),
+            headers={"AMP-Hop-Count": "999"},
+        ))
+        assert status == 508 or "loop" in body.lower()
+
+    def test_malformed_traceparent_rejected(self):
+        server = self._server()
+        status, _, _ = asyncio.run(server.route(
+            "POST", "/agent/message", self._envelope(),
+            headers={"traceparent": "garbage"},
+        ))
+        assert status == 400
+
+    def test_duplicate_visited_entries_each_count(self):
+        server = self._server()
+        limit = server._max_hops()
+        visited = ",".join(["agent://a.example.com"] * (limit + 1))
+        status, _, body = asyncio.run(server.route(
+            "POST", "/agent/message", self._envelope(visited),
+        ))
+        assert status == 508 or "hop limit" in body.lower()

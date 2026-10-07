@@ -1278,7 +1278,19 @@ class A2AAdapter:
         reason = "verifier returned a malformed result"
         ok = False
         try:
-            result: Any = self.chain_verifier(chain, ctx)
+            verifier = self.chain_verifier
+            if inspect.iscoroutinefunction(verifier) or inspect.iscoroutinefunction(
+                getattr(verifier, "__call__", None)
+            ):
+                result: Any = await asyncio.wait_for(
+                    verifier(chain, ctx), self.chain_verifier_timeout
+                )
+            else:
+                # A synchronous verifier runs on a worker thread so it can
+                # neither block the event loop nor escape the timeout.
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(verifier, chain, ctx), self.chain_verifier_timeout
+                )
             if inspect.isawaitable(result):
                 result = await asyncio.wait_for(result, self.chain_verifier_timeout)
         except asyncio.CancelledError:

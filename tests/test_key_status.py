@@ -3,7 +3,8 @@
 Covers the strict RFC 3339 timestamps and ``compromised_at`` on
 ``key.revocation``, :func:`signature_allowed`, and the bounded
 :class:`InMemoryKeyStatusResolver` (authenticated ingest only, no
-downgrades, never evicting revocations).
+downgrades, signer bound to the revoked agent, pools that
+revocation floods cannot exhaust).
 """
 from __future__ import annotations
 
@@ -22,10 +23,10 @@ from ampro.security.key_revocation import (
     KeyStatus,
     KeyStatusRecord,
     KeyStatusResolver,
-    KeyStatusStoreFullError,
     RevocationReason,
     canonical_agent_id,
     canonical_revocation_bytes,
+    delegation_key_check,
     key_status_for_reason,
     parse_rfc3339_timestamp,
     signature_allowed,
@@ -255,6 +256,22 @@ def test_reason_mapping():
 # ---------------------------------------------------------------------------
 
 
+def _resolver(pk: bytes, *args, kids=("kid-1",), agent=AGENT, **kwargs):
+    r = InMemoryKeyStatusResolver(*args, **kwargs)
+    for kid in kids:
+        assert r.mark_active(agent, kid, public_key=pk)
+    return r
+
+
+def _revoke(r, body, signer_kid="kid-1", **kwargs):
+    return r.add_revocation(body, body.revoked_at_datetime(), signer_kid=signer_kid, **kwargs)
+
+
+def _other_signer() -> tuple[Ed25519PrivateKey, bytes]:
+    sk = Ed25519PrivateKey.generate()
+    return sk, sk.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
 class TestResolver:
     def test_satisfies_protocol(self):
         assert isinstance(InMemoryKeyStatusResolver(), KeyStatusResolver)
@@ -270,6 +287,7 @@ class TestResolver:
         assert r.key_status(AGENT, "kid 1") is KeyStatus.UNKNOWN
         assert r.key_status("agent://bad\nhost", "kid-1") is KeyStatus.UNKNOWN
         assert r.key_status(None, "kid-1") is KeyStatus.UNKNOWN  # type: ignore[arg-type]
+        assert r.key_status(AGENT, None) is KeyStatus.UNKNOWN  # type: ignore[arg-type]
 
     def test_mark_active(self):
         r = InMemoryKeyStatusResolver()
@@ -277,6 +295,11 @@ class TestResolver:
         assert r.key_status(AGENT, "kid-1") is KeyStatus.ACTIVE
         assert r.mark_active(AGENT, "kid-1")
         assert len(r) == 1
+
+    @pytest.mark.parametrize("pk", [b"", b"\x00" * 31, "x" * 32])
+    def test_mark_active_rejects_bad_public_key(self, pk):
+        with pytest.raises(ValueError):
+            InMemoryKeyStatusResolver().mark_active(AGENT, "kid-1", public_key=pk)
 
     def test_mark_active_rejects_malformed(self):
         r = InMemoryKeyStatusResolver()
@@ -292,19 +315,17 @@ class TestResolver:
     ])
     def test_add_revocation(self, signer, reason, status):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        r.mark_active(AGENT, "kid-1")
+        r = _resolver(pk)
         body = _signed(sk, reason=reason)
-        assert r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk) is status
+        assert _revoke(r, body) is status
         assert r.key_status(AGENT, "kid-1") is status
         assert r.record(AGENT, "kid-1") == KeyStatusRecord(status, T0)
         assert len(r) == 1
 
     def test_compromise_ignores_compromised_at_and_backdating(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        body = _signed(sk, compromised_at="2026-04-01T00:00:00Z")
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk, compromised_at="2026-04-01T00:00:00Z"))
         rec = r.record(AGENT, "kid-1")
         assert rec is not None
         # A thief back-dates to before both compromised_at and revoked_at.
@@ -314,9 +335,8 @@ class TestResolver:
 
     def test_rotation_keeps_earlier_signatures(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        body = _signed(sk, reason="key_rotation")
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk, reason="key_rotation"))
         rec = r.record(AGENT, "kid-1")
         assert rec is not None
         assert signature_allowed(rec.status, signed_at=T0 - timedelta(hours=1),
@@ -326,27 +346,103 @@ class TestResolver:
 
     def test_unsigned_revocation_rejected(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
+        r = _resolver(pk)
         body = _signed(sk).model_copy(update={"signature": "AAAA"})
         with pytest.raises(ValueError, match="signature"):
-            r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
-        assert r.key_status(AGENT, "kid-1") is KeyStatus.UNKNOWN
-
-    def test_wrong_key_rejected(self, signer):
-        sk, _ = signer
-        other = Ed25519PrivateKey.generate().public_key().public_bytes(
-            Encoding.Raw, PublicFormat.Raw)
-        r = InMemoryKeyStatusResolver()
-        body = _signed(sk)
-        with pytest.raises(ValueError):
-            r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=other)
+            _revoke(r, body)
+        assert r.key_status(AGENT, "kid-1") is KeyStatus.ACTIVE
 
     def test_tampered_reason_rejected(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        body = _signed(sk).model_copy(update={"reason": "key_rotation"})
+        r = _resolver(pk)
         with pytest.raises(ValueError):
-            r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
+            _revoke(r, _signed(sk).model_copy(update={"reason": "key_rotation"}))
+
+    # -- the signing key must be the revoked agent's own --------------------
+
+    def test_key_from_another_agent_rejected(self, signer):
+        """A peer's own valid key cannot revoke someone else's key."""
+        sk, pk = signer
+        mallory_sk, mallory_pk = _other_signer()
+        r = _resolver(pk)
+        r.mark_active("agent://mallory.example.com", "kid-1", public_key=mallory_pk)
+        body = _signed(mallory_sk)  # names victim's agent_id, signed by mallory
+        with pytest.raises(ValueError):
+            _revoke(r, body)
+        assert r.key_status(AGENT, "kid-1") is KeyStatus.ACTIVE
+
+    def test_unrecorded_signing_key_rejected(self, signer):
+        sk, _ = signer
+        r = InMemoryKeyStatusResolver()
+        r.mark_active(AGENT, "kid-1")  # no key material recorded
+        with pytest.raises(ValueError, match="no recorded public key"):
+            _revoke(r, _signed(sk))
+        assert r.key_status(AGENT, "kid-1") is KeyStatus.ACTIVE
+
+    def test_wrong_key_material_rejected(self, signer):
+        sk, _ = signer
+        _, other_pk = _other_signer()
+        r = _resolver(other_pk)
+        with pytest.raises(ValueError, match="signature"):
+            _revoke(r, _signed(sk))
+
+    def test_sibling_key_may_revoke(self, signer):
+        sk, pk = signer
+        sibling_sk, sibling_pk = _other_signer()
+        r = _resolver(pk)
+        r.mark_active(AGENT, "kid-2", public_key=sibling_pk)
+        assert _revoke(r, _signed(sibling_sk), signer_kid="kid-2") is KeyStatus.COMPROMISED
+        assert r.key_status(AGENT, "kid-2") is KeyStatus.ACTIVE
+
+    def test_compromised_key_cannot_revoke_siblings(self, signer):
+        sk, pk = signer
+        r = _resolver(pk)
+        _, sibling_pk = _other_signer()
+        r.mark_active(AGENT, "kid-2", public_key=sibling_pk)
+        _revoke(r, _signed(sk))  # kid-1 revokes itself
+        with pytest.raises(ValueError):
+            _revoke(r, _signed(sk, revoked_key_id="kid-2"))
+        with pytest.raises(ValueError, match="itself revoked"):
+            _revoke(r, _signed(sk, revoked_key_id="kid-2"),
+                    key_lookup=lambda agent, kid: pk)
+        assert r.key_status(AGENT, "kid-2") is KeyStatus.ACTIVE
+
+    def test_revoked_key_can_repeat_its_own_revocation(self, signer):
+        sk, pk = signer
+        r = _resolver(pk)
+        _revoke(r, _signed(sk, reason="key_rotation"))
+        assert _revoke(r, _signed(sk)) is KeyStatus.COMPROMISED
+
+    def test_key_lookup_is_called_with_the_revoked_agent(self, signer):
+        sk, pk = signer
+        seen = []
+
+        def lookup(agent_id, kid):
+            seen.append((agent_id, kid))
+            return pk
+
+        r = InMemoryKeyStatusResolver()
+        r.mark_active(AGENT, "kid-1")
+        assert _revoke(r, _signed(sk), key_lookup=lookup) is KeyStatus.COMPROMISED
+        assert seen == [(AGENT, "kid-1")]
+
+    @pytest.mark.parametrize("result", [None, b"short", "x" * 32])
+    def test_key_lookup_bad_result(self, signer, result):
+        sk, _ = signer
+        with pytest.raises(ValueError):
+            _revoke(InMemoryKeyStatusResolver(), _signed(sk),
+                    key_lookup=lambda agent, kid: result)
+
+    def test_key_lookup_exception_rejects(self, signer):
+        sk, _ = signer
+
+        def boom(agent, kid):
+            raise RuntimeError("network")
+
+        with pytest.raises(ValueError):
+            _revoke(InMemoryKeyStatusResolver(), _signed(sk), key_lookup=boom)
+
+    # -- input validation ---------------------------------------------------
 
     @pytest.mark.parametrize("bad", [
         datetime(2026, 4, 9, 14, 30),            # naive
@@ -357,167 +453,201 @@ class TestResolver:
         sk, pk = signer
         body = _signed(sk)
         with pytest.raises(ValueError):
-            InMemoryKeyStatusResolver().add_revocation(body, bad, public_key_bytes=pk)
+            _resolver(pk).add_revocation(body, bad, signer_kid="kid-1")
 
     def test_equivalent_revoked_at_dt_accepted(self, signer):
         sk, pk = signer
         body = _signed(sk)
         plus2 = timezone(timedelta(hours=2))
-        r = InMemoryKeyStatusResolver()
-        r.add_revocation(body, T0.astimezone(plus2), public_key_bytes=pk)
+        r = _resolver(pk)
+        r.add_revocation(body, T0.astimezone(plus2), signer_kid="kid-1")
         assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
-
-    @pytest.mark.parametrize("pk", [b"", b"\x00" * 31, "x" * 32, None])
-    def test_bad_public_key(self, signer, pk):
-        sk, _ = signer
-        body = _signed(sk)
-        with pytest.raises(ValueError):
-            InMemoryKeyStatusResolver().add_revocation(
-                body, body.revoked_at_datetime(), public_key_bytes=pk)
 
     def test_non_body_rejected(self, signer):
         _, pk = signer
         with pytest.raises(ValueError):
-            InMemoryKeyStatusResolver().add_revocation(
-                {"agent_id": AGENT}, T0, public_key_bytes=pk)  # type: ignore[arg-type]
+            _resolver(pk).add_revocation(
+                {"agent_id": AGENT}, T0, signer_kid="kid-1")  # type: ignore[arg-type]
+
+    # -- no downgrades ------------------------------------------------------
 
     def test_no_downgrade_via_mark_active(self, signer):
         sk, pk = signer
         for reason in ("key_compromise", "key_rotation", "agent_decommissioned"):
-            r = InMemoryKeyStatusResolver()
-            body = _signed(sk, reason=reason)
-            status = r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
-            assert r.mark_active(AGENT, "kid-1") is False
+            r = _resolver(pk)
+            status = _revoke(r, _signed(sk, reason=reason))
+            assert r.mark_active(AGENT, "kid-1", public_key=pk) is False
             assert r.key_status(AGENT, "kid-1") is status
 
     def test_no_downgrade_compromise_to_rotation(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        comp = _signed(sk)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk))
         rot = _signed(sk, reason="key_rotation", revoked_at="2026-05-01T00:00:00Z")
-        r.add_revocation(comp, comp.revoked_at_datetime(), public_key_bytes=pk)
-        assert r.add_revocation(rot, rot.revoked_at_datetime(),
-                                public_key_bytes=pk) is KeyStatus.COMPROMISED
+        assert _revoke(r, rot) is KeyStatus.COMPROMISED
         assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
 
     def test_rotation_upgraded_to_compromise(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        rot = _signed(sk, reason="key_rotation")
-        comp = _signed(sk, revoked_at="2026-05-01T00:00:00Z")
-        r.add_revocation(rot, rot.revoked_at_datetime(), public_key_bytes=pk)
-        r.add_revocation(comp, comp.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk, reason="key_rotation"))
+        _revoke(r, _signed(sk, revoked_at="2026-05-01T00:00:00Z"))
         assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
 
     def test_decommission_upgraded_to_compromise_not_back(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        dec = _signed(sk, reason="agent_decommissioned")
-        comp = _signed(sk)
-        r.add_revocation(dec, dec.revoked_at_datetime(), public_key_bytes=pk)
-        r.add_revocation(comp, comp.revoked_at_datetime(), public_key_bytes=pk)
-        r.add_revocation(dec, dec.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk, reason="agent_decommissioned"))
+        _revoke(r, _signed(sk))
+        _revoke(r, _signed(sk, reason="agent_decommissioned"))
         assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
+        assert len(r) == 1
 
     def test_two_rotations_keep_earliest(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        late = _signed(sk, reason="key_rotation", revoked_at="2026-05-01T00:00:00Z")
-        early = _signed(sk, reason="key_rotation")
-        r.add_revocation(late, late.revoked_at_datetime(), public_key_bytes=pk)
-        r.add_revocation(early, early.revoked_at_datetime(), public_key_bytes=pk)
-        r.add_revocation(late, late.revoked_at_datetime(), public_key_bytes=pk)
-        rec = r.record(AGENT, "kid-1")
-        assert rec == KeyStatusRecord(KeyStatus.ROTATED, T0)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk, reason="key_rotation", revoked_at="2026-05-01T00:00:00Z"))
+        _revoke(r, _signed(sk, reason="key_rotation"))
+        _revoke(r, _signed(sk, reason="key_rotation", revoked_at="2026-05-01T00:00:00Z"))
+        assert r.record(AGENT, "kid-1") == KeyStatusRecord(KeyStatus.ROTATED, T0)
+
+    # -- agent id spellings -------------------------------------------------
 
     def test_agent_id_spellings_share_one_record(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        body = _signed(sk, agent_id="agent://Bücher.Example")
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk, agent="agent://Bücher.Example")
+        _revoke(r, _signed(sk, agent_id="agent://Bücher.Example"))
         for spelling in ("agent://xn--bcher-kva.example", "AGENT://BÜCHER.example",
-                         "agent://bücher.example"):
+                         "agent://bücher.example", "agent://bücher.example:443",
+                         "agent://bücher.example:8443", "agent://b%C3%BCcher.example"):
             assert r.key_status(spelling, "kid-1") is KeyStatus.COMPROMISED, spelling
             assert r.mark_active(spelling, "kid-1") is False
+
+    @pytest.mark.parametrize("spelling", [
+        "agent://victim.example.com.",
+        "agent://victim.example.com/",
+        "agent://victim.example.com/x",
+        "agent://victim.example.com%2F",
+        "agent://victim.example.com?x",
+        "agent://victim.example.com#x",
+        "agent://victim.example.com\\",
+        "agent://sales@victim.example.com.",
+    ])
+    def test_ambiguous_spellings_refused(self, signer, spelling):
+        """Spellings DNS folds together must not dodge a revocation."""
+        sk, pk = signer
+        r = _resolver(pk)
+        _revoke(r, _signed(sk))
+        with pytest.raises(ValueError):
+            canonical_agent_id(spelling)
+        assert r.key_status(spelling, "kid-1") is KeyStatus.UNKNOWN
+        check = delegation_key_check(r, unknown_is_active=True)
+        assert check(spelling, "kid-1", T0) is False
+        assert check(AGENT, "kid-1", T0) is False
 
     def test_slug_registry_normalised(self):
         assert canonical_agent_id("agent://Sales@Bücher.example") == \
             canonical_agent_id("agent://sales@xn--bcher-kva.example")
 
+    def test_port_dropped(self):
+        assert canonical_agent_id("agent://h.example:8443") == "agent://h.example"
+
     def test_kid_is_case_sensitive(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver()
-        body = _signed(sk)
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk)
+        _revoke(r, _signed(sk))
         assert r.key_status(AGENT, "KID-1") is KeyStatus.UNKNOWN
+
+    # -- bounds -------------------------------------------------------------
 
     @pytest.mark.parametrize("bad", [0, -1, True, 1.5, "10"])
     def test_bad_bounds(self, bad):
+        for kwargs in ({"max_revocations": bad}, {"max_unsolicited": bad},
+                       {"max_revocations_per_agent": bad}):
+            with pytest.raises(ValueError):
+                InMemoryKeyStatusResolver(**kwargs)
         with pytest.raises(ValueError):
             InMemoryKeyStatusResolver(bad)
-        with pytest.raises(ValueError):
-            InMemoryKeyStatusResolver(max_revocations_per_agent=bad)
 
-    def test_lru_evicts_active_only(self, signer):
-        sk, pk = signer
+    def test_lru_evicts_active(self, signer):
         r = InMemoryKeyStatusResolver(3)
-        body = _signed(sk)
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
-        assert r.mark_active(AGENT, "a")
-        assert r.mark_active(AGENT, "b")
+        for kid in ("a", "b", "c"):
+            assert r.mark_active(AGENT, kid)
         r.key_status(AGENT, "a")  # touch: "b" is now least recently used
-        assert r.mark_active(AGENT, "c")
-        assert len(r) == 3
+        assert r.mark_active(AGENT, "d")
         assert r.key_status(AGENT, "b") is KeyStatus.UNKNOWN
         assert r.key_status(AGENT, "a") is KeyStatus.ACTIVE
-        assert r.key_status(AGENT, "c") is KeyStatus.ACTIVE
-        assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
-
-    def test_compromised_never_evicted(self, signer):
-        sk, pk = signer
-        r = InMemoryKeyStatusResolver(2)
-        for kid in ("k1", "k2"):
-            b = _signed(sk, revoked_key_id=kid)
-            r.add_revocation(b, b.revoked_at_datetime(), public_key_bytes=pk)
-        # Full of revocations: an ACTIVE mark is refused (stays UNKNOWN) ...
-        assert r.mark_active(AGENT, "k3") is False
-        assert r.key_status(AGENT, "k3") is KeyStatus.UNKNOWN
-        # ... and a new revocation raises instead of being dropped.
-        b3 = _signed(sk, revoked_key_id="k3")
-        with pytest.raises(KeyStatusStoreFullError):
-            r.add_revocation(b3, b3.revoked_at_datetime(), public_key_bytes=pk)
-        assert r.key_status(AGENT, "k1") is KeyStatus.COMPROMISED
-        assert r.key_status(AGENT, "k2") is KeyStatus.COMPROMISED
-
-    def test_revocation_evicts_active_to_make_room(self, signer):
-        sk, pk = signer
-        r = InMemoryKeyStatusResolver(1)
-        r.mark_active(AGENT, "other")
-        body = _signed(sk)
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
-        assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
-        assert r.key_status(AGENT, "other") is KeyStatus.UNKNOWN
+        assert r.key_status(AGENT, "d") is KeyStatus.ACTIVE
 
     def test_active_to_revoked_does_not_grow(self, signer):
         sk, pk = signer
-        r = InMemoryKeyStatusResolver(1)
-        r.mark_active(AGENT, "kid-1")
-        body = _signed(sk)
-        r.add_revocation(body, body.revoked_at_datetime(), public_key_bytes=pk)
+        r = _resolver(pk, 1)
+        _revoke(r, _signed(sk))
         assert len(r) == 1
         assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
 
-    def test_per_agent_flood_collapses_to_tombstone(self, signer):
+    def test_revocations_do_not_block_active_keys(self, signer):
+        """The reported flood: revocations can never stop mark_active."""
+        r = InMemoryKeyStatusResolver(4, max_revocations=4, max_unsolicited=4)
+        for n in range(20):
+            sk, pk = _other_signer()
+            agent = f"agent://attacker{n}.example"
+            r.mark_active(agent, "kid-1", public_key=pk)
+            _revoke(r, _signed(sk, agent_id=agent))
+        assert r.mark_active(AGENT, "fresh") is True
+        assert r.key_status(AGENT, "fresh") is KeyStatus.ACTIVE
+
+    def test_victim_compromise_never_raises_when_full(self, signer):
         sk, pk = signer
+        r = InMemoryKeyStatusResolver(8, max_revocations=4, max_unsolicited=4)
+        for n in range(10):
+            a_sk, a_pk = _other_signer()
+            agent = f"agent://attacker{n}.example"
+            r.mark_active(agent, "kid-1", public_key=a_pk)
+            _revoke(r, _signed(a_sk, agent_id=agent))
+        assert r.mark_active(AGENT, "kid-1", public_key=pk)
+        assert _revoke(r, _signed(sk)) is KeyStatus.COMPROMISED
+        assert r.key_status(AGENT, "kid-1") is KeyStatus.COMPROMISED
+        assert len(r) <= 8 + 4 + 4
+
+    def test_rotated_evicted_before_compromised(self, signer):
+        r = InMemoryKeyStatusResolver(max_revocations=2)
+        keys = {}
+        for kid, reason in (("c", "key_compromise"), ("r", "key_rotation"),
+                            ("x", "key_compromise")):
+            sk, pk = _other_signer()
+            keys[kid] = sk
+            r.mark_active(AGENT, kid, public_key=pk)
+            _revoke(r, _signed(sk, revoked_key_id=kid, reason=reason), signer_kid=kid)
+        assert r.key_status(AGENT, "r") is KeyStatus.UNKNOWN
+        assert r.key_status(AGENT, "c") is KeyStatus.COMPROMISED
+        assert r.key_status(AGENT, "x") is KeyStatus.COMPROMISED
+
+    def test_unsolicited_pool_is_lru(self, signer):
+        r = InMemoryKeyStatusResolver(max_unsolicited=2)
+        sk, pk = _other_signer()
+        for kid in ("u1", "u2", "u3"):
+            body = _signed(sk, revoked_key_id=kid)
+            r.add_revocation(body, body.revoked_at_datetime(), signer_kid=kid,
+                             key_lookup=lambda agent, k: pk)
+        assert r.key_status(AGENT, "u1") is KeyStatus.UNKNOWN
+        assert r.key_status(AGENT, "u2") is KeyStatus.COMPROMISED
+        assert r.key_status(AGENT, "u3") is KeyStatus.COMPROMISED
+        assert r.mark_active(AGENT, "u3") is False
+        assert len(r) == 2
+
+    def test_per_agent_flood_collapses_to_tombstone(self, signer):
         r = InMemoryKeyStatusResolver(max_revocations_per_agent=3)
         r.mark_active("agent://bystander.example.com", "kid-1")
         for i in range(3):
-            b = _signed(sk, revoked_key_id=f"k{i}", reason="key_rotation")
-            assert r.add_revocation(b, b.revoked_at_datetime(),
-                                    public_key_bytes=pk) is KeyStatus.ROTATED
-        b = _signed(sk, revoked_key_id="k3", reason="key_rotation")
-        assert r.add_revocation(b, b.revoked_at_datetime(),
-                                public_key_bytes=pk) is KeyStatus.COMPROMISED
+            sk, pk = _other_signer()
+            r.mark_active(AGENT, f"k{i}", public_key=pk)
+            assert _revoke(r, _signed(sk, revoked_key_id=f"k{i}", reason="key_rotation"),
+                           signer_kid=f"k{i}") is KeyStatus.ROTATED
+        sk, pk = _other_signer()
+        r.mark_active(AGENT, "k3", public_key=pk)
+        assert _revoke(r, _signed(sk, revoked_key_id="k3", reason="key_rotation"),
+                       signer_kid="k3") is KeyStatus.COMPROMISED
         assert r.key_status(AGENT, "k0") is KeyStatus.COMPROMISED
         assert r.key_status(AGENT, "never-seen") is KeyStatus.COMPROMISED
         assert r.mark_active(AGENT, "fresh") is False
@@ -545,6 +675,6 @@ def test_exports():
     import ampro.security as sec
 
     for name in ("KeyStatus", "KeyStatusResolver", "InMemoryKeyStatusResolver",
-                 "signature_allowed", "KeyStatusStoreFullError", "KeyStatusRecord"):
+                 "signature_allowed", "KeyStatusRecord"):
         assert name in ampro.__all__ and name in sec.__all__
         assert getattr(ampro, name) is getattr(sec, name)

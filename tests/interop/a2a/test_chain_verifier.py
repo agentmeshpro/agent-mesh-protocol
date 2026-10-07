@@ -186,3 +186,23 @@ def test_verifier_option_validated():
     with pytest.raises(ValueError):
         A2AAdapter.for_server(server, chain_verifier=lambda c, x: (True, ""),
                               chain_verifier_timeout=0)
+
+
+async def test_slow_sync_verifier_times_out_without_blocking():
+    import threading
+    import time
+
+    seen: list[AMPContext] = []
+    release = threading.Event()
+
+    def slow(chain, ctx):
+        release.wait(5)
+        return True, "late"
+
+    server = build(seen, chain_verifier=slow, chain_verifier_timeout=0.05)
+    started = time.monotonic()
+    r = await send(server, body([LINK]))
+    release.set()
+    assert time.monotonic() - started < 2
+    assert_rejected(r)
+    assert seen == []

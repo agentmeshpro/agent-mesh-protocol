@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import socket
 import unicodedata
 from enum import Enum
 from urllib.parse import unquote
@@ -253,8 +254,17 @@ def _canonical_dns_host(host: str, what: str) -> str:
     for label in labels:
         if not _LDH_LABEL.match(label):
             raise ValueError(f"{what} host has an invalid label {label!r}")
-    if labels[-1].isdigit():
+    if not labels[-1][0].isalpha():
+        # Top-level labels start with a letter.  This also refuses hosts
+        # such as ``127.0x1`` or ``10.1`` that inet_aton-style resolvers
+        # read as IPv4 addresses.
         raise ValueError(f"{what} host must not end in a numeric label")
+    try:
+        socket.inet_aton(ace)
+    except OSError:
+        pass
+    else:
+        raise ValueError(f"{what} host must be a DNS name, not an IP literal")
     return ace
 
 
@@ -391,7 +401,8 @@ def normalize_foreign_did(value: str) -> str:
     if pct:
         if not port_str.isdigit() or len(port_str) > 5 or not 1 <= int(port_str) <= 65535:
             raise ValueError(f"did:{method} has an invalid port")
-        host_part = f"{domain}%3A{int(port_str)}"
+        if int(port_str) != 443:  # the https default, dropped as in https ids
+            host_part = f"{domain}%3A{int(port_str)}"
     segments = parts[3:]
     for seg in segments:
         if not _DID_SEGMENT.match(seg) or seg in (".", ".."):
