@@ -38,59 +38,32 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any
 
-from ampro.trust.tiers import TrustTier
+# The canonical auth contract shared by every protocol the server speaks.
+from ampro.server.auth import ANONYMOUS, Authenticator, Principal, Unauthorized, authenticate
 
-if TYPE_CHECKING:
-    from ampro.server.http import HTTPRequest
+ANONYMOUS_ID = ANONYMOUS.id
+#: AMP ``sender`` address used for anonymous A2A callers.
+ANONYMOUS_SENDER = "a2a://anonymous"
 
-ANONYMOUS_ID = "a2a://anonymous"
+
+def is_anonymous(principal: Principal) -> bool:
+    return principal is ANONYMOUS or principal.id == ANONYMOUS_ID
 
 
-@dataclass(frozen=True)
-class Principal:
-    """The authenticated caller of an A2A request.
+class InvalidToken(Unauthorized):
+    """:class:`Unauthorized` carrying an RFC 6750 ``error`` code.
 
-    ``id`` is the stable owner key and the AMP ``sender`` address; it must be
-    unique per caller (e.g. ``"pa:https://pa.example#user-42"``).
+    The adapter puts it in ``WWW-Authenticate`` (e.g.
+    ``Bearer realm="a2a", error="invalid_token"``).  Any ``Unauthorized``
+    with an ``error`` attribute is treated the same way.
     """
 
-    id: str
-    trust_tier: TrustTier = TrustTier.EXTERNAL
-    scopes: frozenset[str] = field(default_factory=frozenset)
-    claims: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
-    auth_method: str | None = None
-
-    @property
-    def is_anonymous(self) -> bool:
-        return self.id == ANONYMOUS_ID
-
-    def with_scopes(self, scopes: Iterable[str]) -> Principal:
-        return Principal(self.id, self.trust_tier, frozenset(scopes), self.claims, self.auth_method)
-
-
-ANONYMOUS = Principal(id=ANONYMOUS_ID, trust_tier=TrustTier.EXTERNAL, auth_method="none")
-
-
-class Unauthorized(Exception):
-    """Raised by an authenticator for a credential that is present but invalid.
-
-    ``error`` is the RFC 6750 ``error`` attribute for ``WWW-Authenticate``
-    (e.g. ``"invalid_token"``).  The message is logged, never sent.
-    """
-
-    def __init__(self, message: str = "unauthorized", *, error: str | None = None) -> None:
+    def __init__(self, message: str = "invalid token", *, error: str = "invalid_token") -> None:
         self.error = error
         super().__init__(message)
-
-
-@runtime_checkable
-class Authenticator(Protocol):
-    """Resolve the caller of a request.  See the module docstring for the rules."""
-
-    async def authenticate(self, request: HTTPRequest) -> Principal | None: ...
 
 
 class AuthRequired(Exception):
@@ -140,6 +113,10 @@ def www_authenticate(error: str | None = None, realm: str = "a2a") -> str:
 __all__ = [
     "ANONYMOUS",
     "ANONYMOUS_ID",
+    "ANONYMOUS_SENDER",
+    "InvalidToken",
+    "authenticate",
+    "is_anonymous",
     "AuthRequired",
     "AuthRequiredKeys",
     "Authenticator",

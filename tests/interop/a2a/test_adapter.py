@@ -696,3 +696,55 @@ async def test_amp_extension_cost_receipt(client):
                           headers={"A2A-Extensions": AMP_EXTENSION_URI})
     ext = r.json()["task"]["metadata"][AMP_EXTENSION_URI]
     assert ext["costReceipt"] == {"agent_id": "@demo", "cost_usd": 0.01}
+
+
+# ---------------------------------------------------------------------------
+# Server security policy applies to A2A
+# ---------------------------------------------------------------------------
+
+
+async def test_rate_limit_applies():
+    from ampro.security.rate_limiter import RateLimiter
+
+    server, _ = make_server(authenticators=[TokenAuth()])
+    server.security.rate_limiter = RateLimiter(rpm=2)
+    async with http_client(server, headers={"Authorization": "Bearer user:alice"}) as c:
+        assert (await c.get("/a2a/tasks")).status_code == 200
+        assert (await c.get("/a2a/tasks")).status_code == 200
+        r = await c.get("/a2a/tasks")
+        assert r.status_code == 429 and r.content == b"" and int(r.headers["retry-after"]) >= 1
+        # the card is not rate limited
+        assert (await c.get("/.well-known/agent-card.json")).status_code == 200
+    async with http_client(server, headers={"Authorization": "Bearer user:bob"}) as c:
+        assert (await c.get("/a2a/tasks")).status_code == 200
+
+
+async def test_concurrency_limit_released_after_requests():
+    from ampro.security.concurrency_limiter import ConcurrencyLimiter
+
+    server, _ = make_server()
+    server.security.concurrency = ConcurrencyLimiter(max_total=1)
+    async with http_client(server) as c:
+        for _ in range(3):
+            assert (await c.post("/a2a/message:send", json=user_message("hi"))).status_code == 200
+            r = await c.post("/a2a/message:stream", json=user_message("stream"))
+            assert r.status_code == 200
+        assert server.security.concurrency.total_active == 0
+        server.security.concurrency.acquire("someone-else")
+        r = await c.post("/a2a/message:send", json=user_message("hi"))
+        assert r.status_code == 503 and r.content == b""
+
+
+async def test_defaults_come_from_server_security():
+    from ampro.interop.a2a import A2AAdapter
+    from ampro.server import AgentServer
+
+    from .conftest import build_app
+
+    server = AgentServer.from_app(build_app({}))
+    server.security.authenticators = [TokenAuth()]
+    server.security.require_auth = True
+    server.security.handler_timeout_seconds = 7.0
+    adapter = A2AAdapter.for_server(server)
+    assert adapter.require_auth is True and adapter.handler_timeout == 7.0
+    assert len(adapter.authenticators) == 1

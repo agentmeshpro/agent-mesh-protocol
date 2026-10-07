@@ -12,8 +12,8 @@ from ampro.ampi.app import AgentApp
 from ampro.interop.a2a import (
     A2AAdapter,
     AuthRequired,
+    InvalidToken,
     Principal,
-    Unauthorized,
 )
 from ampro.server import AgentServer
 from ampro.server.http import HTTPRequest
@@ -110,8 +110,8 @@ class TokenAuth:
         if not header:
             return None
         if not header.startswith("Bearer user:"):
-            raise Unauthorized("bad token", error="invalid_token")
-        _, name, *rest = header[len("Bearer "):].split(":")
+            raise InvalidToken("bad token")
+        _, name, *rest = header[len("Bearer "):].split(":", 2)
         scopes = frozenset(rest[0].split(",")) if rest and rest[0] else frozenset()
         return Principal(id=f"user://{name}", trust_tier=TrustTier.VERIFIED, scopes=scopes,
                          claims={"sub": name}, auth_method="jwt")

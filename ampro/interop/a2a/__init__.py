@@ -25,6 +25,7 @@ from ampro.interop.a2a.auth import (
     Authenticator,
     AuthRequired,
     AuthRequiredKeys,
+    InvalidToken,
     Principal,
     Unauthorized,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "InMemoryContextStore",
     "InMemoryIdempotencyStore",
     "InMemoryTaskStore",
+    "InvalidToken",
     "Message",
     "PACT_AUTH_KEYS",
     "Part",

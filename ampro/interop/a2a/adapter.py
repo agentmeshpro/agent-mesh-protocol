@@ -32,6 +32,7 @@ import inspect
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -46,11 +47,14 @@ from ampro.core.envelope import AgentMessage
 from ampro.identity.auth_methods import AuthMethod
 from ampro.interop.a2a.auth import (
     ANONYMOUS,
+    ANONYMOUS_SENDER,
     Authenticator,
     AuthRequired,
     AuthRequiredKeys,
     Principal,
     Unauthorized,
+    authenticate,
+    is_anonymous,
     www_authenticate,
 )
 from ampro.interop.a2a.card import AMP_EXTENSION_URI, build_agent_card
@@ -122,6 +126,13 @@ _SILENT_EVENTS = frozenset({
 })
 
 TEXT_MODES = ("text/plain",)
+
+
+class _Unset:
+    pass
+
+
+_UNSET = _Unset()
 DEFAULT_INPUT_MODES = ("text/plain", "application/json", "*/*")
 
 
@@ -199,8 +210,10 @@ class A2AAdapter:
             ``"/a2a/brand-42"``).
         public_url: externally visible origin used in the card
             (default: the agent's AMP ``endpoint``).
-        authenticators: tried in order — see :mod:`ampro.interop.a2a.auth`.
-        require_auth: reject unauthenticated callers with ``401``.
+        authenticators: tried in order — see :mod:`ampro.interop.a2a.auth`
+            (default: ``server.security.authenticators``).
+        require_auth: reject unauthenticated callers with ``401``
+            (default: ``server.security.require_auth``).
         task_store / context_store / idempotency_store: state backends
             (defaults: bounded in-memory stores, see :mod:`.store`).
         card: a fixed :class:`AgentCard`; otherwise one is built per request
@@ -221,7 +234,12 @@ class A2AAdapter:
         max_text_chars: maximum total characters across text parts.
         max_metadata_bytes: maximum JSON size of request / message metadata.
         handler_timeout: seconds a handler may run per request (``None`` =
-            unbounded); on expiry the task fails with a generic message.
+            unbounded; default: ``server.security.handler_timeout_seconds``);
+            on expiry the task fails with a generic message.
+
+    The server's ``security.rate_limiter`` and ``security.concurrency`` apply
+    to every A2A request (keyed by principal id, or ``ip:<peer>`` when
+    anonymous): ``429`` with ``Retry-After`` / ``503`` with no body.
     """
 
     name = "a2a"
@@ -232,8 +250,8 @@ class A2AAdapter:
         *,
         base_path: str = "/a2a",
         public_url: str | None = None,
-        authenticators: Iterable[Authenticator] = (),
-        require_auth: bool = False,
+        authenticators: Iterable[Authenticator] | None = None,
+        require_auth: bool | None = None,
         task_store: TaskStore | None = None,
         context_store: ContextStore | None = None,
         idempotency_store: IdempotencyStore | None = None,
@@ -255,12 +273,19 @@ class A2AAdapter:
         max_parts: int = 64,
         max_text_chars: int = 65_536,
         max_metadata_bytes: int = 16_384,
-        handler_timeout: float | None = 120.0,
+        handler_timeout: float | None | _Unset = _UNSET,
         realm: str = "a2a",
     ) -> None:
         self.server = server
         self.base_path = "/" + base_path.strip("/") if base_path.strip("/") else ""
         self.public_url = public_url
+        policy = getattr(server, "security", None)
+        if authenticators is None:
+            authenticators = policy.authenticators if policy is not None else ()
+        if require_auth is None:
+            require_auth = bool(policy.require_auth) if policy is not None else False
+        if isinstance(handler_timeout, _Unset):
+            handler_timeout = policy.handler_timeout_seconds if policy is not None else 120.0
         self.authenticators = list(authenticators)
         self.require_auth = require_auth
         self.store: TaskStore = task_store if task_store is not None else InMemoryTaskStore()
@@ -291,6 +316,7 @@ class A2AAdapter:
         self.realm = realm
         self._live: dict[str, _Live] = {}
         self._busy_tasks: set[str] = set()
+        self._background: set[asyncio.Task[Any]] = set()
 
     @classmethod
     def for_server(
@@ -299,8 +325,8 @@ class A2AAdapter:
         *,
         base_path: str = "/a2a",
         public_url: str | None = None,
-        authenticators: Iterable[Authenticator] = (),
-        require_auth: bool = False,
+        authenticators: Iterable[Authenticator] | None = None,
+        require_auth: bool | None = None,
         task_store: TaskStore | None = None,
         **options: Any,
     ) -> A2AAdapter:
@@ -360,7 +386,6 @@ class A2AAdapter:
         if isinstance(route, HTTPResponse):
             return route
         kind, arg = route
-        jsonrpc = kind == "jsonrpc"
 
         # Authentication (before the body is parsed).
         principal_or_resp = await self._authenticate(request)
@@ -369,10 +394,51 @@ class A2AAdapter:
         request_id = (request.header("x-request-id") or "")[:64] or new_id()
         call = _Call(principal_or_resp, self._activated_extensions(request), request, request_id)
 
-        if jsonrpc:
+        # Same rate / concurrency limits as the native AMP route.
+        policy = getattr(self.server, "security", None)
+        limit_key = (call.principal.id if not is_anonymous(call.principal)
+                     else f"ip:{request.client}")
+        if policy is not None and policy.rate_limiter is not None:
+            allowed, info = policy.rate_limiter.check(limit_key)
+            if not allowed:
+                retry = max(1, int(info.reset - time.time()))
+                return HTTPResponse.empty(429, {
+                    "retry-after": str(retry),
+                    "x-ratelimit-limit": str(info.limit),
+                    "x-ratelimit-remaining": str(info.remaining),
+                    "x-ratelimit-reset": str(info.reset),
+                })
+        limiter = policy.concurrency if policy is not None else None
+        if limiter is not None and not limiter.acquire(limit_key):
+            return HTTPResponse.empty(503, {"retry-after": "5"})
+        try:
+            response = await self._dispatch(kind, arg, call)
+        except BaseException:
+            if limiter is not None:
+                limiter.release(limit_key)
+            raise
+        if limiter is None:
+            return response
+        if not response.is_streaming:
+            limiter.release(limit_key)
+            return response
+        inner = response.body
+
+        async def released() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in inner:  # type: ignore[union-attr]
+                    yield chunk
+            finally:
+                limiter.release(limit_key)
+
+        response.body = released()
+        return response
+
+    async def _dispatch(self, kind: str, arg: str | None, call: _Call) -> HTTPResponse:
+        if kind == "jsonrpc":
             return await self._handle_jsonrpc(call)
         try:
-            self._check_version(request)
+            self._check_version(call.request)
             return await self._handle_rest(kind, arg, call)
         except A2AError as exc:
             return self._rest_error(exc, call)
@@ -413,17 +479,16 @@ class A2AAdapter:
     # ------------------------------------------------------------------
 
     async def _authenticate(self, request: HTTPRequest) -> Principal | HTTPResponse:
-        for authenticator in self.authenticators:
-            try:
-                principal = await authenticator.authenticate(request)
-            except Unauthorized as exc:
-                logger.info("A2A authentication rejected: %s", exc)
-                return self._unauthorized(exc.error)
-            except Exception:
-                logger.exception("A2A authenticator failed")
-                return self._unauthorized(None)
-            if principal is not None:
-                return principal
+        try:
+            principal = await authenticate(request, self.authenticators)
+        except Unauthorized as exc:
+            logger.info("A2A authentication rejected: %s", exc)
+            return self._unauthorized(getattr(exc, "error", None))
+        except Exception:
+            logger.exception("A2A authenticator failed")
+            return self._unauthorized(None)
+        if principal is not None:
+            return principal
         if self.require_auth:
             return self._unauthorized(None)
         return ANONYMOUS
@@ -649,7 +714,7 @@ class A2AAdapter:
         include_artifacts = str(params.get("includeArtifacts", "")).lower() in ("true", "1")
         after = _parse_ts(params.get("statusTimestampAfter"))
 
-        if call.principal.is_anonymous:
+        if is_anonymous(call.principal):
             tasks: list[Task] = []  # anonymous callers share an id; never list
         else:
             context_id = params.get("contextId") or None
@@ -902,7 +967,8 @@ class A2AAdapter:
                    continuing: Task | None) -> tuple[AgentMessage, AMPContext]:
         principal = call.principal
         amp_message = a2a_to_amp(
-            msg, agent_id=self.server.agent_id, sender=principal.id,
+            msg, agent_id=self.server.agent_id,
+            sender=ANONYMOUS_SENDER if is_anonymous(principal) else principal.id,
             context_id=context_id, task_id=task_id, continuing=continuing,
             body_type=self._body_type(continuing),
         )
@@ -921,7 +987,7 @@ class A2AAdapter:
         ctx = build_context(
             self.server.agent_id, amp_message,
             trust_tier=principal.trust_tier,
-            principal=None if principal.is_anonymous else principal,
+            principal=None if is_anonymous(principal) else principal,
             scopes=frozenset(principal.scopes),
             protocol="a2a",
             auth_method=auth_method,
@@ -1170,7 +1236,7 @@ class A2AAdapter:
             payload = None
             try:
                 try:
-                    reply: Reply | None = await self._run(prep)
+                    reply: Reply | None = await work
                 except asyncio.CancelledError:
                     reply = None
                 except A2AError as exc:
@@ -1194,8 +1260,13 @@ class A2AAdapter:
                 live.publish(None)
                 self._live.pop(prep.task_id, None)
                 await self._release(prep, payload)
+                self._background.discard(asyncio.current_task())  # type: ignore[arg-type]
 
-        live.runner = asyncio.ensure_future(runner())
+        # ``live.runner`` is the handler work itself so cancel() always lands
+        # there (even before it started); the wrapper always cleans up.
+        work = asyncio.ensure_future(self._run(prep))
+        live.runner = work
+        self._background.add(asyncio.ensure_future(runner()))
         return {"task": dump(_trim_history(working, prep.history_length))}
 
 
