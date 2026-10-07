@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ampro"
-version = "0.3.4"
+version = "0.4.0"
 description = "Universal agent-to-agent communication protocol — agent:// addressing, trust tiers, delegation chains, compliance"
 readme = "README.md"
 license = "Apache-2.0"
@@ -56,6 +56,7 @@ dev = [
     "fastapi>=0.110",
     "pyjwt[crypto]>=2.8",
     "a2a-sdk>=1.0",
+    "mcp>=2.0",
 ]
 
 [project.scripts]
