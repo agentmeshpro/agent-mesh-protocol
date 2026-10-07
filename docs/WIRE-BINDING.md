@@ -4,7 +4,8 @@
     Status: Normative
     Date: 2026-10-07 (security revision for ampro 0.4.0)
     Authors: AMP Contributors
-    Specification URI: https://amp-protocol.dev/spec/wire-binding/1.0
+    Specification URI: https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md
+    Website: https://ampro.sh
 
 ## Abstract
 
@@ -2832,13 +2833,13 @@ message:
 {
   "body_type": "key.revocation",
   "body": {
-    "agent_id": "agent://compromise-victim@registry.amp-protocol.dev",
+    "agent_id": "agent://compromise-victim@registry.example.com",
     "revoked_key_id": "kid-ed25519-2026-04-01",
     "revoked_at": "2026-04-09T14:30:00Z",
     "reason": "key_compromise",
     "replacement_key_id": "kid-ed25519-2026-04-09",
-    "jwks_url": "https://registry.amp-protocol.dev/.well-known/jwks.json",
-    "signature": "W8kMAdUC98k2Tq44G_DjAIMvU_iWMjzQlo7FRCV-V5JuIHGYq5hvoaUI3UlUY8LQR5OfnYfyOATxlzM55hM1BQ"
+    "jwks_url": "https://registry.example.com/.well-known/jwks.json",
+    "signature": "yI8EFO_2YxHboCol-niRlXivTwEueblFvnbZsesdUgt9MvkJWEwwXoPXid5bpAsHht1CcR3PvlW3jzdsuqxJBw"
   }
 }
 ```
@@ -2873,7 +2874,7 @@ object with these properties:
 For the example above, the signed string is:
 
 ```
-{"agent_id":"agent://compromise-victim@registry.amp-protocol.dev","jwks_url":"https://registry.amp-protocol.dev/.well-known/jwks.json","reason":"key_compromise","replacement_key_id":"kid-ed25519-2026-04-09","revoked_at":"2026-04-09T14:30:00Z","revoked_key_id":"kid-ed25519-2026-04-01"}
+{"agent_id":"agent://compromise-victim@registry.example.com","jwks_url":"https://registry.example.com/.well-known/jwks.json","reason":"key_compromise","replacement_key_id":"kid-ed25519-2026-04-09","revoked_at":"2026-04-09T14:30:00Z","revoked_key_id":"kid-ed25519-2026-04-01"}
 ```
 
 This example is signed with the RFC 8032 TEST 1 key (see

@@ -29,8 +29,7 @@ behaviour exists only in `ampro`, it is not a protocol requirement.
 ## Roles
 
 - **Maintainers** merge changes and cut releases. They are listed in
-  `.github/CODEOWNERS`, or in the repository settings until that file
-  exists. A maintainer who has not reviewed or merged a change in 12
+  `.github/CODEOWNERS`. A maintainer who has not reviewed or merged a change in 12
   months becomes emeritus.
 - **Spec editors** are the maintainers who own WIRE-BINDING and the
   registries. Every normative change needs approval from at least one
