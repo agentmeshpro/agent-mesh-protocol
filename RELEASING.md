@@ -13,7 +13,10 @@ Run these steps in order for every release. Do not skip.
 7. Release, either way:
    - Push a tag: `git tag -a vX.Y.Z -m "<summary>" && git push origin main vX.Y.Z`
    - Or, from main, run Actions → Release → Run workflow with target `pypi`.
-     It creates the `vX.Y.Z` tag itself.
+     It creates the `vX.Y.Z` tag itself, before uploading anything. GitHub
+     refuses that tag when main's latest commit changes files under
+     `.github/workflows`, so land any other change after a workflow change
+     before releasing this way.
 8. `.github/workflows/release.yml` builds the sdist and wheel, uploads them to
    PyPI, then creates the GitHub Release with this version's CHANGELOG
    section as its notes. Check the run, then `pip install ampro==X.Y.Z` in a
