@@ -63,6 +63,16 @@ class AMPContext:
     # --- Tracing ---
     trace_id: str = ""
     span_id: str = ""
+    #: Span id of the caller (the ``parent-id`` of an inbound W3C
+    #: ``traceparent``), when one was received.
+    parent_span_id: str | None = None
+    #: Validated W3C ``tracestate`` received with the request (passed
+    #: through on outbound calls).
+    trace_state: str | None = None
+    #: Agent-to-agent hops this request has taken so far (``AMP-Hop-Count``
+    #: / ``amp.hopCount``, or the ``Visited-Agents`` count, whichever is
+    #: larger).  See ``ampro.interop.propagation``.
+    hop_count: int = 0
 
     # --- Routing / correlation ---
     transaction_id: str | None = None

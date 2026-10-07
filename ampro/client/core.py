@@ -26,6 +26,7 @@ from ampro import __version__ as _AMPRO_VERSION
 from ampro.client.errors import AmpProtocolError
 from ampro.core.addressing import AddressType, parse_agent_uri
 from ampro.core.envelope import AgentMessage
+from ampro.interop.propagation import outbound_headers
 from ampro.security.ssrf import pinned_async_transport, validate_url_async
 from ampro.transport.limits import read_capped
 from ampro.wire.config import DEFAULTS
@@ -145,6 +146,10 @@ async def _post_message(
         msg: The message envelope to send.
         timeout: Request timeout in seconds.
         extra_headers: Additional HTTP headers (e.g. Session-Binding).
+            W3C ``traceparent`` / ``tracestate`` and ``AMP-Hop-Count`` from
+            the calling handler are always sent (see
+            :mod:`ampro.interop.propagation`); a send whose hop count would
+            exceed the limit raises ``HopLimitExceeded`` instead.
         allow_private: Permit loopback/private targets (local development).
         max_response_bytes: Response body cap (default
             ``WireConfig.max_response_bytes``); the read is aborted beyond it.
@@ -161,6 +166,7 @@ async def _post_message(
     headers = {
         "Content-Type": "application/json",
         "User-Agent": _USER_AGENT,
+        **outbound_headers(),
     }
     if extra_headers:
         headers.update(extra_headers)

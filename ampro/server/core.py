@@ -41,6 +41,7 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -55,6 +56,17 @@ from ampro.ampi.errors import AMPError
 from ampro.core.body_schemas import validate_body
 from ampro.core.envelope import AgentMessage
 from ampro.core.versioning import CURRENT_VERSION, SUPPORTED_VERSIONS, negotiate_version
+from ampro.interop.propagation import (
+    HopLimitExceeded,
+    InboundTrace,
+    Propagation,
+    TracePropagationError,
+    apply_to_context,
+    begin_span,
+    hop_limit_from_policy,
+    read_inbound,
+    use_propagation,
+)
 from ampro.server.auth import ANONYMOUS, Principal, Unauthorized, authenticate
 from ampro.server.http import HTTPRequest, HTTPResponse, ProtocolAdapter
 from ampro.server.security import (
@@ -537,10 +549,19 @@ class AgentServer:
         except ValueError:
             return problem(invalid_message("Request body is not valid JSON"), rl_headers)
 
+        # W3C trace context + AMP-Hop-Count (cross-protocol loop guard).
+        try:
+            inbound = read_inbound(request.headers, max_hops=self._max_hops())
+        except HopLimitExceeded:
+            return problem(loop_detected("Hop limit exceeded"), rl_headers)
+        except TracePropagationError as exc:
+            return problem(invalid_message(str(exc)), rl_headers)
+
         status, headers, body = await self._handle_message(
             payload,
             principal=principal,
             accept_version=request.header("accept-version"),
+            inbound=inbound,
         )
         hdrs = _lower(headers)
         hdrs.update({k.lower(): v for k, v in rl_headers.items()})
@@ -552,12 +573,17 @@ class AgentServer:
         names = {self.agent_id, *self.agent_json.identifiers, *self.security.aliases}
         return {normalize_agent_uri(n) for n in names}
 
+    def _max_hops(self) -> int:
+        """The hop limit: ``SecurityPolicy.max_visited_agents``, clamped to a sane range."""
+        return hop_limit_from_policy(self.security)
+
     async def _handle_message(
         self,
         body: dict[str, Any] | None,
         *,
         principal: Principal | None = None,
         accept_version: str | None = None,
+        inbound: InboundTrace | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         """Validate and dispatch one AMP envelope.
 
@@ -568,7 +594,7 @@ class AgentServer:
         response carries the negotiated ``Protocol-Version`` (Section 18.4).
         """
         status, headers, body_str = await self._handle_envelope(
-            body, principal or ANONYMOUS, accept_version
+            body, principal or ANONYMOUS, accept_version, inbound
         )
         return status, {"Protocol-Version": CURRENT_VERSION, **headers}, body_str
 
@@ -577,6 +603,7 @@ class AgentServer:
         body: dict[str, Any] | None,
         principal: Principal,
         accept_version: str | None,
+        inbound: InboundTrace | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         policy = self.security
 
@@ -645,28 +672,41 @@ class AgentServer:
                 supported_versions=list(SUPPORTED_VERSIONS),
             ))
 
-        status, headers, body_str = await self._dispatch_envelope(msg, principal)
+        status, headers, body_str = await self._dispatch_envelope(msg, principal, inbound)
         return status, {**headers, "Protocol-Version": version}, body_str
 
     async def _dispatch_envelope(
         self,
         msg: AgentMessage,
         principal: Principal,
+        inbound: InboundTrace | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         policy = self.security
 
         # Loop detection on the Visited-Agents header.
         visited = (msg.headers or {}).get("Visited-Agents")
+        visited_count = 0
         if visited:
             from ampro.delegation.chain import (
                 check_visited_agents_limit,
                 check_visited_agents_loop,
+                parse_visited_agents,
             )
 
             if not check_visited_agents_limit(visited, policy.max_visited_agents):
                 return self._error_response(loop_detected("Visited-Agents limit exceeded"))
             if any(check_visited_agents_loop(visited, a) for a in self._addresses()):
                 return self._error_response(loop_detected("Message has already visited this agent"))
+            visited_count = len(parse_visited_agents(visited))
+
+        # Hop count across protocol boundaries: the larger of AMP-Hop-Count
+        # and the Visited-Agents count (never lowered by either).
+        inbound = inbound or InboundTrace()
+        max_hops = self._max_hops()
+        hops = max(inbound.hop_count, visited_count)
+        if hops > max_hops:
+            return self._error_response(loop_detected("Hop limit exceeded"))
+        propagation = begin_span(replace(inbound, hop_count=hops), max_hops=max_hops)
 
         # Step 3: Look up handler.
         handler = self._handlers.get(msg.body_type)
@@ -698,7 +738,7 @@ class AgentServer:
             return self._error_response(unavailable("Agent is at capacity", retry_after=5))
 
         try:
-            response = await self._invoke(msg, handler, principal)
+            response = await self._invoke(msg, handler, principal, propagation)
         finally:
             if policy.concurrency is not None:
                 policy.concurrency.release(slot_key)
@@ -718,29 +758,35 @@ class AgentServer:
         msg: AgentMessage,
         handler: Callable[..., Any],
         principal: Principal,
+        propagation: Propagation | None = None,
     ) -> tuple[int, dict[str, Any], str]:
         """Call the handler with a timeout and map failures to problems.
 
         Serialisation happens inside the same guard so a non-JSON result
-        cannot escape as an unhandled exception.
+        cannot escape as an unhandled exception.  The handler runs inside
+        *propagation* (trace context + hop count) so outbound clients it
+        calls carry them on.
         """
         tier = principal.trust_tier if principal is not ANONYMOUS else self.trust_tier
 
         async def call() -> Any:
-            if self._app is not None:
-                ctx = build_context(
-                    self.agent_id,
-                    msg,
-                    trust_tier=tier,
-                    principal=principal,
-                    scopes=principal.scopes,
-                    protocol="amp",
-                )
-                return await dispatch(self._app, msg, ctx)
-            result = handler(msg)
-            if inspect.isawaitable(result):
-                result = await result
-            return result
+            with use_propagation(propagation):
+                if self._app is not None:
+                    ctx = build_context(
+                        self.agent_id,
+                        msg,
+                        trust_tier=tier,
+                        principal=principal,
+                        scopes=principal.scopes,
+                        protocol="amp",
+                    )
+                    if propagation is not None:
+                        apply_to_context(ctx, propagation)
+                    return await dispatch(self._app, msg, ctx)
+                result = handler(msg)
+                if inspect.isawaitable(result):
+                    result = await result
+                return result
 
         try:
             limit = self.security.handler_timeout_seconds
