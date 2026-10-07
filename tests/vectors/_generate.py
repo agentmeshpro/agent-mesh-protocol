@@ -52,6 +52,10 @@ from ampro.delegation.chain import (  # noqa: E402
     _canonical_link_bytes,
 )
 from ampro.delegation.cost_receipt import CostReceipt  # noqa: E402
+from ampro.delegation.v2 import (  # noqa: E402
+    DelegationLinkV2,
+    canonical_link_v2_bytes,
+)
 from ampro.registry.federation import (  # noqa: E402
     federation_revoke_payload,
     federation_trust_proof_payload,
@@ -833,6 +837,183 @@ def build_delegation() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Delegation chains, format v2
+# ---------------------------------------------------------------------------
+
+_V2_NOW = "2026-01-01T00:30:00Z"
+_V2_PRINCIPAL = {"iss": "https://id.example.com", "sub": "pairwise-7f3c", "acr": "phr",
+                 "present": True}
+_V2_INTENT = "sha-256:" + b64url_nopad(hashlib.sha256(
+    b'{"currency":"USD","merchant":"agent://shop.example.com","total_minor":4200}').digest())
+_V2_REFS = [{"type": "oauth-grant", "ref": "grant_8Hq2", "expires_at": "2026-01-01T02:00:00Z"}]
+
+
+def _link_v2(n: int, delegator: str, delegate: str, scopes: list[str], **kw: Any) -> dict:
+    link: dict[str, Any] = {
+        "v": 2,
+        "link_id": f"vector-link-{n:02d}-0123456789abcdef",
+        "delegator": delegator,
+        "delegate": delegate,
+        "scopes": scopes,
+        "max_depth": kw.pop("max_depth", 3),
+        "created_at": kw.pop("created_at", "2026-01-01T00:00:00Z"),
+        "expires_at": kw.pop("expires_at", "2026-01-01T01:00:00Z"),
+        "alg": "EdDSA",
+        "kid": "k1",
+    }
+    link.update(kw)
+    return link
+
+
+def _v2_root(**kw: Any) -> dict:
+    base = dict(
+        aud=["agent://shop.example.com"], principal=_V2_PRINCIPAL, origin="oauth",
+        intent_hash=_V2_INTENT, credential_refs=_V2_REFS,
+        constraints=[{"type": "amount", "currency": "USD", "max_minor": 5000}],
+    )
+    base.update(kw)
+    return _link_v2(1, _O, _M, ["orders:*"], **base)
+
+
+def _v2_child(**kw: Any) -> dict:
+    base = dict(
+        max_depth=2, created_at="2026-01-01T00:01:00Z",
+        aud=["agent://shop.example.com"], principal=_V2_PRINCIPAL, origin="oauth",
+        intent_hash=_V2_INTENT, credential_refs=_V2_REFS,
+        constraints=[{"type": "amount", "currency": "USD", "max_minor": 4200}],
+    )
+    base.update(kw)
+    return _link_v2(2, _M, _W, ["orders:pay"], **base)
+
+
+_DELEGATION_V2_CASES: list[dict[str, Any]] = [
+    {
+        "description": "Valid single hop: principal, audience, amount cap, credential reference",
+        "links": [_v2_root()],
+        "valid": True,
+    },
+    {
+        "description": "Valid two hops: scopes and amount cap narrow; root-bound members repeat",
+        "links": [_v2_root(), _v2_child()],
+        "valid": True,
+    },
+    {
+        "description": "Valid: understood critical extension member is signed and accepted",
+        "links": [_v2_root(**{"com.example.region": "eu", "crit": ["com.example.region"]})],
+        "understood_extensions": ["com.example.region"],
+        "valid": True,
+    },
+    {
+        "description": "Invalid: critical extension the verifier does not understand",
+        "links": [_v2_root(**{"com.example.region": "eu", "crit": ["com.example.region"]})],
+        "valid": False,
+        "error_contains": "not understood",
+    },
+    {
+        "description": "Invalid: extension member altered after signing",
+        "links": [_v2_root(**{"com.example.note": "a"})],
+        "tamper": {"link": 0, "field": "com.example.note", "value": "b"},
+        "valid": False,
+        "error_contains": "invalid signature",
+    },
+    {
+        "description": "Invalid: verifier is not in the audience",
+        "links": [_v2_root()],
+        "audience": "agent://other.example.com",
+        "valid": False,
+        "error_contains": "not permitted",
+    },
+    {
+        "description": "Invalid: child raises the amount cap",
+        "links": [_v2_root(), _v2_child(constraints=[
+            {"type": "amount", "currency": "USD", "max_minor": 6000}])],
+        "valid": False,
+        "error_contains": "raises the amount cap",
+    },
+    {
+        "description": "Invalid: child changes the principal",
+        "links": [_v2_root(), _v2_child(principal={**_V2_PRINCIPAL, "sub": "someone-else"})],
+        "valid": False,
+        "error_contains": "principal differs from the root",
+    },
+    {
+        "description": "Invalid: link without status_url lives longer than 24 h",
+        "links": [_v2_root(origin="agent", principal=None, intent_hash=None, credential_refs=[],
+                           expires_at="2026-01-03T00:00:00Z")],
+        "valid": False,
+        "error_contains": "cannot be revoked",
+    },
+    {
+        "description": "Invalid: link signed under a different parent link (parent_link_id binding)",
+        "links": [_v2_root(), _v2_child()],
+        "sign_parent_override": {"1": "vector-link-99-0123456789abcdef"},
+        "valid": False,
+        "error_contains": "link 1: invalid signature",
+    },
+    {
+        "description": "Invalid: link outlives the credential it references",
+        "links": [_v2_root(expires_at="2026-01-01T03:00:00Z")],
+        "valid": False,
+        "error_contains": "outlives referenced credential",
+    },
+]
+
+
+def _strip_none(d: dict) -> dict:
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def build_delegation_v2() -> dict:
+    cases = []
+    for spec in _DELEGATION_V2_CASES:
+        spec = copy.deepcopy(spec)
+        links = [_strip_none(link) for link in spec["links"]]
+        models: list[DelegationLinkV2] = []
+        signed: list[str] = []
+        overrides = spec.get("sign_parent_override", {})
+        for i, link in enumerate(links):
+            model = DelegationLinkV2.model_validate(link)
+            parent = models[i - 1] if i else None
+            if str(i) in overrides and parent is not None:
+                parent = parent.model_copy(update={"link_id": overrides[str(i)]})
+            payload = canonical_link_v2_bytes(model, parent)
+            link["signature"] = b64url_nopad(ed_sign(_AGENT_KEYS[link["delegator"]], payload))
+            models.append(model)
+            signed.append(payload.decode("utf-8"))
+        tamper = spec.get("tamper")
+        if tamper:
+            links[tamper["link"]][tamper["field"]] = tamper["value"]
+        case: dict[str, Any] = {
+            "description": spec["description"],
+            "now": _V2_NOW,
+            "audience": spec.get("audience", "agent://shop.example.com"),
+            "understood_extensions": spec.get("understood_extensions", []),
+            "links": links,
+            "signed_canonical": signed,
+            "valid": spec["valid"],
+        }
+        if tamper or overrides:
+            case["canonical_matches_signed"] = False
+        if "error_contains" in spec:
+            case["error_contains"] = spec["error_contains"]
+        cases.append(case)
+    return {
+        "description": (
+            "Delegation link format v2 (WIRE-BINDING section 11.11.2). Each link is signed "
+            "(EdDSA, base64url without padding) over canonical JSON (sorted keys, ',' ':' "
+            "separators, UTF-8, no ASCII escaping, integers only) of every member except "
+            "'signature', extension members included, absent optional members omitted, "
+            "'scopes' sorted, timestamps in RFC 3339 UTC with 'Z', plus 'parent_link_id' and "
+            "'parent_delegate' (null for the root). Keys are looked up by (delegator, kid); "
+            "every key here has kid 'k1'. Validate each case at 'now' with the given audience "
+            "and understood extensions."
+        ),
+        "keys_by_agent": _AGENT_KEYS,
+        "vectors": cases,
+    }
+
+
+# ---------------------------------------------------------------------------
 # In-place signing directives for the other vector files
 # ---------------------------------------------------------------------------
 
@@ -938,6 +1119,7 @@ GENERATED = {
     "rfc9421.json": build_rfc9421,
     "session_binding.json": build_session_binding,
     "delegation_chain.json": build_delegation,
+    "delegation_chain_v2.json": build_delegation_v2,
 }
 
 

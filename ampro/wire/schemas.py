@@ -251,6 +251,21 @@ def encrypted_body_schema() -> dict[str, Any]:
     )
 
 
+def delegation_link_v2_schema() -> dict[str, Any]:
+    from ampro.delegation.v2 import DelegationLinkV2
+
+    return _wrap(
+        "delegation-link-v2.json",
+        _model(DelegationLinkV2),
+        title="DelegationLinkV2",
+        description=(
+            "One link of a v2 delegation chain (WIRE-BINDING section 11.11.2). "
+            "Structure only: string formats, narrowing and signature rules are "
+            "normative in the specification text."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Streaming
 # ---------------------------------------------------------------------------
@@ -342,6 +357,7 @@ def build_schemas() -> dict[str, dict[str, Any]]:
         "health-response.json": health_schema(),
         "problem-details.json": problem_schema(),
         "encrypted-body.json": encrypted_body_schema(),
+        "delegation-link-v2.json": delegation_link_v2_schema(),
     }
     docs.update(body_schemas())
     docs.update(stream_schemas())

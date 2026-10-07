@@ -18,6 +18,7 @@ import json
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -26,6 +27,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from pydantic import BaseModel, Field, field_validator
 
 # Clock skew tolerance — imported from canonical constant in trust.tiers.
+from ampro.delegation.v2 import (
+    DEFAULT_MAX_LIFETIME,
+    DEFAULT_MAX_UNREVOCABLE_LIFETIME,
+    DelegationLinkV2,
+    KeyResolver,
+    KeyStatusCheck,
+    RevocationCheck,
+    VerificationKey,
+    validate_chain_v2,
+)
 from ampro.trust.tiers import CLOCK_SKEW_SECONDS
 
 _SKEW = timedelta(seconds=CLOCK_SKEW_SECONDS)
@@ -95,12 +106,42 @@ class DelegationLink(BaseModel):
 
 
 class DelegationChain(BaseModel):
-    """An ordered sequence of delegation links forming a chain of trust."""
+    """An ordered sequence of delegation links forming a chain of trust.
 
-    links: list[DelegationLink] = Field(
+    Links are parsed as v2 (:class:`~ampro.delegation.v2.DelegationLinkV2`)
+    when they carry ``"v": 2`` and as v1 when they carry no ``v``. Any
+    other ``v`` is rejected, and a chain may not mix versions.
+    """
+
+    links: list[DelegationLink | DelegationLinkV2] = Field(
         default_factory=list,
         description="Ordered delegation links (root first)",
     )
+
+    @field_validator("links", mode="before")
+    @classmethod
+    def _parse_versions(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        out: list[Any] = []
+        for raw in value:
+            if isinstance(raw, DelegationLink | DelegationLinkV2):
+                out.append(raw)
+                continue
+            if isinstance(raw, Mapping) and "v" in raw:
+                if raw["v"] != 2 or isinstance(raw["v"], bool):
+                    raise ValueError("unsupported delegation link version")
+                out.append(DelegationLinkV2.model_validate(raw))
+            else:
+                out.append(DelegationLink.model_validate(raw))
+        if len({type(link) for link in out}) > 1:
+            raise ValueError("a delegation chain must not mix link versions")
+        return out
+
+    @property
+    def version(self) -> int:
+        """1 or 2; an empty chain reports 1."""
+        return 2 if self.links and isinstance(self.links[0], DelegationLinkV2) else 1
 
     @property
     def depth(self) -> int:
@@ -310,12 +351,28 @@ def sign_delegation(
 
 def validate_chain(
     chain: DelegationChain,
-    public_keys: dict[str, bytes],
+    public_keys: dict[str, bytes] | None = None,
     *,
     fan_out_counts: Mapping[str, int] | None = None,
+    allow_v1: bool = True,
+    keys: KeyResolver | Mapping[tuple[str, str], VerificationKey] | None = None,
+    audience: str | None = None,
+    understood_extensions: tuple[str, ...] | frozenset[str] = (),
+    key_status: KeyStatusCheck | None = None,
+    is_revoked: RevocationCheck | None = None,
+    max_lifetime: timedelta = DEFAULT_MAX_LIFETIME,
+    max_unrevocable_lifetime: timedelta = DEFAULT_MAX_UNREVOCABLE_LIFETIME,
 ) -> tuple[bool, str]:
     """
     Validate every link in a delegation chain.
+
+    A v2 chain is handed to :func:`ampro.delegation.v2.validate_chain_v2`
+    with *keys*, *audience*, *understood_extensions*, *key_status*,
+    *is_revoked*, *fan_out_counts* and the lifetime caps; it fails if
+    *keys* is not given. A v1 chain uses *public_keys* and is refused
+    when *allow_v1* is false. Verifiers that only talk to v2 peers SHOULD
+    pass ``allow_v1=False``: v1 links cannot carry an audience, a
+    principal, typed limits or must-understand extensions.
 
     Checks performed for each link (in order):
       0. No self-delegation.
@@ -355,6 +412,26 @@ def validate_chain(
     """
     if not chain.links:
         return False, "empty chain"
+
+    if chain.version == 2:
+        if keys is None:
+            return False, "v2 chain needs a key resolver (keys=...)"
+        return validate_chain_v2(
+            chain.links,  # type: ignore[arg-type]
+            keys,
+            audience=audience,
+            understood_extensions=understood_extensions,
+            key_status=key_status,
+            is_revoked=is_revoked,
+            fan_out_counts=fan_out_counts,
+            max_lifetime=max_lifetime,
+            max_unrevocable_lifetime=max_unrevocable_lifetime,
+        )
+
+    if not allow_v1:
+        return False, "v1 delegation links are not accepted"
+    if public_keys is None:
+        return False, "v1 chain needs public_keys"
 
     now = datetime.now(UTC)
 

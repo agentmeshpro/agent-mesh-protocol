@@ -333,6 +333,40 @@ def _h_data_residency(doc, section, case, mp):
         _assert_outcome(case, *_ok(lambda: DataResidency.model_validate(case["input"])))
 
 
+def _h_delegation_v2(doc, section, case, mp):
+    from datetime import datetime
+
+    from ampro.delegation.v2 import (
+        DelegationLinkV2,
+        VerificationKey,
+        canonical_link_v2_bytes,
+        validate_chain_v2,
+    )
+
+    agent_keys = doc["keys_by_agent"]
+    links = [DelegationLinkV2.model_validate(link) for link in case["links"]]
+    for i, (link, signed) in enumerate(zip(links, case["signed_canonical"], strict=True)):
+        sig = base64.urlsafe_b64decode(link.signature + "=" * (-len(link.signature) % 4))
+        _check_ed25519(doc, agent_keys[link.delegator], signed, base64.b64encode(sig).decode())
+        actual = canonical_link_v2_bytes(link, links[i - 1] if i else None).decode("utf-8")
+        if case.get("canonical_matches_signed", True):
+            assert actual == signed, f"link {i} canonical drifted"
+    keys = {
+        (agent, "k1"): VerificationKey("EdDSA", _ed_pub(doc, k))
+        for agent, k in agent_keys.items()
+    }
+    ok, reason = validate_chain_v2(
+        links,
+        keys,
+        audience=case["audience"],
+        understood_extensions=case["understood_extensions"],
+        now=datetime.fromisoformat(case["now"].replace("Z", "+00:00")),
+    )
+    assert ok is case["valid"], reason
+    if not ok:
+        assert case["error_contains"] in reason, reason
+
+
 def _h_delegation(doc, section, case, mp):
     from ampro.delegation.chain import (
         DelegationChain,
@@ -815,6 +849,7 @@ _HANDLERS = {
     "cost_receipt.json": _h_cost_receipt,
     "data_residency.json": _h_data_residency,
     "delegation_chain.json": _h_delegation,
+    "delegation_chain_v2.json": _h_delegation_v2,
     "encryption.json": _h_encryption,
     "envelope.json": _h_envelope,
     "erasure_propagation.json": _h_body_type_case,

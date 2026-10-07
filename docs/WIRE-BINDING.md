@@ -2219,6 +2219,10 @@ and the defaults are signed too:
 | `signature` | string | `""` | Standard base64 (with padding) Ed25519 signature by the delegator |
 
 Unknown fields are ignored and are **not** covered by the signature.
+Because of that, a v1 link cannot carry a restriction that an older
+verifier is forced to honour. New deployments SHOULD issue v2 links
+(section 11.11.2), and verifiers that only talk to v2 peers SHOULD refuse
+v1 chains.
 
 #### 11.11.1 Delegation Chain Validation
 
@@ -2288,6 +2292,129 @@ link, in order, and reject the chain at the first failure:
     budget.
 
 `tests/vectors/delegation_chain.json` has a case for each rule.
+
+#### 11.11.2 Delegation Link Format v2
+
+A v2 link carries `"v": 2`. A link without `v` is a v1 link. A receiver
+MUST reject any other `v` value, and MUST reject a chain that mixes v1
+and v2 links. A v1 verifier that receives a v2 link fails its signature
+check, so v2 chains fail closed on older software.
+
+| Member | Type | Default | Meaning |
+|--------|------|---------|---------|
+| `v` | integer | required | `2` |
+| `link_id` | string | required | 22–128 base64url characters, at least 128 bits of randomness. Unique within the chain. Revocation and fan-out are keyed on it |
+| `delegator`, `delegate` | string | required | Agent identifiers, 1–512 characters, no whitespace. MUST differ |
+| `scopes` | string[] | required | 1–100 unique scopes, each 1–256 visible ASCII characters |
+| `max_depth` | integer 1..10 | `3` | As in v1 |
+| `max_fan_out` | integer 1..10 | `3` | As in v1 |
+| `created_at`, `expires_at` | RFC 3339 string | required | MUST carry `Z` or an explicit offset. Numbers and other formats MUST be rejected. `expires_at` MUST be later than `created_at` |
+| `trust_tier` | string | `"external"` | One of `internal`, `owner`, `verified`, `external` |
+| `alg` | string | required | `EdDSA` (Ed25519) or `ES256` (ECDSA P-256, SHA-256) |
+| `kid` | string | required | Key id, 1–128 visible ASCII characters |
+| `jwks_url` | https URL | absent | Where the delegator publishes its keys |
+| `aud` | string[] | absent | 1–20 identifiers where this authority may be exercised |
+| `principal` | object | absent | The person whose authority this is: `iss` (https URL or `agent://` URI), `sub` (SHOULD be pairwise per counterparty), optional `acr`, and `present` (boolean: the person approved interactively) |
+| `origin` | string | `"agent"` | Where the root authority came from: `agent`, `oauth`, `pact`, `pap`, `ap2`, `acp`, `ucp`, `network-token`, `other`. Any value except `agent` requires `principal` and at least one `credential_refs` entry |
+| `intent_hash` | string | absent | `sha-256:` + base64url SHA-256 of the canonical JSON of the intent the principal approved. Requires `principal` |
+| `credential_refs` | object[] | `[]` | Up to 10 references to foreign credentials: `type` (lowercase token), `ref` (opaque id), optional `digest` (`sha-256:` + base64url), optional `expires_at`. A `ref` MUST NOT be the credential itself; values shaped like a compact JWS/JWT or starting with `Bearer`/`Basic` MUST be rejected |
+| `constraints` | object[] | `[]` | Up to 20 typed limits, at most one per `(type, currency)`. See below |
+| `status_url` | https URL | absent | Where the link's revocation status is published |
+| `crit` | string[] | `[]` | Extension members the verifier MUST understand |
+| `signature` | string | required | base64url (no padding) signature. Ed25519: 64 bytes. ES256: 64 bytes, `r` then `s`, each 32 bytes big-endian |
+
+Constraint types. Money is always an integer number of minor units of
+an ISO 4217 currency (for example cents for `USD`), never a decimal:
+
+| `type` | Members | Meaning |
+|--------|---------|---------|
+| `amount` | `currency`, `max_minor` | Most that one action may spend |
+| `budget` | `currency`, `remaining_minor`, `max_minor` | Total left for the chain; `remaining_minor` ≤ `max_minor` |
+| `count` | `max` (1..1 000 000) | Most actions under this link |
+| `resource` | `ids` (1–100 unique) | The only resources the authority applies to |
+
+An unknown constraint type MUST be rejected: every constraint is
+critical.
+
+**Extension members.** Any member not in the table above is an extension
+member. Its name MUST be a namespaced extension name (EXTENSIONS.md,
+"Naming rules"); a link with an unnamespaced unknown member MUST be
+rejected. At most 20 extension members are allowed. Values MUST be JSON
+without floating-point numbers, with integers of magnitude below 2^53 and
+nesting depth at most 8. Extension members are signed. A verifier ignores
+extension members it does not understand **unless** they are listed in
+`crit`, in which case it MUST reject the chain. `crit` MUST NOT list a v2
+member, a name twice, or a member the link does not carry.
+
+**Canonical form.** The delegator signs the UTF-8 bytes of a JSON object
+holding every member of the link except `signature`, extension members
+included, with defaults filled in and absent optional members omitted,
+plus:
+
+- `parent_link_id`: the parent's `link_id`, or `null` for the root;
+- `parent_delegate`: the parent's `delegate`, or `null` for the root.
+
+It is serialised like v1 (sorted keys, `,` and `:` separators, raw UTF-8,
+sorted `scopes`, canonical UTC timestamps), with nested objects
+serialised the same way and their absent optional members omitted. The
+canonical form MUST NOT exceed 16 KiB.
+
+**Validation.** A receiver MUST reject an empty chain, a chain longer
+than 10 links, and a chain longer than the root's `max_depth`. For each
+link in order it MUST check, rejecting at the first failure:
+
+1. `link_id` is not repeated in the chain.
+2. Every `crit` member is one the receiver understands.
+3. The key for (`delegator`, `kid`) is known, and its algorithm equals
+   `alg`. A receiver MUST NOT verify a signature with a key of a
+   different algorithm.
+4. When the receiver tracks key status (section 12.12), the key may be
+   relied on for a signature made at `created_at`. A key revoked for
+   compromise or decommissioning is never relied on, whatever
+   `created_at` says.
+5. The signature verifies over the canonical form.
+6. `expires_at` is later than now minus 30 s, and `created_at` is not
+   later than now plus 30 s.
+7. Lifetime (`expires_at` − `created_at`) is at most 90 days, and at most
+   24 hours when the link has no `status_url`. Receivers MAY configure
+   shorter limits.
+8. A link with `status_url` has been checked for revocation. A receiver
+   that cannot check revocation MUST reject such a link, not accept it.
+   A revoked link rejects the chain.
+9. Every `credential_refs` entry with `expires_at` has not expired, and
+   the link does not expire more than 30 s after it.
+10. When the link has `aud`, the receiver's own identifier appears in it.
+    A receiver that is not given its own identifier MUST reject a link
+    that has `aud`.
+
+And for every link after the root:
+
+11. `delegator` equals the parent's `delegate`.
+12. `max_depth` ≤ the parent's `max_depth` − 1.
+13. Scopes narrow as in v1.
+14. Temporal nesting as in v1.
+15. `principal`, `origin`, `intent_hash` and `credential_refs` are
+    identical to the root's.
+16. When the parent has `aud`, the child has `aud` and it is a subset of
+    the parent's.
+17. Every parent constraint appears on the child with the same `type`
+    (and `currency`) and is equal or tighter: a lower or equal
+    `max_minor`, `remaining_minor` and `max`, and a subset of `ids`. The
+    child MAY add constraints.
+18. Every member named in the parent's `crit` is present on the child.
+19. Fan-out, keyed by the parent's `link_id`, is below the parent's
+    `max_fan_out`.
+
+**Using a chain.** Before acting, a receiver checks the action against
+every link: the scope is granted, money is given in the constrained
+currency and is within every `amount` cap and `budget` remaining, and
+the resource is allowed. An action that spends money MUST be refused
+when no link carries an `amount` or `budget` constraint. The reference
+implementation provides `authorize_action`; count limits need a counter
+and are left to the receiver.
+
+`tests/vectors/delegation_chain_v2.json` covers these rules, and
+`spec/schemas/delegation-link-v2.json` describes the structure.
 
 ### 11.12 Task Redirect
 
