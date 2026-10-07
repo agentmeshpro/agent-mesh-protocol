@@ -19,6 +19,7 @@
     "@openuidev/react-lang": "^0.2.1",
     "@paper-design/shaders-react": "^0.0.68",
     "@radix-ui/react-collapsible": "^1.1.12",
+    "@vercel/analytics": "^2.0.1",
     "ai": "7.0.105",
     "clsx": "^2.1.1",
     "framer-motion": "^12.26.2",
