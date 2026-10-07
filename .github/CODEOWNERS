@@ -1,0 +1,11 @@
+# Every change needs review from a code owner (enforced by branch protection).
+* @vesakri
+
+# Normative spec, security-sensitive code and release config.
+/docs/WIRE-BINDING.md       @vesakri
+/docs/SECURITY-MODEL.md     @vesakri
+/ampro/security/            @vesakri
+/ampro/server/              @vesakri
+/ampro/interop/             @vesakri
+/.github/                   @vesakri
+/pyproject.toml             @vesakri
