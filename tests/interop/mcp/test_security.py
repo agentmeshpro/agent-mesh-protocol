@@ -283,7 +283,8 @@ async def test_tools_call_rate_limited_per_caller(app: AgentApp):
     from ampro.security.rate_limiter import RateLimiter
 
     server = AgentServer.from_app(app)
-    server.mount(MCPAdapter.for_server(server, authenticator=bearer, rate_limiter=RateLimiter(rpm=2)))
+    # initialize is metered too: 1 initialize + 2 calls fill a budget of 3.
+    server.mount(MCPAdapter.for_server(server, authenticator=bearer, rate_limiter=RateLimiter(rpm=3)))
     w = Wire(server)
     await w.initialize(headers=auth("alice-token"))
     for _ in range(2):
@@ -310,7 +311,7 @@ async def test_anonymous_rate_limit_keyed_by_peer(app: AgentApp):
     server = AgentServer.from_app(app)
     server.mount(MCPAdapter.for_server(server, rate_limiter=RateLimiter(rpm=1)))
     w = Wire(server)
-    await w.initialize()
+    await w.initialize()  # Wire sends no client address: counts against "ip:None"
 
     async def call_from(ip: str) -> int:
         msg = {

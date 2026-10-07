@@ -179,8 +179,8 @@ that can act, so the adapter is strict by default.
   `ampro.server.auth.Principal`, dicts, or objects with `id`, `scopes` and
   `trust_tier`.
 * **`for_server` inherits the server's `SecurityPolicy`.** Unless you pass your
-  own values, it takes `authenticators`, `require_auth`, `rate_limiter` and
-  `handler_timeout_seconds`. MCP callers therefore pass the same gate as
+  own values, it takes `authenticators`, `require_auth`, `rate_limiter`,
+  `concurrency` and `handler_timeout_seconds`. MCP callers therefore pass the same gate as
   native AMP callers. For example, `SecurityPolicy.production([...])` turns on
   required authentication for MCP too.
 * **Recommendation.** With no authenticators, any process that can reach the
@@ -199,13 +199,20 @@ that can act, so the adapter is strict by default.
   anonymous one, gets the same `404` as for an unknown ID. Sessions live in a
   `SessionStore`, an async protocol (`create` / `get` / `save` / `delete`).
   The default `InMemorySessionStore` holds at most 1024 sessions, with a 1-hour
-  idle timeout and a 24-hour maximum lifetime. When it is full it purges
-  expired sessions, then refuses new ones with `503` instead of evicting live
-  ones. For several workers, implement `SessionStore` on shared storage or use
+  idle timeout and a 24-hour maximum lifetime. Each caller (principal ID, or
+  `ip:<client>` when anonymous) may hold at most `max_sessions_per_owner`
+  sessions (default 8). Opening another evicts that caller's least recently
+  used session, whose client then re-initializes, so no single caller can fill
+  the store. When the store is full anyway, it purges expired sessions, then
+  refuses new ones with `503` instead of evicting other callers' live
+  sessions. `initialize` is rate limited like `tools/call`. For several workers, implement `SessionStore` on shared storage or use
   sticky routing.
-* **Limits.** `tools/call` is rate limited per principal ID, or per peer address
-  (`ip:<client>`) for anonymous callers. Over the limit, it gets `429` with
-  `Retry-After`. Each call runs under `tool_timeout`, which defaults to the
+* **Limits.** `initialize` and `tools/call` are rate limited per principal ID,
+  or per peer address (`ip:<client>`) for anonymous callers. Over the limit,
+  they get `429` with `Retry-After`. `tools/call`, including `amp_task`, also
+  holds a slot in the concurrency limiter, keyed the same way, for as long as
+  it runs. When the caller's share or the global cap is exhausted, it gets
+  `503` with `Retry-After: 1`. Each call runs under `tool_timeout`, which defaults to the
   policy's `handler_timeout_seconds` (or 30 s). A timed-out call returns
   `isError`. Synchronous tools run in a worker thread, so they cannot block the
   event loop. Arguments are capped at `max_argument_bytes` (256 KiB, `-32602`).
