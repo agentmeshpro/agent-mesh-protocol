@@ -199,6 +199,10 @@
 
 
 
+## [0.3.2]
+
+Not released — the version number was skipped.
+
 ## [0.3.1] — 2026-04-20
 
 ### Changed
