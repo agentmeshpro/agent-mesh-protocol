@@ -10,7 +10,6 @@
  * just append events to its existing handlers — no new transport.
  */
 
-import { NextResponse } from 'next/server'
 // Re-use the autonomous loop module-scope helper by re-importing the
 // main route file would create a cycle; instead, the loop lives in a
 // shared helper. For now, replicate the minimum needed and call into
@@ -22,12 +21,27 @@ import { NextResponse } from 'next/server'
 // turn 1 with history already in place.
 
 import { generateSpeech, streamText, generateText } from 'ai'
-import {
-  ensureDemoKeys,
-  signEnvelopeHeaders,
-} from '@/demo/trust/keystore'
 import { generatePrompt } from '@openuidev/lang-core'
-import { languageModel, speechModel } from '@/lib/models'
+import { z } from 'zod'
+import { ensureDemoKeys } from '@/demo/trust/keystore'
+import { VOICE_UTTERANCE } from '@/demo/body-types'
+import { languageModel, languageModelId, missingModelConfig, speechModel } from '@/lib/models'
+import { makeEnvelope, makeId, makeTraceId } from '@/lib/amp-envelope'
+import {
+  BodyTooLarge,
+  guardRequest,
+  jsonError,
+  logError,
+  readJsonLimited,
+  SSE_HEADERS,
+} from '@/lib/api-guard'
+import { capTokens, LIMITS } from '@/lib/limits'
+import {
+  modelSignal,
+  requestAborted,
+  requestSignal,
+  withRequestContext,
+} from '@/lib/request-context'
 
 export const maxDuration = 60
 
@@ -37,8 +51,6 @@ const YOUR_AGENT = 'agent://you@example.com'
 const SUNNY_BAKERY = 'agent://sunny-bakery.example.com'
 const PORTER_DELIVERY = 'agent://porter.example.com'
 const TURN_CAP = 8
-const HAIKU_MODEL = process.env.AMP_DEMO_LANGUAGE_MODEL ?? 'unconfigured'
-const SONNET_MODEL = HAIKU_MODEL
 
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : typeof error
@@ -63,16 +75,6 @@ function recordAmpDemoResumeUsage(
 
 
 // ---- duplicated minimal helpers (would normally live in a shared module) ----
-
-function makeId(prefix = 'msg'): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-function makeNonce(): string {
-  return `nonce-${crypto.randomUUID().slice(0, 12)}`
-}
-function makeTraceId(): string {
-  return `trace-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}
 
 function langToProse(lang: string): string {
   const stripped = lang.replace(/```[a-z-]*\s*|\s*```/g, ' ').trim()
@@ -129,15 +131,16 @@ async function synthesizeSpeech(
     const result = await generateSpeech({
       model: speechModel(),
       voice,
-      text,
+      text: text.slice(0, LIMITS.maxSpeechChars),
       outputFormat: 'mp3',
+      abortSignal: modelSignal(),
     })
     return {
       audioB64: result.audio.base64,
       mime: result.audio.mediaType || 'audio/mpeg',
     }
   } catch (err) {
-    console.error('[amp-demo/resume] TTS failed', err)
+    logError('amp-demo/resume/tts', err)
     return null
   }
 }
@@ -155,11 +158,12 @@ async function classifyBakeryReply(args: {
       prompt: `User's brief:\n${args.brief}\n\nConversation:\n${args.history
         .map((h, i) => `${i + 1}. ${h.role === 'user' ? 'YA' : 'Sunny'}: ${h.content}`)
         .join('\n')}\n\nBakery's latest reply:\n${args.latestBakeryReply}`,
-      maxOutputTokens: 8,
+      maxOutputTokens: capTokens(8),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoResumeUsage(args.usageContext, {
       messageCount: args.history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'classify_bakery_reply',
       partner: 'your-agent',
       success: true,
@@ -172,7 +176,7 @@ async function classifyBakeryReply(args: {
     recordAmpDemoResumeUsage(args.usageContext, {
       errorType: errorName(error),
       messageCount: args.history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'classify_bakery_reply',
       partner: 'your-agent',
       success: false,
@@ -194,11 +198,12 @@ async function generateAgentToBakeryReply(args: {
       prompt: `User's brief:\n${args.brief}\n\nConversation:\n${args.history
         .map((h) => `${h.role === 'user' ? 'YA' : 'Sunny'}: ${h.content}`)
         .join('\n')}\n\nSunny just said:\n${args.bakeryReply}\n\nYour single-sentence reply to Sunny:`,
-      maxOutputTokens: 80,
+      maxOutputTokens: capTokens(80),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoResumeUsage(args.usageContext, {
       messageCount: args.history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'agent_to_bakery_reply',
       partner: 'your-agent',
       success: true,
@@ -209,7 +214,7 @@ async function generateAgentToBakeryReply(args: {
     recordAmpDemoResumeUsage(args.usageContext, {
       errorType: errorName(error),
       messageCount: args.history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'agent_to_bakery_reply',
       partner: 'your-agent',
       success: false,
@@ -234,10 +239,11 @@ async function generateAgentLine(
       model: languageModel(),
       instructions: kind === 'brief' ? systemBrief : systemRelay,
       prompt,
-      maxOutputTokens: 80,
+      maxOutputTokens: capTokens(80),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoResumeUsage(usageContext, {
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: `agent_line_${kind}`,
       partner: 'your-agent',
       success: true,
@@ -247,46 +253,12 @@ async function generateAgentLine(
   } catch (error) {
     recordAmpDemoResumeUsage(usageContext, {
       errorType: errorName(error),
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: `agent_line_${kind}`,
       partner: 'your-agent',
       success: false,
     })
     return kind === 'brief' ? `Forwarding your request to ${context.partner}.` : `${context.partner} responded.`
-  }
-}
-
-async function makeEnvelope(
-  sender: string,
-  recipient: string,
-  bodyType: string,
-  body: Record<string, unknown>,
-  headers: Record<string, string> = {},
-) {
-  const id = makeId()
-  const nonce = makeNonce()
-  const signed_at = new Date().toISOString()
-  const sigHeaders = await signEnvelopeHeaders({
-    sender,
-    recipient,
-    id,
-    body_type: bodyType,
-    body,
-    signed_at,
-    nonce,
-  })
-  return {
-    sender,
-    recipient,
-    id,
-    body_type: bodyType,
-    headers: {
-      'Protocol-Version': '0.3.0',
-      Nonce: nonce,
-      ...sigHeaders,
-      ...headers,
-    },
-    body,
   }
 }
 
@@ -313,43 +285,82 @@ const BAKERY_SYSTEM_PROMPT = generatePrompt({
 
 // ---- main handler ----
 
+const HistoryEntry = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(LIMITS.maxHistoryEntryChars),
+  })
+  .strict()
+
+const ResumeRequest = z
+  .object({
+    answer: z.string().trim().min(1).max(LIMITS.maxMessageChars),
+    brief: z.string().trim().min(1).max(LIMITS.maxMessageChars),
+    history: z.array(HistoryEntry).max(LIMITS.maxHistoryEntries).default([]),
+  })
+  .strict()
+
 export async function POST(request: Request): Promise<Response> {
-  await ensureDemoKeys([YOUR_AGENT, SUNNY_BAKERY, PORTER_DELIVERY])
-
-  let payload: {
-    answer: string
-    brief: string
-    history: Array<{ role: string; content: string }>
-  }
+  // A resume re-enters the autonomous loop, which can make many model and
+  // speech calls, so it costs as much as starting one.
+  const guard = guardRequest(request, { cost: 3 })
+  if (guard instanceof Response) return guard
+  let streaming = false
   try {
-    payload = (await request.json()) as typeof payload
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
+    if (missingModelConfig('language', 'speech')) {
+      return jsonError(503, 'The demo is not configured on this deployment.')
+    }
+    let raw: unknown
+    try {
+      raw = await readJsonLimited(request, LIMITS.maxJsonBodyBytes)
+    } catch (err) {
+      if (err instanceof BodyTooLarge) return jsonError(413, 'Request body too large')
+      return jsonError(400, 'Invalid request body')
+    }
+    const parsed = ResumeRequest.safeParse(raw)
+    if (!parsed.success) return jsonError(400, 'Invalid request')
 
-  if (!payload.answer || typeof payload.answer !== 'string') {
-    return NextResponse.json({ error: 'Missing answer' }, { status: 400 })
-  }
-  if (!payload.brief || typeof payload.brief !== 'string') {
-    return NextResponse.json({ error: 'Missing brief' }, { status: 400 })
-  }
-  const incomingHistory = Array.isArray(payload.history) ? payload.history : []
-  try {
-    languageModel()
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Demo model configuration is missing' },
-      { status: 503 },
+    await ensureDemoKeys([YOUR_AGENT, SUNNY_BAKERY, PORTER_DELIVERY])
+
+    const signal = requestSignal(request)
+    streaming = true
+    return withRequestContext(signal, () =>
+      resumeStream({
+        payload: parsed.data,
+        // Only the most recent turns are forwarded to the model.
+        incomingHistory: parsed.data.history.slice(-LIMITS.historyTurnsForModel),
+        signal,
+        release: guard.release,
+      }),
     )
+  } catch (err) {
+    logError('amp-demo/resume', err)
+    return jsonError(500, 'Something went wrong. Please try again.')
+  } finally {
+    if (!streaming) guard.release()
   }
+}
 
+function resumeStream(args: {
+  payload: z.infer<typeof ResumeRequest>
+  incomingHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  signal: AbortSignal
+  release: () => void
+}): Response {
+  const { payload, incomingHistory } = args
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       const usageContext = undefined
       const traceId = makeTraceId()
+      let closed = false
       const send = (type: string, data: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, data })}\n\n`))
+        if (closed) return
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, data })}\n\n`))
+        } catch {
+          closed = true
+        }
       }
 
       const speak = async (
@@ -365,12 +376,12 @@ export async function POST(request: Request): Promise<Response> {
         const env = await makeEnvelope(
           sender,
           recipient,
-          'voice.utterance',
+          VOICE_UTTERANCE,
           { transcript: text, audio_b64: audio.audioB64, mime: audio.mime, speaker },
           {
             'Trace-Id': traceId,
             'Trust-Tier':
-              sender === YOUR_AGENT && recipient === 'user://you' ? 'SELF' : 'VERIFIED',
+              sender === YOUR_AGENT && recipient === 'user://you' ? 'owner' : 'verified',
           },
         )
         send('envelope', env)
@@ -389,12 +400,13 @@ export async function POST(request: Request): Promise<Response> {
           model: languageModel(),
           instructions: BAKERY_SYSTEM_PROMPT,
           messages: convo,
-          maxOutputTokens: 500,
+          maxOutputTokens: capTokens(500),
+          abortSignal: modelSignal(),
           onEnd: ({ usage, finishReason }) => {
             recordAmpDemoResumeUsage(usageContext, {
               finishReason,
               messageCount: convo.length,
-              modelId: SONNET_MODEL,
+              modelId: languageModelId(),
               operation: 'bakery_turn',
               partner: 'bakery',
               success: true,
@@ -405,7 +417,7 @@ export async function POST(request: Request): Promise<Response> {
             recordAmpDemoResumeUsage(usageContext, {
               errorType: errorName(error),
               messageCount: convo.length,
-              modelId: SONNET_MODEL,
+              modelId: languageModelId(),
               operation: 'bakery_turn',
               partner: 'bakery',
               success: false,
@@ -455,6 +467,7 @@ export async function POST(request: Request): Promise<Response> {
 
         // Step 3+: keep looping until done, ask_user, or cap.
         for (let turn = 1; turn <= TURN_CAP; turn++) {
+          if (requestAborted()) return
           send('loop_turn', { turn, max: TURN_CAP })
           const decision = await classifyBakeryReply({
             brief: payload.brief,
@@ -515,19 +528,26 @@ export async function POST(request: Request): Promise<Response> {
           brief: payload.brief,
         })
       } catch (err) {
-        console.error('[amp-demo/resume]', err)
-        send('error', { message: err instanceof Error ? err.message : 'Unknown error' })
+        if (!args.signal.aborted) logError('amp-demo/resume', err)
+        send('error', {
+          message: args.signal.aborted
+            ? 'The request took too long and was stopped.'
+            : 'Something went wrong. Please try again.',
+        })
       } finally {
-        controller.close()
+        args.release()
+        closed = true
+        try {
+          controller.close()
+        } catch {
+          // already closed or cancelled by the client
+        }
       }
+    },
+    cancel() {
+      args.release()
     },
   })
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  })
+  return new Response(stream, { headers: SSE_HEADERS })
 }

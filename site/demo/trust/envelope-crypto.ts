@@ -1,19 +1,28 @@
 /**
  * Envelope canonicalization + signing / verification helpers.
  *
- * An AMP envelope is signed over a deterministic JSON serialization of
+ * SIMPLIFIED ILLUSTRATION — NOT THE AMP SIGNATURE PROFILE.
+ *
+ * AMP 0.4.0 signs HTTP requests with its RFC 9421 profile
+ * (docs/WIRE-BINDING.md §12.15): Signature / Signature-Input HTTP headers
+ * covering "@method", "@target-uri", "@authority" and an RFC 9530
+ * content-digest of the body, label sig1, alg "ed25519", with required
+ * created / keyid / nonce parameters and a 300 s freshness window.
+ *
+ * The demo never makes real HTTP hops between agents, so there is no
+ * method, target URI or authority to cover. Instead it signs a
+ * deterministic JSON serialization (keys sorted, no whitespace) of
  *   { sender, recipient, id, body_type, body, signed_at, nonce }
- * using Ed25519. The signature + signer public-key fingerprint live in
- * envelope.headers:
+ * with Ed25519 and carries the result in custom envelope headers
+ * (WIRE-BINDING §18.2 recommends the X- prefix for custom headers):
  *   - X-Signature      — base64url(Ed25519(canonical))
- *   - X-Signer-Key     — base64url(public-key) used for the signature
+ *   - X-Signer-Key     — base64url(raw public key) used for the signature
  *   - X-Signed-At      — ISO timestamp included in the canonical form
  *   - X-Signature-Alg  — "Ed25519"
  *
- * The public key for each agent must resolve to the same bytes advertised
- * at /.well-known/amp-keys/<sender>.json . If it doesn't, verification
- * fails closed. If anything along the chain is missing, we return
- * 'unsigned' rather than 'valid'.
+ * What it does show faithfully: Ed25519 signatures, a per-message nonce,
+ * and a verifier that resolves the sender's key from a directory and
+ * fails closed on any mismatch. The UI labels it as a simplified scheme.
  */
 
 export type TrustState = 'valid' | 'invalid' | 'unsigned' | 'pending'

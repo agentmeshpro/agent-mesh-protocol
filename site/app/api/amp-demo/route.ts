@@ -1,17 +1,34 @@
 import { generateSpeech, streamText, generateText } from 'ai'
 import { generatePrompt } from '@openuidev/lang-core'
+import { z } from 'zod'
+import { ensureDemoKeys } from '@/demo/trust/keystore'
 import {
-  ensureDemoKeys,
-  signEnvelopeHeaders,
-} from '@/demo/trust/keystore'
-import { languageModel, speechModel } from '@/lib/models'
+  DIRECTORY_QUERY,
+  DIRECTORY_RESPONSE,
+  VOICE_UTTERANCE,
+} from '@/demo/body-types'
+import { languageModel, languageModelId, missingModelConfig, speechModel } from '@/lib/models'
+import { makeEnvelope, makeId, makeTraceId } from '@/lib/amp-envelope'
+import {
+  BodyTooLarge,
+  guardRequest,
+  jsonError,
+  logError,
+  readJsonLimited,
+  SSE_HEADERS,
+} from '@/lib/api-guard'
+import { capTokens, LIMITS } from '@/lib/limits'
+import {
+  modelSignal,
+  requestAborted,
+  requestSignal,
+  withRequestContext,
+} from '@/lib/request-context'
 
 export const maxDuration = 60
 
 type AppRouteUsageContext = undefined
 
-const HAIKU_MODEL = process.env.AMP_DEMO_LANGUAGE_MODEL ?? 'unconfigured'
-const SONNET_MODEL = HAIKU_MODEL
 
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : typeof error
@@ -76,12 +93,13 @@ async function synthesizeSpeech(
     const result = await generateSpeech({
       model: speechModel(),
       voice,
-      text,
+      text: text.slice(0, LIMITS.maxSpeechChars),
       outputFormat: 'mp3',
+      abortSignal: modelSignal(),
     })
     return { audioB64: result.audio.base64, mime: result.audio.mediaType || 'audio/mpeg' }
   } catch (err) {
-    console.error('[amp-demo] TTS failed', err)
+    logError('amp-demo/tts', err)
     return null
   }
 }
@@ -109,10 +127,11 @@ async function generateAgentLine(
       model: languageModel(),
       instructions: kind === 'brief' ? systemBrief : systemRelay,
       prompt,
-      maxOutputTokens: 80,
+      maxOutputTokens: capTokens(80),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoUsage(usageContext, {
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: `agent_line_${kind}`,
       partner: 'your-agent',
       success: true,
@@ -122,7 +141,7 @@ async function generateAgentLine(
   } catch (error) {
     recordAmpDemoUsage(usageContext, {
       errorType: errorName(error),
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: `agent_line_${kind}`,
       partner: 'your-agent',
       success: false,
@@ -259,11 +278,12 @@ Output ONLY the label. No explanation, no punctuation, just the single word.`,
       prompt: `User's brief:\n${brief}\n\nConversation so far (most recent last):\n${history
         .map((h, i) => `${i + 1}. ${h.role === 'user' ? 'YA' : 'Sunny'}: ${h.content}`)
         .join('\n') || '(this is the first bakery reply)'}\n\nBakery's latest reply:\n${latestBakeryReply}`,
-      maxOutputTokens: 8,
+      maxOutputTokens: capTokens(8),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoUsage(usageContext, {
       messageCount: history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'classify_bakery_reply',
       partner: 'your-agent',
       success: true,
@@ -278,7 +298,7 @@ Output ONLY the label. No explanation, no punctuation, just the single word.`,
     recordAmpDemoUsage(usageContext, {
       errorType: errorName(error),
       messageCount: history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'classify_bakery_reply',
       partner: 'your-agent',
       success: false,
@@ -311,11 +331,12 @@ If Sunny offered choices and the brief implies one, pick it ("Let's go with the 
       prompt: `User's brief:\n${args.brief}\n\nConversation so far:\n${args.history
         .map((h) => `${h.role === 'user' ? 'YA' : 'Sunny'}: ${h.content}`)
         .join('\n') || '(none yet)'}\n\nSunny just said:\n${args.bakeryReply}\n\nYour single-sentence reply to Sunny:`,
-      maxOutputTokens: 80,
+      maxOutputTokens: capTokens(80),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoUsage(args.usageContext, {
       messageCount: args.history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'agent_to_bakery_reply',
       partner: 'your-agent',
       success: true,
@@ -326,26 +347,13 @@ If Sunny offered choices and the brief implies one, pick it ("Let's go with the 
     recordAmpDemoUsage(args.usageContext, {
       errorType: errorName(error),
       messageCount: args.history.length,
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'agent_to_bakery_reply',
       partner: 'your-agent',
       success: false,
     })
     return "Got it — let's keep going."
   }
-}
-
-// ---------------------------------------------------------------------------
-// AMP envelope types (TypeScript mirror of the protocol)
-// ---------------------------------------------------------------------------
-
-interface AMPEnvelope {
-  sender: string
-  recipient: string
-  id: string
-  body_type: string
-  headers: Record<string, string>
-  body: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -384,10 +392,11 @@ Classify the user's latest message into exactly one label:
 
 Output ONLY the single word label, no punctuation, no explanation.`,
       prompt: `Porter is ${context.porterActive ? 'already engaged' : 'not yet engaged'}.\n\nUser message:\n${message}`,
-      maxOutputTokens: 10,
+      maxOutputTokens: capTokens(10),
+      abortSignal: modelSignal(),
     })
     recordAmpDemoUsage(usageContext, {
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'classify_intent',
       partner: 'your-agent',
       success: true,
@@ -399,7 +408,7 @@ Output ONLY the single word label, no punctuation, no explanation.`,
   } catch (error) {
     recordAmpDemoUsage(usageContext, {
       errorType: errorName(error),
-      modelId: HAIKU_MODEL,
+      modelId: languageModelId(),
       operation: 'classify_intent',
       partner: 'your-agent',
       success: false,
@@ -416,69 +425,6 @@ Output ONLY the single word label, no punctuation, no explanation.`,
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-let _seq = 0
-function makeId(prefix = 'msg'): string {
-  _seq++
-  return `${prefix}-${Date.now()}-${_seq.toString(36)}${Math.random().toString(36).slice(2, 6)}`
-}
-
-function makeTraceId(): string {
-  return `trace-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-function makeSpanId(): string {
-  return `span-${Math.random().toString(36).slice(2, 10)}`
-}
-
-function makeNonce(): string {
-  return `nonce-${crypto.randomUUID().slice(0, 12)}`
-}
-
-async function makeEnvelope(
-  sender: string,
-  recipient: string,
-  bodyType: string,
-  body: Record<string, unknown>,
-  headers: Record<string, string> = {},
-): Promise<AMPEnvelope> {
-  const id = makeId()
-  const nonce = makeNonce()
-  const signed_at = new Date().toISOString()
-
-  // Sign over the canonical envelope fields. The resulting X-Signature
-  // and X-Signer-Key headers are the only trust claim on the wire —
-  // everything downstream verifies by fetching the sender's public key
-  // and recomputing Ed25519(canonical).
-  const sigHeaders = await signEnvelopeHeaders({
-    sender,
-    recipient,
-    id,
-    body_type: bodyType,
-    body,
-    signed_at,
-    nonce,
-  })
-
-  // Trace-Id and Span-Id stay server-side. They're correlation IDs for
-  // server logs; emitting them to the browser would teach observers that
-  // it's normal to expose distributed-tracing identifiers in protocol UIs.
-  // The signed envelope identity is `id` + `nonce`, which is sufficient
-  // for the client.
-  return {
-    sender,
-    recipient,
-    id,
-    body_type: bodyType,
-    headers: {
-      'Protocol-Version': '0.3.0',
-      'Nonce': nonce,
-      ...sigHeaders,
-      ...headers,
-    },
-    body,
-  }
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -636,7 +582,7 @@ confirmed = DeliveryConfirmed("PTR-9231", "Rahul S.", "Bike MH-02-FG-4821", "2:4
 //   • Bakery confirms the order            → loop_done event + YA summary
 //   • Bakery needs info only the user has  → awaiting_user event + YA pause line
 //   • Turn cap (8) hit                     → awaiting_user event (graceful bail)
-// Every YA↔Sunny exchange is a signed voice.utterance envelope, just like
+// Every YA↔Sunny exchange is a signed voice-utterance envelope, just like
 // the existing turn-based path. The SSE stream stays the same shape (events
 // flow in real time) so the browser plays clips as they arrive.
 // ---------------------------------------------------------------------------
@@ -671,7 +617,7 @@ async function runAutonomousLoop(args: {
     const env = await makeEnvelope(
       sender,
       recipient,
-      'voice.utterance',
+      VOICE_UTTERANCE,
       {
         transcript: text,
         audio_b64: audio.audioB64,
@@ -680,7 +626,7 @@ async function runAutonomousLoop(args: {
       },
       {
         'Trace-Id': traceId,
-        'Trust-Tier': sender === YOUR_AGENT_LOCAL && recipient === 'user://you' ? 'SELF' : 'VERIFIED',
+        'Trust-Tier': sender === YOUR_AGENT_LOCAL && recipient === 'user://you' ? 'owner' : 'verified',
         ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
       },
     )
@@ -701,13 +647,14 @@ async function runAutonomousLoop(args: {
       model: languageModel(),
       instructions: BAKERY_SYSTEM_PROMPT,
       messages: convo,
-      maxOutputTokens: 500,
+      maxOutputTokens: capTokens(500),
+      abortSignal: modelSignal(),
       onEnd: ({ usage, finishReason }) => {
         recordAmpDemoUsage(usageContext, {
           finishReason,
           messageCount: convo.length,
           mode: 'autonomous',
-          modelId: SONNET_MODEL,
+          modelId: languageModelId(),
           operation: 'bakery_turn',
           partner: 'bakery',
           success: true,
@@ -719,7 +666,7 @@ async function runAutonomousLoop(args: {
           errorType: errorName(error),
           messageCount: convo.length,
           mode: 'autonomous',
-          modelId: SONNET_MODEL,
+          modelId: languageModelId(),
           operation: 'bakery_turn',
           partner: 'bakery',
           success: false,
@@ -761,6 +708,7 @@ async function runAutonomousLoop(args: {
   // The loop.
   // ------------------------------------------------------------------
   for (let turn = 1; turn <= AUTONOMOUS_TURN_CAP; turn++) {
+    if (requestAborted()) return
     sendEvent('loop_turn', { turn, max: AUTONOMOUS_TURN_CAP })
 
     const decision = await classifyBakeryReply({
@@ -845,63 +793,127 @@ async function runAutonomousLoop(args: {
 // POST handler
 // ---------------------------------------------------------------------------
 
+// Request schema. Everything the client can send is listed here with a
+// size cap; unknown fields are rejected. The client never chooses a model.
+const HistoryEntry = z
+  .object({
+    role: z.enum(['user', 'assistant', 'bakery', 'porter', 'agent']),
+    content: z.string().max(LIMITS.maxHistoryEntryChars),
+  })
+  .strict()
+
+const DemoRequest = z
+  .object({
+    message: z.string().trim().min(1).max(LIMITS.maxMessageChars),
+    history: z.array(HistoryEntry).max(LIMITS.maxHistoryEntries).default([]),
+    isFirstTurn: z.boolean().optional(),
+    targetAgent: z.enum(['bakery', 'porter']).default('bakery'),
+    porterActive: z.boolean().default(false),
+    voiceMode: z.boolean().default(false),
+    mode: z.enum(['turn', 'autonomous']).default('turn'),
+  })
+  .strict()
+
 export async function POST(request: Request) {
-  // Warm the Ed25519 keystore for all demo agents so every envelope
-  // signed downstream uses a stable, deployed public key that the client
-  // can fetch from /api/amp-demo/keys.
-  await ensureDemoKeys([
-    YOUR_AGENT,
-    SUNNY_BAKERY,
-    PORTER_DELIVERY,
-    'agent://directory.amp.example.com',
-  ])
-
-  let message: string
-  let history: Array<{ role: string; content: string }>
-  let isFirstTurn: boolean
-  let targetAgent: 'bakery' | 'porter'
-  let porterActive: boolean
-  let voiceMode: boolean
-  // 'turn'        — existing single round-trip (chat widget). Default.
-  // 'autonomous'  — voice-call mode: server loops YA↔bakery until done,
-  //                 user-input needed, or 8-turn cap. Implies voiceMode.
-  let mode: 'turn' | 'autonomous'
-
+  const guard = guardRequest(request, { cost: 1 })
+  if (guard instanceof Response) return guard
+  let streaming = false
   try {
-    const body = await request.json()
-    message = body?.message
-    history = body?.history ?? []
-    isFirstTurn = body?.isFirstTurn ?? (history.length === 0)
-    targetAgent = body?.targetAgent === 'porter' ? 'porter' : 'bakery'
-    porterActive = Boolean(body?.porterActive)
-    voiceMode = Boolean(body?.voiceMode)
-    mode = body?.mode === 'autonomous' ? 'autonomous' : 'turn'
-    if (mode === 'autonomous') voiceMode = true
-  } catch {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
+    if (missingModelConfig('language', 'speech')) {
+      return jsonError(503, 'The demo is not configured on this deployment.')
+    }
 
-  if (!message || typeof message !== 'string') {
-    return Response.json({ error: 'Message is required' }, { status: 400 })
-  }
-  try {
-    languageModel()
-  } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'Demo model configuration is missing' },
-      { status: 503 },
+    let raw: unknown
+    try {
+      raw = await readJsonLimited(request, LIMITS.maxJsonBodyBytes)
+    } catch (err) {
+      if (err instanceof BodyTooLarge) return jsonError(413, 'Request body too large')
+      return jsonError(400, 'Invalid request body')
+    }
+    const parsed = DemoRequest.safeParse(raw)
+    if (!parsed.success) return jsonError(400, 'Invalid request')
+    const input = parsed.data
+
+    const message = input.message
+    // Only the most recent turns are forwarded to the model.
+    const history = input.history.slice(-LIMITS.historyTurnsForModel)
+    const isFirstTurn = input.isFirstTurn ?? input.history.length === 0
+    const targetAgent = input.targetAgent
+    const porterActive = input.porterActive
+    // 'turn'        — single round-trip (chat widget). Default.
+    // 'autonomous'  — voice-call mode: server loops YA<->bakery until done,
+    //                 user-input needed, or the turn cap. Implies voiceMode.
+    const mode = input.mode
+    const voiceMode = mode === 'autonomous' ? true : input.voiceMode
+
+    // Autonomous mode can run many model + speech calls in one request,
+    // so it costs extra rate-limit tokens on top of the base one.
+    if (mode === 'autonomous') {
+      const extra = guardRequest(request, { cost: 2 })
+      if (extra instanceof Response) return extra
+      extra.release()
+    }
+
+    // Warm the Ed25519 keystore for all demo agents so every envelope
+    // signed downstream uses a key the client can fetch from
+    // /api/amp-demo/keys.
+    await ensureDemoKeys([
+      YOUR_AGENT,
+      SUNNY_BAKERY,
+      PORTER_DELIVERY,
+      'agent://directory.amp.example.com',
+    ])
+
+    const signal = requestSignal(request)
+    streaming = true
+    return withRequestContext(signal, () =>
+      demoStream({
+        message,
+        history,
+        isFirstTurn,
+        targetAgent,
+        porterActive,
+        voiceMode,
+        mode,
+        signal,
+        release: guard.release,
+      }),
     )
+  } catch (err) {
+    logError('amp-demo', err)
+    return jsonError(500, 'Something went wrong. Please try again.')
+  } finally {
+    if (!streaming) guard.release()
   }
+}
 
+function demoStream(args: {
+  message: string
+  history: Array<{ role: string; content: string }>
+  isFirstTurn: boolean
+  targetAgent: 'bakery' | 'porter'
+  porterActive: boolean
+  voiceMode: boolean
+  mode: 'turn' | 'autonomous'
+  signal: AbortSignal
+  release: () => void
+}): Response {
+  const { message, history, isFirstTurn, targetAgent, porterActive, voiceMode, mode } = args
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       const usageContext = undefined
       const traceId = makeTraceId()
 
+      let closed = false
       function sendEvent(type: string, data: unknown) {
+        if (closed) return
         const payload = JSON.stringify({ type, data })
-        controller.enqueue(encoder.encode(`data: ${payload}\n\n`))
+        try {
+          controller.enqueue(encoder.encode(`data: ${payload}\n\n`))
+        } catch {
+          closed = true
+        }
       }
 
       try {
@@ -959,13 +971,13 @@ export async function POST(request: Request) {
             const porterDiscovery = await makeEnvelope(
               YOUR_AGENT,
               'agent://directory.amp.example.com',
-              'discovery.query',
+              DIRECTORY_QUERY,
               {
                 capability: 'logistics.delivery',
                 location_hint: 'mumbai',
                 filters: { category: 'same_day_delivery' },
               },
-              { 'Trace-Id': traceId, 'Trust-Tier': 'VERIFIED' },
+              { 'Trace-Id': traceId, 'Trust-Tier': 'verified' },
             )
             sendEvent('envelope', porterDiscovery)
             sendEvent('status', {
@@ -977,14 +989,14 @@ export async function POST(request: Request) {
             const porterDiscoveryResp = await makeEnvelope(
               'agent://directory.amp.example.com',
               YOUR_AGENT,
-              'discovery.response',
+              DIRECTORY_RESPONSE,
               {
                 results: [
                   {
                     agent_id: PORTER_DELIVERY,
                     name: 'Porter',
                     capabilities: ['logistics.delivery', 'logistics.quote', 'logistics.schedule'],
-                    trust_tier: 'VERIFIED',
+                    trust_tier: 'verified',
                     rating: 4.7,
                     description: 'On-demand delivery for restaurants and retailers',
                   },
@@ -993,7 +1005,7 @@ export async function POST(request: Request) {
               {
                 'Trace-Id': traceId,
                 'In-Reply-To': porterDiscovery.id,
-                'Trust-Tier': 'VERIFIED',
+                'Trust-Tier': 'verified',
               },
             )
             sendEvent('envelope', porterDiscoveryResp)
@@ -1016,7 +1028,7 @@ export async function POST(request: Request) {
               const briefEnv = await makeEnvelope(
                 YOUR_AGENT,
                 PORTER_DELIVERY,
-                'voice.utterance',
+                VOICE_UTTERANCE,
                 {
                   transcript: briefText,
                   audio_b64: briefAudio.audioB64,
@@ -1024,7 +1036,7 @@ export async function POST(request: Request) {
                   speaker: 'your-agent',
                   role: 'brief',
                 },
-                { 'Trace-Id': traceId, 'Trust-Tier': 'VERIFIED' },
+                { 'Trace-Id': traceId, 'Trust-Tier': 'verified' },
               )
               sendEvent('envelope', briefEnv)
               sendEvent('voice', {
@@ -1049,7 +1061,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
               'Chain-Budget': 'remaining=10.00USD;max=50.00USD',
             },
           )
@@ -1070,7 +1082,7 @@ export async function POST(request: Request) {
             {
               'Trace-Id': traceId,
               'In-Reply-To': porterFollowupTask.id,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', porterAck)
@@ -1096,13 +1108,14 @@ export async function POST(request: Request) {
             model: languageModel(),
             instructions: PORTER_SYSTEM_PROMPT,
             messages: porterMessages,
-            maxOutputTokens: 500,
+            maxOutputTokens: capTokens(500),
+            abortSignal: modelSignal(),
             onEnd: ({ usage, finishReason }) => {
               recordAmpDemoUsage(usageContext, {
                 finishReason,
                 messageCount: porterMessages.length,
                 mode,
-                modelId: SONNET_MODEL,
+                modelId: languageModelId(),
                 operation: 'porter_followup',
                 partner: 'porter',
                 success: true,
@@ -1114,7 +1127,7 @@ export async function POST(request: Request) {
                 errorType: errorName(error),
                 messageCount: porterMessages.length,
                 mode,
-                modelId: SONNET_MODEL,
+                modelId: languageModelId(),
                 operation: 'porter_followup',
                 partner: 'porter',
                 success: false,
@@ -1155,7 +1168,7 @@ export async function POST(request: Request) {
             {
               'Trace-Id': traceId,
               'In-Reply-To': porterFollowupTask.id,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', porterResp)
@@ -1171,7 +1184,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'SELF',
+              'Trust-Tier': 'owner',
             },
           )
           sendEvent('envelope', porterFwd)
@@ -1185,7 +1198,7 @@ export async function POST(request: Request) {
                 const porterVoiceEnv = await makeEnvelope(
                   PORTER_DELIVERY,
                   YOUR_AGENT,
-                  'voice.utterance',
+                  VOICE_UTTERANCE,
                   {
                     transcript: spoken,
                     audio_b64: porterAudio.audioB64,
@@ -1195,7 +1208,7 @@ export async function POST(request: Request) {
                   {
                     'Trace-Id': traceId,
                     'In-Reply-To': porterFollowupTask.id,
-                    'Trust-Tier': 'VERIFIED',
+                    'Trust-Tier': 'verified',
                   },
                 )
                 sendEvent('envelope', porterVoiceEnv)
@@ -1217,7 +1230,7 @@ export async function POST(request: Request) {
                 const relayEnv = await makeEnvelope(
                   YOUR_AGENT,
                   'user://you',
-                  'voice.utterance',
+                  VOICE_UTTERANCE,
                   {
                     transcript: relayText,
                     audio_b64: relayAudio.audioB64,
@@ -1225,7 +1238,7 @@ export async function POST(request: Request) {
                     speaker: 'your-agent',
                     role: 'relay',
                   },
-                  { 'Trace-Id': traceId, 'Trust-Tier': 'SELF' },
+                  { 'Trace-Id': traceId, 'Trust-Tier': 'owner' },
                 )
                 sendEvent('envelope', relayEnv)
                 sendEvent('voice', {
@@ -1263,7 +1276,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'SELF',
+              'Trust-Tier': 'owner',
             },
           )
           sendEvent('envelope', taskCreateEnvelope)
@@ -1278,7 +1291,7 @@ export async function POST(request: Request) {
           const discoveryEnvelope = await makeEnvelope(
             YOUR_AGENT,
             'agent://directory.amp.example.com',
-            'discovery.query',
+            DIRECTORY_QUERY,
             {
               capability: 'bakery.order',
               location_hint: 'local',
@@ -1289,7 +1302,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', discoveryEnvelope)
@@ -1304,14 +1317,14 @@ export async function POST(request: Request) {
           const discoveryResponseEnvelope = await makeEnvelope(
             'agent://directory.amp.example.com',
             YOUR_AGENT,
-            'discovery.response',
+            DIRECTORY_RESPONSE,
             {
               results: [
                 {
                   agent_id: SUNNY_BAKERY,
                   name: 'Sunny Bakery',
                   capabilities: ['bakery.order', 'bakery.quote', 'bakery.custom'],
-                  trust_tier: 'VERIFIED',
+                  trust_tier: 'verified',
                   rating: 4.8,
                   description: 'Artisan bakery specializing in custom cakes and pastries',
                 },
@@ -1320,7 +1333,7 @@ export async function POST(request: Request) {
             {
               'Trace-Id': traceId,
               'In-Reply-To': discoveryEnvelope.id,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', discoveryResponseEnvelope)
@@ -1348,7 +1361,7 @@ export async function POST(request: Request) {
             const briefEnv = await makeEnvelope(
               YOUR_AGENT,
               SUNNY_BAKERY,
-              'voice.utterance',
+              VOICE_UTTERANCE,
               {
                 transcript: briefText,
                 audio_b64: briefAudio.audioB64,
@@ -1356,7 +1369,7 @@ export async function POST(request: Request) {
                 speaker: 'your-agent',
                 role: 'brief',
               },
-              { 'Trace-Id': traceId, 'Trust-Tier': 'VERIFIED' },
+              { 'Trace-Id': traceId, 'Trust-Tier': 'verified' },
             )
             sendEvent('envelope', briefEnv)
             sendEvent('voice', {
@@ -1384,7 +1397,7 @@ export async function POST(request: Request) {
           },
           {
             'Trace-Id': traceId,
-            'Trust-Tier': 'VERIFIED',
+            'Trust-Tier': 'verified',
             'Chain-Budget': 'remaining=10.00USD;max=50.00USD',
           },
         )
@@ -1412,7 +1425,7 @@ export async function POST(request: Request) {
           {
             'Trace-Id': traceId,
             'In-Reply-To': orderTaskEnvelope.id,
-            'Trust-Tier': 'VERIFIED',
+            'Trust-Tier': 'verified',
           },
         )
         sendEvent('envelope', ackEnvelope)
@@ -1459,13 +1472,14 @@ export async function POST(request: Request) {
           model: languageModel(),
           instructions: BAKERY_SYSTEM_PROMPT,
           messages: claudeMessages,
-          maxOutputTokens: 500,
+          maxOutputTokens: capTokens(500),
+          abortSignal: modelSignal(),
           onEnd: ({ usage, finishReason }) => {
             recordAmpDemoUsage(usageContext, {
               finishReason,
               messageCount: claudeMessages.length,
               mode,
-              modelId: SONNET_MODEL,
+              modelId: languageModelId(),
               operation: 'bakery_turn',
               partner: 'bakery',
               success: true,
@@ -1477,7 +1491,7 @@ export async function POST(request: Request) {
               errorType: errorName(error),
               messageCount: claudeMessages.length,
               mode,
-              modelId: SONNET_MODEL,
+              modelId: languageModelId(),
               operation: 'bakery_turn',
               partner: 'bakery',
               success: false,
@@ -1541,7 +1555,7 @@ export async function POST(request: Request) {
           {
             'Trace-Id': traceId,
             'In-Reply-To': orderTaskEnvelope.id,
-            'Trust-Tier': 'VERIFIED',
+            'Trust-Tier': 'verified',
           },
         )
         sendEvent('envelope', responseEnvelope)
@@ -1579,7 +1593,7 @@ export async function POST(request: Request) {
           },
           {
             'Trace-Id': traceId,
-            'Trust-Tier': 'SELF',
+            'Trust-Tier': 'owner',
           },
         )
         sendEvent('envelope', forwardEnvelope)
@@ -1594,7 +1608,7 @@ export async function POST(request: Request) {
               const bakeryVoiceEnv = await makeEnvelope(
                 SUNNY_BAKERY,
                 YOUR_AGENT,
-                'voice.utterance',
+                VOICE_UTTERANCE,
                 {
                   transcript: spoken,
                   audio_b64: bakeryAudio.audioB64,
@@ -1604,7 +1618,7 @@ export async function POST(request: Request) {
                 {
                   'Trace-Id': traceId,
                   'In-Reply-To': orderTaskEnvelope.id,
-                  'Trust-Tier': 'VERIFIED',
+                  'Trust-Tier': 'verified',
                 },
               )
               sendEvent('envelope', bakeryVoiceEnv)
@@ -1626,7 +1640,7 @@ export async function POST(request: Request) {
               const relayEnv = await makeEnvelope(
                 YOUR_AGENT,
                 'user://you',
-                'voice.utterance',
+                VOICE_UTTERANCE,
                 {
                   transcript: relayText,
                   audio_b64: relayAudio.audioB64,
@@ -1634,7 +1648,7 @@ export async function POST(request: Request) {
                   speaker: 'your-agent',
                   role: 'relay',
                 },
-                { 'Trace-Id': traceId, 'Trust-Tier': 'SELF' },
+                { 'Trace-Id': traceId, 'Trust-Tier': 'owner' },
               )
               sendEvent('envelope', relayEnv)
               sendEvent('voice', {
@@ -1675,7 +1689,7 @@ export async function POST(request: Request) {
           const porterDiscoveryEnvelope = await makeEnvelope(
             YOUR_AGENT,
             'agent://directory.amp.example.com',
-            'discovery.query',
+            DIRECTORY_QUERY,
             {
               capability: 'logistics.delivery',
               location_hint: 'mumbai',
@@ -1683,7 +1697,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', porterDiscoveryEnvelope)
@@ -1697,14 +1711,14 @@ export async function POST(request: Request) {
           const porterDiscoveryResponse = await makeEnvelope(
             'agent://directory.amp.example.com',
             YOUR_AGENT,
-            'discovery.response',
+            DIRECTORY_RESPONSE,
             {
               results: [
                 {
                   agent_id: PORTER_DELIVERY,
                   name: 'Porter',
                   capabilities: ['logistics.delivery', 'logistics.quote', 'logistics.schedule'],
-                  trust_tier: 'VERIFIED',
+                  trust_tier: 'verified',
                   rating: 4.7,
                   description: 'On-demand delivery for restaurants and retailers',
                 },
@@ -1713,7 +1727,7 @@ export async function POST(request: Request) {
             {
               'Trace-Id': traceId,
               'In-Reply-To': porterDiscoveryEnvelope.id,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', porterDiscoveryResponse)
@@ -1742,7 +1756,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
               'Chain-Budget': 'remaining=10.00USD;max=50.00USD',
             },
           )
@@ -1766,7 +1780,7 @@ export async function POST(request: Request) {
             {
               'Trace-Id': traceId,
               'In-Reply-To': porterTaskEnvelope.id,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', porterAckEnvelope)
@@ -1790,13 +1804,14 @@ export async function POST(request: Request) {
             model: languageModel(),
             instructions: PORTER_SYSTEM_PROMPT,
             messages: porterClaudeMessages,
-            maxOutputTokens: 500,
+            maxOutputTokens: capTokens(500),
+            abortSignal: modelSignal(),
             onEnd: ({ usage, finishReason }) => {
               recordAmpDemoUsage(usageContext, {
                 finishReason,
                 messageCount: porterClaudeMessages.length,
                 mode,
-                modelId: SONNET_MODEL,
+                modelId: languageModelId(),
                 operation: 'porter_quote',
                 partner: 'porter',
                 success: true,
@@ -1808,7 +1823,7 @@ export async function POST(request: Request) {
                 errorType: errorName(error),
                 messageCount: porterClaudeMessages.length,
                 mode,
-                modelId: SONNET_MODEL,
+                modelId: languageModelId(),
                 operation: 'porter_quote',
                 partner: 'porter',
                 success: false,
@@ -1856,7 +1871,7 @@ export async function POST(request: Request) {
             {
               'Trace-Id': traceId,
               'In-Reply-To': porterTaskEnvelope.id,
-              'Trust-Tier': 'VERIFIED',
+              'Trust-Tier': 'verified',
             },
           )
           sendEvent('envelope', porterResponseEnvelope)
@@ -1884,7 +1899,7 @@ export async function POST(request: Request) {
             },
             {
               'Trace-Id': traceId,
-              'Trust-Tier': 'SELF',
+              'Trust-Tier': 'owner',
             },
           )
           sendEvent('envelope', porterForwardEnvelope)
@@ -1892,21 +1907,26 @@ export async function POST(request: Request) {
 
         sendEvent('done', { bakeryResponse: cleanResponse, bodyType: ampBodyType })
       } catch (err) {
-        console.error('[amp-demo]', err)
+        if (!args.signal.aborted) logError('amp-demo', err)
         sendEvent('error', {
-          message: err instanceof Error ? err.message : 'Unknown error',
+          message: args.signal.aborted
+            ? 'The request took too long and was stopped.'
+            : 'Something went wrong. Please try again.',
         })
       } finally {
-        controller.close()
+        args.release()
+        closed = true
+        try {
+          controller.close()
+        } catch {
+          // already closed or cancelled by the client
+        }
       }
+    },
+    cancel() {
+      args.release()
     },
   })
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  })
+  return new Response(stream, { headers: SSE_HEADERS })
 }

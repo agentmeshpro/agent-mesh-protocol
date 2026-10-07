@@ -113,7 +113,7 @@ export const multiStepScenario: DemoStep[] = [
         'Trace-Id': TRACE_ID,
         'Span-Id': 'span-004',
         'Delegation-Depth': '1',
-        'Chain-Budget': '4.50',
+        'Chain-Budget': 'remaining=4.50USD;max=5.00USD',
         'Visited-Agents': `${AGENTS.client},${AGENTS.helper}`,
         'In-Reply-To': 'msg-002',
         'Nonce': 'n-m3n4o5p6',

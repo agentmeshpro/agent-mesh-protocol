@@ -8,6 +8,10 @@
  * against the /api/amp-demo/keys directory. Nothing about the pill is
  * mocked — if signature verification fails (tampering, wrong key,
  * missing header) the pill turns red and the reason is shown.
+ *
+ * The signature scheme itself is a simplified illustration (Ed25519 over
+ * canonical JSON in X-Signature headers), not AMP's RFC 9421 profile;
+ * the SIG row and the body header say so. See trust/envelope-crypto.ts.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -112,7 +116,10 @@ function TrustPill({
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.25 }}
-      title={reason}
+      title={
+        reason ??
+        'Ed25519 signature checked in your browser. Simplified demo scheme, not the RFC 9421 profile.'
+      }
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -300,7 +307,17 @@ export function ProtocolEnvelope({ envelope, isMachine }: Props) {
         <div />
         <LabelRow
           label="HEADERS"
-          value={`${totalHeaders} · ${sigFields} signed`}
+          value={`${totalHeaders} · ${sigFields} signature`}
+          isMachine={isMachine}
+        />
+        <div />
+        <LabelRow
+          label="SIG"
+          value={
+            <span title="The demo signs canonical JSON with Ed25519. Real AMP peers sign the HTTP request with the RFC 9421 profile (WIRE-BINDING §12.15).">
+              Ed25519 · simplified demo scheme
+            </span>
+          }
           isMachine={isMachine}
         />
         <div />
@@ -405,7 +422,7 @@ export function ProtocolEnvelope({ envelope, isMachine }: Props) {
                 <span>⚠ SENSITIVE · PAYLOAD EXPOSED</span>
                 <span>
                   {trust.state === 'valid'
-                    ? 'SIGNATURE VERIFIED'
+                    ? 'DEMO SIGNATURE VERIFIED'
                     : trust.state === 'invalid'
                       ? trust.reason || 'SIG FAILED'
                       : trust.state.toUpperCase()}

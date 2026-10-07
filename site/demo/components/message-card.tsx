@@ -30,7 +30,7 @@ const BODY_TYPE_COLORS: Record<BodyType, { bg: string; text: string }> = {
   'message':          { bg: 'bg-gray-500/20',    text: 'text-gray-400' },
   'session.init':         { bg: 'bg-gray-500/20', text: 'text-gray-400' },
   'session.established':  { bg: 'bg-gray-500/20', text: 'text-gray-400' },
-  'voice.utterance':      { bg: 'bg-teal-500/20', text: 'text-teal-400' },
+  'com.example.demo.voice_utterance': { bg: 'bg-teal-500/20', text: 'text-teal-400' },
 }
 
 const TRUST_TIER_COLORS: Record<TrustTier, { bg: string; text: string }> = {

@@ -18,7 +18,8 @@ const spaceMono = Space_Mono({
 
 export const metadata: Metadata = {
   title: 'Agent Mesh Protocol',
-  description: 'The open wire protocol for agent-to-agent communication.',
+  description:
+    'An open protocol for agent-to-agent communication: trust, delegation and compliance built in, interoperable with A2A, PACT and MCP.',
 }
 
 export default function RootLayout({
