@@ -270,9 +270,14 @@ The response MUST be a JSON object with `Content-Type: application/json`.
 | `status`             | string   | Lifecycle status: `active`, `deactivating`, `decommissioned` |
 | `moved_to`           | string   | `agent://` URI this agent has migrated to                |
 | `certifications`     | object[] | Compliance certifications (SOC2, ISO 27001, etc.)        |
+| `foreign_identifiers` | object[] | Names for this agent in other ecosystems, each with an optional identity-link proof (Appendix E.4). At most 16. Confer no trust unless the proof verifies |
 
 Implementations MUST allow unknown fields in `agent.json`. Consumers
 MUST ignore fields they do not understand.
+
+`identifiers` stays a list of `agent://` strings: foreign identifiers
+go in their own `foreign_identifiers` array so that existing consumers,
+which expect every `identifiers` entry to be a string, keep working.
 
 #### 4.1.3 Example: Minimal Agent
 
@@ -4194,11 +4199,32 @@ below are abbreviated.
     "certifications": {
       "type": "array",
       "items": {"type": "object"}
+    },
+    "foreign_identifiers": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["scheme", "id", "kind"],
+        "properties": {
+          "scheme": {"type": "string", "enum": ["https", "did"]},
+          "id": {"type": "string", "maxLength": 2048},
+          "kind": {
+            "type": "string",
+            "enum": ["oauth-client-id", "did", "http-signature-directory"]
+          },
+          "proof": {"$ref": "body/identity.link_proof.json"}
+        }
+      },
+      "description": "Names for this agent in other ecosystems (Appendix E.4)"
     }
   },
   "additionalProperties": true
 }
 ```
+
+The generated schema in `spec/schemas/agent-json.json` is normative
+where it differs from this sketch.
 
 ---
 
@@ -4352,6 +4378,92 @@ acceptable as internal shorthand. They MUST be normalized to full
 | `@alice`              | `agent://alice@{default_registry}`       |
 | `https://example.com` | `agent://example.com`                    |
 | `example.com`         | `agent://example.com`                    |
+
+### E.4 Foreign Identifiers
+
+The same agent is often known elsewhere by another name: an MCP client
+ID metadata document URL, an ANP `did:wba` or a `did:web` DID, or a
+Web Bot Auth `Signature-Agent` key directory URL. `agent.json` lists
+them in `foreign_identifiers`:
+
+```json
+"foreign_identifiers": [
+  {
+    "scheme": "https",
+    "id": "https://assistant.example.com/oauth/client-metadata.json",
+    "kind": "oauth-client-id",
+    "proof": {
+      "source_id": "agent://assistant.example.com",
+      "target_id": "https://assistant.example.com/oauth/client-metadata.json",
+      "proof_type": "ed25519_cross_sign",
+      "proof": "...",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "expires_at": "2027-10-01T00:00:00Z"
+    }
+  },
+  {"scheme": "did", "id": "did:wba:example.com:user:assistant", "kind": "did"},
+  {
+    "scheme": "https",
+    "id": "https://assistant.example.com/.well-known/http-message-signatures-directory",
+    "kind": "http-signature-directory"
+  }
+]
+```
+
+| `kind`                     | `scheme` | Meaning |
+|----------------------------|----------|---------|
+| `oauth-client-id`          | `https`  | OAuth / MCP client ID metadata document URL |
+| `did`                      | `did`    | A DID; methods `key`, `web` and `wba` only |
+| `http-signature-directory` | `https`  | Web Bot Auth HTTP message signatures key directory |
+
+**Trust rule.** A foreign identifier confers no trust by itself.
+Verifiers MUST treat it as the same entity only when its `proof` is an
+identity link (`identity.link_proof`, Section 16.1.9) whose two ids are
+one of this agent's `agent://` identifiers and exactly this foreign id
+(in either order, compared in canonical form), that has not expired,
+whose `timestamp` is not in the future (5 minutes of skew allowed), and
+whose cryptographic proof verifies. Entries without such a proof MUST
+be ignored. A proof that verifies for one foreign id MUST NOT be
+applied to another.
+
+**Syntax.** Entries that break these rules MUST be ignored
+individually; they MUST NOT make the whole `agent.json` invalid, so
+that new `kind` values can be added later. A list longer than 16
+entries is invalid.
+
+`https` ids:
+
+- The scheme MUST be `https`; `http` and other schemes are rejected.
+- No userinfo (`@` in the authority), query or fragment; no
+  backslashes, whitespace or control characters.
+- The host is a DNS name with at least two labels, normalised as in
+  E.2 (NFKC, then IDNA to its A-label form, lowercased). IP literals,
+  a trailing dot and percent-encoded hosts are rejected. A
+  look-alike Unicode host therefore never equals the ASCII name it
+  imitates.
+- The port is 1..65535; `:443` is dropped.
+- The path is ASCII and is percent-normalised (RFC 3986 section 6.2.2):
+  escapes of unreserved characters are decoded and other escapes use
+  upper-case hex. Encoded control characters, `/`, `\` and `%`, as
+  well as `.` / `..` segments, are rejected. An empty path becomes
+  `/`.
+- At most 2048 characters.
+
+DIDs:
+
+- The method MUST be `key`, `web` or `wba`, in lowercase. A bare DID
+  only: no path, query or fragment.
+- `did:key` MUST be an Ed25519 multibase key (`z6Mk...`, base58btc).
+- `did:web` / `did:wba`: the first segment is a DNS name (same rules
+  as an `https` host, ASCII only), optionally followed by a
+  `%3A`-encoded port; any further `:`-separated segments use
+  `[A-Za-z0-9._-]` only.
+- At most 512 characters.
+
+The reference implementation provides `ForeignIdentifier`,
+`normalize_foreign_https_id`, `normalize_foreign_did` and
+`verified_foreign_aliases(own_identifiers, foreign_identifiers,
+verify_proof=...)`, which returns only the proven aliases.
 
 ---
 

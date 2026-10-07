@@ -99,7 +99,15 @@ from ampro.compliance.types import (
 )
 
 # --- Addressing ---
-from ampro.core.addressing import AddressType, AgentAddress, normalize_shorthand, parse_agent_uri
+from ampro.core.addressing import (
+    FOREIGN_DID_METHODS,
+    AddressType,
+    AgentAddress,
+    normalize_foreign_did,
+    normalize_foreign_https_id,
+    normalize_shorthand,
+    parse_agent_uri,
+)
 
 # --- Body type schemas ---
 from ampro.core.body_schemas import (
@@ -223,8 +231,13 @@ from ampro.identity.cross_verification import (
 # --- Identity link expiry ---
 from ampro.identity.link import (
     DEFAULT_LINK_PROOF_LIFETIME,
+    MAX_FOREIGN_IDENTIFIERS,
+    ForeignIdentifier,
     IdentityLinkProofBody,
+    LinkProofVerifier,
     is_link_proof_valid,
+    normalize_foreign_identifier,
+    verified_foreign_aliases,
 )
 
 # --- Identity migration ---
@@ -402,6 +415,7 @@ __all__ = [
     "TrustTier", "TrustConfig", "CLOCK_SKEW_SECONDS",
     # Addressing
     "AgentAddress", "AddressType", "parse_agent_uri", "normalize_shorthand",
+    "normalize_foreign_https_id", "normalize_foreign_did", "FOREIGN_DID_METHODS",
     # Identity & auth
     "IdentityProof", "ConsentScope", "ConsentRequest", "ConsentGrant",
     "AuthMethod", "ParsedAuth", "parse_authorization",
@@ -521,6 +535,9 @@ __all__ = [
     "StreamAuthRefreshEvent",
     # Identity linking
     "IdentityLinkProofBody",
+    # Foreign identifiers (agent.json foreign_identifiers)
+    "ForeignIdentifier", "LinkProofVerifier", "verified_foreign_aliases",
+    "normalize_foreign_identifier", "MAX_FOREIGN_IDENTIFIERS",
     # Registry federation
     "RegistryFederationRequest", "RegistryFederationResponse",
     "RegistryFederationRevokeBody",
