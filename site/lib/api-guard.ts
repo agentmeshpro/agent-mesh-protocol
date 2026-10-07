@@ -31,14 +31,15 @@ export function jsonError(
 
 // ---------------------------------------------------------------------------
 // Logging. Never log request bodies or credentials; redact the gateway key
-// if an upstream error happens to echo it.
+// and OIDC token if an upstream error happens to echo them.
 // ---------------------------------------------------------------------------
 
 export function logError(scope: string, err: unknown): void {
   const name = err instanceof Error ? err.name : typeof err
   let message = err instanceof Error ? err.message : ''
-  const key = process.env.AI_GATEWAY_API_KEY
-  if (key && key.length >= 8) message = message.split(key).join('[redacted]')
+  for (const secret of [process.env.AI_GATEWAY_API_KEY, process.env.VERCEL_OIDC_TOKEN]) {
+    if (secret && secret.length >= 8) message = message.split(secret).join('[redacted]')
+  }
   message = message.replace(/(bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]').slice(0, 300)
   console.error(`[${scope}] ${name}${message ? `: ${message}` : ''}`)
 }

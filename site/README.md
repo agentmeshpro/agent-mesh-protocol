@@ -10,7 +10,8 @@ Requires Node 20+ (CI uses Node 22).
 
 ```bash
 cd site
-cp .env.example .env.local   # fill AI_GATEWAY_API_KEY and the three AMP_DEMO_* model ids
+cp .env.example .env.local   # fill the three AMP_DEMO_* model ids and AI_GATEWAY_API_KEY
+                             # (or `vercel env pull .env.local` to use the OIDC token instead of a key)
 npm ci
 npm run dev                  # http://localhost:3000
 ```
@@ -30,7 +31,7 @@ Required at request time:
 
 | Variable | Purpose |
 |---|---|
-| `AI_GATEWAY_API_KEY` | Vercel AI Gateway credential |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway credential. Optional on Vercel, where the gateway uses the project's OIDC token when no key is set. Locally, set a key or provide `VERCEL_OIDC_TOKEN` via `vercel env pull`. |
 | `AMP_DEMO_LANGUAGE_MODEL` | Gateway id of the language model, e.g. `openai/gpt-4o-mini` |
 | `AMP_DEMO_SPEECH_MODEL` | Gateway id of an OpenAI text-to-speech model (`openai/tts-1` or `openai/tts-1-hd`). The demo uses the `nova`, `shimmer` and `onyx` voices. |
 | `AMP_DEMO_TRANSCRIPTION_MODEL` | Gateway id of the transcription model, e.g. `openai/gpt-4o-mini-transcribe` |
@@ -64,8 +65,8 @@ Costs per request, in rate-limit tokens: a chat turn or a voice upload costs 1, 
 ## Deploy to Vercel
 
 1. Create a Vercel project from this repository and set **Root Directory** to `site`. The framework preset is Next.js and the default build command (`npm run build`) is fine.
-2. Add the four required variables, plus `AMP_DEMO_SIGNING_SEED`, under Project → Settings → Environment Variables.
-3. Set a spend limit on the AI Gateway key. The in-app limits are best-effort (see below), so the gateway limit is the real backstop.
+2. Add the three `AMP_DEMO_*` model ids, plus `AMP_DEMO_SIGNING_SEED`, under Project → Settings → Environment Variables. No gateway key is needed: with OIDC enabled for the project (the default), the gateway authenticates with the deployment's OIDC token and bills the project's team. Set `AI_GATEWAY_API_KEY` only to bill a different key.
+3. Set a spend limit on the AI Gateway (on the key, if you use one). The in-app limits are best-effort (see below), so the gateway limit is the real backstop.
 
 ## How the API is protected
 

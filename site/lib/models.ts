@@ -13,6 +13,11 @@ import type {
  * read at request time, never at build time, so `next build` works with
  * no secrets; a request made while configuration is missing gets a 503
  * (see `missingModelConfig`).
+ *
+ * Gateway credentials: `AI_GATEWAY_API_KEY` if set, otherwise the Vercel
+ * OIDC token. The AI SDK reads the OIDC token itself, from the
+ * `x-vercel-oidc-token` request header on Vercel or `VERCEL_OIDC_TOKEN`
+ * locally (`vercel env pull`), so no key is needed on a Vercel deployment.
  */
 
 const ENV = {
@@ -29,6 +34,21 @@ function env(name: string): string | undefined {
   return value ? value : undefined
 }
 
+/**
+ * True when the gateway has something to authenticate with: an API key,
+ * a local OIDC token, or a Vercel runtime, which sends the OIDC token as a
+ * request header.
+ */
+function hasGatewayAuth(): boolean {
+  return Boolean(env(ENV.key) || env('VERCEL_OIDC_TOKEN') || env('VERCEL'))
+}
+
+function requireGatewayAuth(): void {
+  if (!hasGatewayAuth()) {
+    throw new Error(`${ENV.key} or a Vercel OIDC token is not configured`)
+  }
+}
+
 function required(name: string): string {
   const value = env(name)
   if (!value) throw new Error(`${name} is not configured`)
@@ -40,7 +60,7 @@ function required(name: string): string {
  * Routes call this before doing any work and answer 503 when it is true.
  */
 export function missingModelConfig(...kinds: ModelKind[]): boolean {
-  if (!env(ENV.key)) return true
+  if (!hasGatewayAuth()) return true
   return kinds.some((k) => !env(ENV[k]))
 }
 
@@ -51,19 +71,19 @@ export function languageModelId(): string {
 
 /** Language model from the Vercel AI Gateway. */
 export function languageModel() {
-  required(ENV.key)
+  requireGatewayAuth()
   return gateway.languageModel(required(ENV.language) as GatewayModelId)
 }
 
 /** Speech model from the Vercel AI Gateway. */
 export function speechModel() {
-  required(ENV.key)
+  requireGatewayAuth()
   return gateway.speechModel(required(ENV.speech) as GatewaySpeechModelId)
 }
 
 /** Transcription model from the Vercel AI Gateway. */
 export function transcriptionModel() {
-  required(ENV.key)
+  requireGatewayAuth()
   return gateway.transcriptionModel(
     required(ENV.transcription) as GatewayTranscriptionModelId,
   )
