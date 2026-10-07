@@ -19,7 +19,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from ampro.security.concurrency_limiter import ConcurrencyBackend, ConcurrencyLimiter
 from ampro.security.rate_limiter import RateLimiter, RateLimiterBackend
@@ -37,6 +37,7 @@ class CachedResponse:
     body: bytes
 
 
+@runtime_checkable
 class ResponseCache(Protocol):
     """Dedup store that remembers the response for each message id."""
 

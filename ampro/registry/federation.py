@@ -32,7 +32,7 @@ import threading
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -421,6 +421,7 @@ class _NonceCache:
             self._seen.clear()
 
 
+@runtime_checkable
 class FederationNonceCache(Protocol):
     """Single-use store for federation ``trust_proof`` nonces.
 

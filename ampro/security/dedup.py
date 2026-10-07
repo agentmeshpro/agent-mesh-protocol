@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
+@runtime_checkable
 class DedupStore(Protocol):
     async def is_duplicate(self, message_id: str) -> bool: ...
     async def mark_seen(self, message_id: str) -> None: ...
