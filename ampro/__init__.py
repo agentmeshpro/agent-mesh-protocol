@@ -416,7 +416,7 @@ from ampro.wire.errors import (
     parse_authority_required,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     # Core
