@@ -16,11 +16,11 @@ const MONO = "var(--font-space-mono), ui-monospace, SFMono-Regular, Menlo, monos
 const SERIF = "var(--font-newsreader), 'Newsreader', Georgia, serif"
 const ACCENT = '#C86948'
 
-export const REPO_URL = 'https://github.com/CatlystAI/agent-mesh-protocol'
+export const REPO_URL = 'https://github.com/agentmeshpro/agent-mesh-protocol'
 const BLOB = `${REPO_URL}/blob/main`
 export const INSTALL_CMD =
-  'pip install "ampro[all] @ git+https://github.com/CatlystAI/agent-mesh-protocol.git@v0.4.0"'
-const EXT_URI = 'https://github.com/CatlystAI/agent-mesh-protocol/ext/amp/v1'
+  'pip install "ampro[all] @ git+https://github.com/agentmeshpro/agent-mesh-protocol.git"'
+const EXT_URI = 'https://github.com/agentmeshpro/agent-mesh-protocol/ext/amp/v1'
 
 function useSkin() {
   const { theme } = useAmpTheme()
@@ -440,8 +440,7 @@ claude mcp add --transport http travel http://127.0.0.1:8000/mcp`}</Code>
       <Section id="install" eyebrow="Install" title="Get the 0.4.0 reference implementation">
         <Code label="shell">{INSTALL_CMD}</Code>
         <P>
-          <C>ampro</C> is installed from the GitHub repository, not from PyPI, and you need access to
-          that repository. Requires Python 3.11+. Extras: <C>server</C>, <C>a2a</C>, <C>pact</C>,{' '}
+          <C>ampro</C> is installed from the public GitHub repository, not from PyPI. Requires Python 3.11+. Extras: <C>server</C>, <C>a2a</C>, <C>pact</C>,{' '}
           <C>mcp</C>, <C>flask</C>, <C>all</C>. The core package depends only on pydantic,
           cryptography, base58 and httpx. Pre-1.0: the wire format may still evolve between minor
           versions.
