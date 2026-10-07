@@ -119,6 +119,11 @@ class PACTProvider:
         poll_interval: RFC 8628 ``interval`` for device flows.
     """
 
+    #: PACT applies its own Origin rules: A2A routes require a signed
+    #: personal-agent JWT (not a browser credential) and the consent pages
+    #: check Origin against the Brand's login origin themselves.
+    enforces_origin = True
+
     name = "pact"
 
     def __init__(
