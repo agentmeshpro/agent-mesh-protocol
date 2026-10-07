@@ -58,6 +58,7 @@ from ampro.interop.mcp.tools import (
     scopes_satisfied,
     to_call_result,
 )
+from ampro.security.concurrency_limiter import ConcurrencyLimiter
 from ampro.security.rate_limiter import RateLimiter
 from ampro.server.auth import Authenticator, Unauthorized, authenticate
 from ampro.server.http import HTTPRequest, HTTPResponse
@@ -134,6 +135,9 @@ class MCPSession:
     initialized: bool = False
     created_at: float = 0.0
     last_seen: float = 0.0
+    #: Who the session counts against for the per-caller cap: the
+    #: principal id, or the peer address for anonymous callers.
+    quota_key: str | None = None
 
 
 @runtime_checkable
@@ -145,11 +149,18 @@ class SessionStore(Protocol):
     this protocol over a shared store (e.g. Redis) or use sticky sessions.
 
     ``get`` / ``delete`` must treat a session owned by a different
-    principal exactly like an unknown one.
+    principal exactly like an unknown one.  ``create`` must bound the
+    sessions any one *quota_key* can hold, so a single caller cannot
+    exhaust the store for everyone else.
     """
 
     async def create(
-        self, protocol_version: str, owner: str | None, client_info: dict[str, Any] | None = None
+        self,
+        protocol_version: str,
+        owner: str | None,
+        client_info: dict[str, Any] | None = None,
+        *,
+        quota_key: str | None = None,
     ) -> MCPSession | None:
         """Create a session; ``None`` when at capacity."""
         ...
@@ -167,10 +178,14 @@ class InMemorySessionStore:
     """Bounded, expiring in-process session table (the default store).
 
     Sessions expire after *idle_timeout* seconds without traffic and after
-    *max_lifetime* seconds regardless.  When full, expired sessions are
-    purged first; if it is still full a new ``initialize`` is refused
-    (``503``) rather than evicting live sessions, so one client cannot
-    knock others off.
+    *max_lifetime* seconds regardless.
+
+    Each caller (``quota_key``) may hold at most *max_sessions_per_owner*
+    sessions; opening one more evicts that caller's least recently used
+    session (its client simply re-initializes).  A single caller therefore
+    can never fill the store.  When the store as a whole is full, expired
+    sessions are purged first; if it is still full a new ``initialize`` is
+    refused (``503``) rather than evicting other callers' live sessions.
     """
 
     def __init__(
@@ -179,10 +194,15 @@ class InMemorySessionStore:
         idle_timeout: float = 3600.0,
         max_lifetime: float = 86400.0,
         clock: Callable[[], float] = time.monotonic,
+        *,
+        max_sessions_per_owner: int = 8,
     ) -> None:
         if max_sessions < 1:
             raise ValueError("max_sessions must be >= 1")
+        if max_sessions_per_owner < 1:
+            raise ValueError("max_sessions_per_owner must be >= 1")
         self.max_sessions = max_sessions
+        self.max_sessions_per_owner = max_sessions_per_owner
         self.idle_timeout = idle_timeout
         self.max_lifetime = max_lifetime
         self._clock = clock
@@ -202,9 +222,29 @@ class InMemorySessionStore:
         for sid in [sid for sid, s in self._sessions.items() if self._expired(s, now)]:
             del self._sessions[sid]
 
+    def _enforce_owner_cap(self, quota_key: str | None) -> None:
+        """Evict *quota_key*'s LRU sessions so one more fits under its cap."""
+        now = self._clock()
+        mine = []
+        for sid, session in list(self._sessions.items()):
+            if self._expired(session, now):
+                del self._sessions[sid]
+            elif session.quota_key == quota_key:
+                mine.append(sid)  # OrderedDict order is least recently used first
+        while len(mine) >= self.max_sessions_per_owner:
+            del self._sessions[mine.pop(0)]
+
     async def create(
-        self, protocol_version: str, owner: str | None, client_info: dict[str, Any] | None = None
+        self,
+        protocol_version: str,
+        owner: str | None,
+        client_info: dict[str, Any] | None = None,
+        *,
+        quota_key: str | None = None,
     ) -> MCPSession | None:
+        if quota_key is None:
+            quota_key = owner
+        self._enforce_owner_cap(quota_key)
         if len(self._sessions) >= self.max_sessions:
             self._purge()
             if len(self._sessions) >= self.max_sessions:
@@ -217,6 +257,7 @@ class InMemorySessionStore:
             client_info=dict(client_info or {}),
             created_at=now,
             last_seen=now,
+            quota_key=quota_key,
         )
         self._sessions[session.id] = session
         return session
@@ -269,6 +310,14 @@ def _principal_attr(principal: Any, name: str) -> Any:
     if isinstance(principal, dict):
         return principal.get(name)
     return getattr(principal, name, None)
+
+
+def _caller_key(principal: Any, request: HTTPRequest) -> str:
+    """Budget key for a caller: principal id, else the peer address (as the AMP route)."""
+    pid = _principal_attr(principal, "id")
+    if principal is not None and pid is not None:
+        return str(pid)
+    return f"ip:{getattr(request, 'client', None)}"
 
 
 def _principal_owner(principal: Any) -> str | None:
@@ -368,12 +417,14 @@ class MCPAdapter:
         expose_tasks: bool = True,
         trust_tier: TrustTier = TrustTier.EXTERNAL,
         rate_limiter: RateLimiter | None = None,
+        concurrency: ConcurrencyLimiter | None = None,
         task_handler: Callable[..., Any] | None = None,
         server_name: str | None = None,
         server_version: str | None = None,
         instructions: str | None = None,
         page_size: int = 100,
         max_sessions: int = 1024,
+        max_sessions_per_owner: int = 8,
         session_idle_timeout: float = 3600.0,
         session_store: SessionStore | None = None,
         tool_timeout: float | None = 30.0,
@@ -389,6 +440,7 @@ class MCPAdapter:
         self.authenticators: tuple[Authenticator, ...] = tuple(chain)
         self.require_auth = require_auth
         self.rate_limiter = rate_limiter
+        self.concurrency = concurrency
         self.allowed_origins = None if allowed_origins is None else list(allowed_origins)
         self.expose_tasks = expose_tasks
         self.trust_tier = trust_tier
@@ -401,7 +453,11 @@ class MCPAdapter:
         self.sessions: SessionStore = (
             session_store
             if session_store is not None
-            else InMemorySessionStore(max_sessions=max_sessions, idle_timeout=session_idle_timeout)
+            else InMemorySessionStore(
+                max_sessions=max_sessions,
+                idle_timeout=session_idle_timeout,
+                max_sessions_per_owner=max_sessions_per_owner,
+            )
         )
         self.tool_timeout = tool_timeout
         self.max_argument_bytes = max_argument_bytes
@@ -425,14 +481,15 @@ class MCPAdapter:
         allowed_origins: Iterable[str] | None = None,
         expose_tasks: bool = True,
         rate_limiter: RateLimiter | None = _UNSET,
+        concurrency: ConcurrencyLimiter | None = _UNSET,
         tool_timeout: float | None = _UNSET,
         **kwargs: Any,
     ) -> MCPAdapter:
         """Build an adapter serving *server*'s AMPI app (tools + ``task.create``).
 
         Unless overridden, the server's :class:`SecurityPolicy` supplies the
-        authenticators, ``require_auth``, the rate limiter and the
-        per-call timeout (``handler_timeout_seconds``), so MCP callers face
+        authenticators, ``require_auth``, the rate limiter, the
+        concurrency limiter and the per-call timeout (``handler_timeout_seconds``), so MCP callers face
         the same gate as native AMP callers.
         """
         policy = getattr(server, "security", None)
@@ -442,6 +499,8 @@ class MCPAdapter:
             require_auth = bool(getattr(policy, "require_auth", False))
         if rate_limiter is _UNSET:
             rate_limiter = getattr(policy, "rate_limiter", None)
+        if concurrency is _UNSET:
+            concurrency = getattr(policy, "concurrency", None)
         if tool_timeout is _UNSET:
             tool_timeout = getattr(policy, "handler_timeout_seconds", None) or 30.0
         app = server.app
@@ -460,6 +519,7 @@ class MCPAdapter:
             allowed_origins=allowed_origins,
             expose_tasks=expose_tasks,
             rate_limiter=rate_limiter,
+            concurrency=concurrency,
             tool_timeout=tool_timeout,
             task_handler=task_handler,
             **kwargs,
@@ -630,7 +690,7 @@ class MCPAdapter:
                 p.error_message(None, p.INVALID_REQUEST, "Invalid JSON-RPC message"), status=400
             )
         if kind == "request" and payload["method"] == "initialize":
-            return await self._initialize(payload, owner)
+            return await self._initialize(payload, owner, principal, request)
 
         session, err = await self._require_session(request, owner, version_header)
         if err is not None:
@@ -705,8 +765,19 @@ class MCPAdapter:
             )
         return HTTPResponse.empty(200)
 
-    async def _initialize(self, message: dict[str, Any], owner: str | None) -> HTTPResponse:
+    async def _initialize(
+        self, message: dict[str, Any], owner: str | None, principal: Any, request: HTTPRequest
+    ) -> HTTPResponse:
         rid = message["id"]
+        try:
+            # Creating sessions is metered like tools/call.
+            self._check_rate_limit(principal, request)
+        except RPCError as exc:
+            return _json_response(
+                p.error_message(rid, exc.code, exc.message, exc.data),
+                status=exc.http_status or 429,
+                headers=exc.headers,
+            )
         params = message.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("protocolVersion"), str):
             return _json_response(
@@ -715,7 +786,9 @@ class MCPAdapter:
         requested = params["protocolVersion"]
         version = requested if requested in p.HANDSHAKE_PROTOCOL_VERSIONS else p.LATEST_HANDSHAKE_VERSION
         client_info = params.get("clientInfo") if isinstance(params.get("clientInfo"), dict) else {}
-        session = await self.sessions.create(version, owner, client_info)
+        session = await self.sessions.create(
+            version, owner, client_info, quota_key=_caller_key(principal, request)
+        )
         if session is None:
             logger.warning("Refusing MCP initialize: session store is full")
             return _json_response(
@@ -895,16 +968,34 @@ class MCPAdapter:
             return result
         if method == "tools/call":
             self._check_rate_limit(principal, request)
-            return await self._call_tool(params, principal, version)
+            return await self._call_tool_limited(params, principal, version, request)
         raise RPCError(p.METHOD_NOT_FOUND, "Method not found")
+
+    async def _call_tool_limited(
+        self, params: dict[str, Any], principal: Any, version: str, request: HTTPRequest
+    ) -> dict[str, Any]:
+        """``tools/call`` (incl. ``amp_task``) under the concurrency limiter."""
+        limiter = self.concurrency
+        if limiter is None:
+            return await self._call_tool(params, principal, version)
+        key = _caller_key(principal, request)
+        if not limiter.acquire(key):
+            raise RPCError(
+                p.INTERNAL_ERROR,
+                "Server busy: too many concurrent tool calls",
+                http_status=503,
+                headers={"Retry-After": "1"},
+            )
+        try:
+            return await self._call_tool(params, principal, version)
+        finally:
+            limiter.release(key)
 
     def _check_rate_limit(self, principal: Any, request: HTTPRequest) -> None:
         """Per-caller budget for ``tools/call`` (keyed like the native AMP route)."""
         if self.rate_limiter is None:
             return
-        pid = _principal_attr(principal, "id")
-        key = str(pid) if principal is not None and pid is not None else f"ip:{getattr(request, 'client', None)}"
-        allowed, info = self.rate_limiter.check(key)
+        allowed, info = self.rate_limiter.check(_caller_key(principal, request))
         if allowed:
             return
         retry = max(1, int(info.reset - time.time()))
