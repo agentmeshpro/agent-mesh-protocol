@@ -82,7 +82,7 @@ print(f"  Final at:           {notice.final_at}")
 # Wrap in an AgentMessage envelope
 notice_msg = AgentMessage(
     sender="agent://data-processor.example.com",
-    recipient="agent://registry.amp-protocol.dev",
+    recipient="agent://registry.example.com",
     body_type="agent.deactivation_notice",
     headers={
         "Protocol-Version": "0.1.3",

@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "AMP Contributors", email = "contributors@amp-protocol.dev" },
+    { name = "AMP Contributors" },
 ]
 keywords = ["agent", "protocol", "a2a", "mesh", "ampro", "ampi", "rfc9421", "agent-mesh"]
 classifiers = [
@@ -75,10 +75,11 @@ ampro-server = "ampro.server.cli:main"
 ampro-conformance = "ampro.conformance.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/agentmeshpro/agent-mesh-protocol"
+Homepage = "https://ampro.sh"
 Repository = "https://github.com/agentmeshpro/agent-mesh-protocol"
 Issues = "https://github.com/agentmeshpro/agent-mesh-protocol/issues"
 Documentation = "https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/docs/WIRE-BINDING.md"
+Changelog = "https://github.com/agentmeshpro/agent-mesh-protocol/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ampro"]

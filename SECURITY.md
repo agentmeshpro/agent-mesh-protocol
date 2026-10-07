@@ -8,7 +8,13 @@ reference implementation.
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, report them by emailing **security@amp-protocol.dev**.
+Instead, report them privately through one of these channels:
+
+1. **GitHub private vulnerability reporting (preferred):**
+   [open a draft security advisory](https://github.com/agentmeshpro/agent-mesh-protocol/security/advisories/new).
+   Only the maintainers can see it, and we can collaborate on a fix and
+   a CVE in the same place.
+2. **Email:** **security@ampro.sh**.
 
 Include in your report:
 - Description of the vulnerability and its potential impact
@@ -16,6 +22,16 @@ Include in your report:
 - Affected versions (if known)
 - Suggested mitigation (if you have one)
 - Whether you wish to be credited in the disclosure
+
+## Supported Versions
+
+Security fixes are released for the latest minor version only. Until 1.0,
+upgrade to the newest release to receive fixes.
+
+| Version | Supported |
+|---------|-----------|
+| 0.4.x   | Yes       |
+| < 0.4   | No        |
 
 ## Response Process
 

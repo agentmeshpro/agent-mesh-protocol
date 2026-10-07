@@ -25,7 +25,7 @@ from ampro import (
 # ---------------------------------------------------------------------------
 
 CALLER = "agent://orchestrator.example.com"
-REGISTRY = "agent://registry.amp-protocol.dev"
+REGISTRY = "agent://registry.example.com"
 
 print("=== Registry Search: Service Discovery ===\n")
 
@@ -50,8 +50,8 @@ print(f"  Filters:         {search_req.filters}")
 print(f"  Include load:    {search_req.include_load_level}")
 
 # In a real implementation, this would be:
-#   GET https://registry.amp-protocol.dev/registry/search?capability=data-processing&min_trust_score=400
-print(f"\n  Would query: https://registry.amp-protocol.dev/registry/search"
+#   GET https://registry.example.com/registry/search?capability=data-processing&min_trust_score=400
+print(f"\n  Would query: https://registry.example.com/registry/search"
       f"?capability={search_req.capability}"
       f"&min_trust_score={search_req.min_trust_score}")
 

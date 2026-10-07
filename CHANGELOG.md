@@ -12,6 +12,16 @@
   address. Peers that match the A2A extension URI or schema `$id`s by exact
   string must update to the new values. Old GitHub URLs redirect, but the
   identifiers themselves are compared as strings, not fetched.
+- **Project contacts and links.** Vulnerabilities are now reported through
+  GitHub private vulnerability reporting or `security@ampro.sh`, and Code of
+  Conduct reports go to `conduct@ampro.sh`. The previous `amp-protocol.dev`
+  addresses were never project-controlled and must not be used. The package
+  homepage is now https://ampro.sh, and SECURITY.md lists supported versions.
+- **Example domain in key revocation vectors.** The `key.revocation` example
+  in WIRE-BINDING 12.12 and `tests/vectors/key_revocation.json` now use the
+  reserved `registry.example.com` instead of `registry.amp-protocol.dev`, and
+  their Ed25519 signatures were regenerated with the same RFC 8032 test key.
+  Implementations that hard-coded the old vector signatures must re-sync.
 
 ## [0.4.0] - 2026-10-07
 
